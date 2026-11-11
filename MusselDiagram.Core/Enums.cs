@@ -127,3 +127,22 @@ public enum DiagramTextAlignment
     Center,
     End
 }
+
+public enum DiagramGroupSizing
+{
+    Manual,
+    Content
+}
+
+public enum DiagramPortVisibility
+{
+    Always,
+    WhileConnecting
+}
+
+public enum DiagramHistoryMode
+{
+    Record,
+    Skip,
+    Merge
+}

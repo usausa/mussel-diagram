@@ -57,3 +57,8 @@ public sealed record DiagramLink : DiagramElement
 
     public DiagramPermissions? Permissions { get; init; }
 }
+
+public sealed record DiagramSharedItem : DiagramElement
+{
+    public string? Label { get; init; }
+}

@@ -90,7 +90,7 @@ internal sealed class DiagramBoxView : ComponentBase
         }
 
         var local = new DiagramRect(0, 0, width, height);
-        foreach (var port in Context.Index.PortsOf(type))
+        foreach (var port in Context.Index.PortsOf(box))
         {
             var position = port.PositionIn(local);
             builder.OpenElement(60, "circle");

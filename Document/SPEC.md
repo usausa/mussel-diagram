@@ -115,7 +115,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 | Item | Tree group | Overlay group |
 |---|---|---|
 | Contents | Children (nodes and tree groups). The child refers to its parent, and it has only one | Members (nodes and tree groups). The group holds the list. Members can have different parents, and an element can be in several overlay groups |
-| Size | Set by the type. A manually sized group grows when a child goes outside it, and never shrinks. A group sized to its contents is the bounds of its children plus the padding of the type (the size of the type when empty), and cannot be resized by hand | The union of the bounds of the members plus the padding of the type. Cannot be resized by hand |
+| Size | Set by the type. A manually sized group grows when its children plus the padding of the type no longer fit, and never shrinks. A group sized to its contents is the bounds of its children plus the padding of the type (the size of the type when empty), and cannot be resized by hand | The union of the bounds of the members plus the padding of the type. Cannot be resized by hand |
 | Moving the group | The descendants move by the same amount | The members and their descendants move by the same amount. The parents of the members do not change |
 | The contents move, grow or shrink | A group sized to its contents is resized in the same change | The frame is computed again in the same change |
 | Deleting the group | The descendants are deleted | The members stay |
@@ -159,7 +159,7 @@ Changing parents:
   - The elements of ends, parents and members exist, and so do the ports (registered types only). A parent is a tree group, an end is a node or a group, and a member is a node or a tree group
   - The kind of a group matches the kind of its type (registered types only)
   - The parent tree has no cycle
-  - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group)
+  - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group, an overlay group without members), and the kind of a group does not change
   - The data is the data type registered for the type, or `JsonElement`
   - Positions and sizes are finite, and sizes are greater than 0
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
@@ -186,7 +186,7 @@ Through the methods of a snapshot.
 | Question | Content |
 |---|---|
 | Connections | The links of an element (in and out, optionally by port), and the elements one link before and after |
-| Traversal | Upstream and downstream (the elements reached along the links), the elements in cycles, the elements not reachable from given elements |
+| Traversal | Upstream and downstream (the elements reached along the links), the elements in cycles, the nodes and linked groups not reachable from given elements |
 | Tree | Parent, children, ancestors, descendants, top-level elements |
 | Overlay | The members of a group, the overlay groups around an element |
 | Shared items | The elements that refer to a shared item (the use count), the shared items nothing refers to |

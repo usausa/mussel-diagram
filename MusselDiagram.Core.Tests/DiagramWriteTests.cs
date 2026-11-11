@@ -72,8 +72,8 @@ public sealed class DiagramWriteTests
     {
         var diagram = new Diagram(Schema);
         diagram.Add(Group("vpc", 0, 0, 600, 400));
-        diagram.Add(Group("subnet", 20, 20, 300, 200, "vpc"));
-        diagram.Add(Node("a", 40, 40, "subnet"));
+        diagram.Add(Group("subnet", 20, 40, 300, 200, "vpc"));
+        diagram.Add(Node("a", 40, 80, "subnet"));
         diagram.Add(Node("b", 400, 40, "vpc"));
         diagram.Add(Node("c", 800, 40));
         diagram.Connect(Link("ac", "a", "c"));
@@ -83,14 +83,14 @@ public sealed class DiagramWriteTests
 
         diagram.Move(["subnet"], new DiagramPoint(10, 5));
 
-        Assert.Equal(new DiagramRect(30, 25, 300, 200), ((DiagramBox)diagram.Find("subnet")!).Bounds);
-        Assert.Equal(new DiagramRect(50, 45, 100, 50), ((DiagramBox)diagram.Find("a")!).Bounds);
+        Assert.Equal(new DiagramRect(30, 45, 300, 200), ((DiagramBox)diagram.Find("subnet")!).Bounds);
+        Assert.Equal(new DiagramRect(50, 85, 100, 50), ((DiagramBox)diagram.Find("a")!).Bounds);
         Assert.Equal(new DiagramRect(0, 0, 600, 400), ((DiagramBox)diagram.Find("vpc")!).Bounds);
         Assert.NotNull(change);
         Assert.Equal(DiagramChangeParts.Position, change.GetChanges("a"));
         Assert.Equal(DiagramChangeParts.Route, change.GetChanges("ac"));
         Assert.Equal(DiagramChangeParts.None, change.GetChanges("bc"));
-        Assert.Equal(new DiagramPoint(150, 70), ((DiagramLink)diagram.Find("ac")!).Route[0]);
+        Assert.Equal(new DiagramPoint(150, 110), ((DiagramLink)diagram.Find("ac")!).Route[0]);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class DiagramWriteTests
         Assert.Equal(["b"], ((DiagramGroup)diagram.Find("a-and-b")!).MemberIds);
         Assert.NotNull(change);
         Assert.Equal(["a", "ab", "only-a", "subnet", "vpc"], change.Deleted.Order(StringComparer.Ordinal));
-        Assert.Equal(DiagramChangeParts.Members, change.GetChanges("a-and-b"));
+        Assert.Equal(DiagramChangeParts.Position | DiagramChangeParts.Size | DiagramChangeParts.Members, change.GetChanges("a-and-b"));
     }
 
     [Fact]

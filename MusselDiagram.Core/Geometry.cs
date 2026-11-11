@@ -16,3 +16,5 @@ public readonly record struct DiagramRect(double X, double Y, double Width, doub
 
     public bool Intersects(DiagramRect other) => (X <= other.Right) && (other.X <= Right) && (Y <= other.Bottom) && (other.Y <= Bottom);
 }
+
+public readonly record struct DiagramThickness(double Left, double Top, double Right, double Bottom);

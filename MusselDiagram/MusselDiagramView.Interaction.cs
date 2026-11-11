@@ -176,10 +176,19 @@ public sealed partial class MusselDiagramView
     private void OnDiagramChanged(object? sender, DiagramChangedEventArgs e)
     {
         Remember(e.After);
-        pendingChanges.Add(ScriptTables.Changes(e, Diagram.Index));
-        if (SelectedIds.Any(e.Deleted.Contains))
+        if (e.IsReset)
         {
-            SelectedIds = [.. SelectedIds.Where(x => !e.Deleted.Contains(x))];
+            pendingChanges.Clear();
+            tableChanged = true;
+        }
+        else
+        {
+            pendingChanges.Add(ScriptTables.Changes(e, Diagram.Index));
+        }
+
+        if (SelectedIds.Any(x => !e.After.Contains(x)))
+        {
+            SelectedIds = [.. SelectedIds.Where(e.After.Contains)];
             _ = SelectionChanged.InvokeAsync(SelectedIds);
         }
 

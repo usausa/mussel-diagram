@@ -36,7 +36,7 @@ internal static class ScriptTables
     private static ScriptBox Box(DiagramBox box, SchemaIndex index)
     {
         var type = index.FindBoxType(box);
-        var ports = index.PortsOf(type);
+        var ports = index.PortsOf(box);
         var kind = box switch
         {
             DiagramGroup { Kind: DiagramGroupKind.Overlay } => "overlay",

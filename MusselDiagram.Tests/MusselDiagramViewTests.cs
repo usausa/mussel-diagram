@@ -128,6 +128,25 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.Equal(2, cut.Instance.Zoom);
     }
 
+    [Fact]
+    public async Task LoadingSendsTheWholeTableAgain()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var diagram = CreateDiagram();
+        var other = new Diagram(Schema);
+        other.Add(new DiagramNode { Id = "c", Type = "service", Bounds = new DiagramRect(0, 0, 80, 40) });
+        var json = other.ToJson();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => cut.Instance.OnSelectionChangedAsync(["a", "b"]));
+
+        await cut.InvokeAsync(() => diagram.LoadJson(json));
+
+        Assert.Equal(["c"], cut.FindAll("g.mussel-diagram-node").Select(static x => x.GetAttribute("data-id")));
+        Assert.Empty(cut.Instance.SelectedIds);
+        controller.VerifyInvoke("setTable");
+        Assert.Empty(controller.Invocations["applyChanges"]);
+    }
+
     private static Diagram CreateDiagram()
     {
         var diagram = new Diagram(Schema);

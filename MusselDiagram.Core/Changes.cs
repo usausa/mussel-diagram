@@ -5,6 +5,8 @@ using System.Collections.Immutable;
 public sealed record DiagramWriteOptions
 {
     public object? Tag { get; init; }
+
+    public DiagramHistoryMode History { get; init; }
 }
 
 public sealed class DiagramChangedEventArgs : EventArgs

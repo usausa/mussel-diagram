@@ -132,13 +132,13 @@ The model. It works without a view. Writing is not thread-safe.
 | `CanUndo`, `CanRedo`, `Undo()`, `Redo()`, `UndoLimit`, `ClearHistory()` | Undo; `UndoLimit` is 100 by default |
 | `Validate()` | The issues (`DiagramIssue`) of the current snapshot |
 | `Save(stream)`, `SaveAsync(stream)`, `ToJson()` | Writes the current snapshot as JSON |
-| `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed |
+| `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed. Throws `DiagramException` when the text is not a diagram or its version is newer |
 | `IsModified`, `MarkSaved()` | Whether the contents changed since `MarkSaved` |
 | `GetPorts(id)` | The ports of an element (`DiagramPort`) with their positions |
 | `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, the positions and angles of the markers, and `Path` |
 
 Every writing method takes an optional `DiagramWriteOptions`: `Tag` (any object, given back in `Changed`) and `History` (`DiagramHistoryMode`: `Record`, `Skip` or `Merge`). `BeginUpdate` takes it too, and the outermost scope decides.  
-A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type, data that is not the registered data type or `JsonElement`, sizes that are not finite and positive) throws `DiagramException` and leaves the snapshot as it was.  
+A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, sizes that are not finite and positive) throws `DiagramException` and leaves the snapshot as it was.  
 
 `DiagramChangedEventArgs`:  
 
@@ -151,7 +151,7 @@ A write that breaks the structure (duplicate IDs, missing ends, parents or membe
 | `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order` and `Route` |
 | `IsReset` | Everything changed (loading) |
 
-`DiagramJson.Write(snapshot, stream)` and `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) do the same without a `Diagram`, for a server.  
+`DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`, for a server.  
 
 ## 📸 DiagramSnapshot
 
@@ -165,10 +165,10 @@ An immutable state of the diagram, readable from any thread.
 | `GetLinks(id, direction, portId)` | The links of an element (`DiagramLinkDirection`: `In`, `Out` or `Both`), optionally of one port |
 | `GetPredecessors(id)`, `GetSuccessors(id)` | The elements one link before and after |
 | `GetUpstream(id)`, `GetDownstream(id)` | The elements reached against and along the links |
-| `GetCycles()`, `GetUnreachable(startIds)` | The elements in cycles, and the elements not reachable from the given ones |
+| `Cycles`, `GetUnreachable(startIds)` | The elements in cycles, and the nodes and linked groups not reachable from the given ones |
 | `GetParent(id)`, `GetChildren(id)`, `GetAncestors(id)`, `GetDescendants(id)`, `TopLevel` | The tree |
 | `GetMembers(groupId)`, `GetOverlayGroups(id)` | Overlay groups |
-| `GetReferrers(sharedItemId)`, `GetUnusedSharedItems()` | Shared items and the elements that refer to them |
+| `GetReferrers(sharedItemId, schema)`, `GetUnusedSharedItems(schema)` | Shared items and the elements that refer to them |
 | `Validate(schema)` | The whole-diagram check |
 
 ## 🧩 Elements
@@ -210,7 +210,7 @@ An immutable record. The declarative parts can also be read with `DiagramSchemaJ
 | `DiagramType` | The abstract base of the types: `Name`, `DisplayName`, `Category`, `SearchWords`, `DataType` (`JsonTypeInfo?`), `DefaultData`, `GetReferences` (the shared item IDs in the data), `Permissions` (all by default) |
 | `DiagramBoxType` | The abstract base of node and group types: `Look`, `Size`, `MinSize`, `Slots`, `Ports`, `GetPorts` (ports from the data), `ConnectsAsWhole`, `InPalette`, `CreateContent`, `AllowedParents`, `TopLevel`, `StayInParent`, `MaxCount`, `Required`, `Undeletable`, `Start`, `GetTooltip` |
 | `DiagramNodeType` | A `DiagramBoxType` |
-| `DiagramGroupType` | A `DiagramBoxType` with `Kind`, `Sizing` (`DiagramGroupSizing`: `Manual` or `Content`), `Padding`, `Header`, `AllowedChildren`, `AllowedMembers` and `FillHitTest` |
+| `DiagramGroupType` | A `DiagramBoxType` with `Kind`, `Sizing` (`DiagramGroupSizing`: `Manual` or `Content`), `Padding` (20, 40, 20, 20), `Header`, `AllowedChildren`, `AllowedMembers` and `FillHitTest` |
 | `DiagramLinkType` | A `DiagramType` with `Look`, `Form` (`DiagramLineForm`: `Orthogonal`, `Straight` or `Curved`), `StubLength` (20), `ObstacleMargin` (10), `SourceMarker`, `TargetMarker` (`DiagramMarker`: `None`, `Arrow`, `OpenArrow`, `Circle` or `Diamond`), `Router`, `AllowSelf`, `AllowDuplicate` (`false`), `AllowCrossParent`, `AllowCycles` (`true`), `GetTooltip` |
 | `DiagramSharedItemType` | A `DiagramType` with `MaxCount`, `Required` and `Undeletable` |
 
@@ -232,7 +232,7 @@ An immutable record. The declarative parts can also be read with `DiagramSchemaJ
 
 | Name | Receives | Decides |
 |---|---|---|
-| `CanConnect` | `DiagramConnectionContext`: `Snapshot`, `Source`, `Target`, `LinkType`, `Reconnecting` | A connection |
+| `CanConnect` | `DiagramConnectionContext`: `Snapshot`, `Source`, `Target`, `LinkType`, `Reconnecting` (the ID of the link when it already exists) | A connection |
 | `CanNest` | `DiagramNestingContext`: `Snapshot`, `ElementId` or `Type`, `ParentId` | A parent, `null` for the top level |
 | `CanDelete` | `DiagramDeletionContext`: `Snapshot`, `ElementIds` | A deletion |
 | `InPalette` | `DiagramPaletteContext`: `Snapshot`, `Type` | Returns `bool` |
@@ -302,7 +302,7 @@ Each import returns a `DiagramIconImportResult` with `IconSet` and `Issues` (wha
 | Link | `id`, `type`, `source`, `target` (`element` and `port`), `route` (points as `[x, y]`, only when routed), `data`, `locked`, `permissions` |
 | Shared item | `id`, `type`, `label`, `data` |
 
-Fields without a value and default values are not written. `permissions` is a list of names such as `["select", "move"]`.  
+Fields without a value and default values are not written, except `kind`, `x`, `y`, `width` and `height`. `permissions` is a list of names such as `["select", "move"]`.  
 
 ## 🖼️ Export
 

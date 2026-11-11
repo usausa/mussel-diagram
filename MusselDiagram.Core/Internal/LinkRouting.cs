@@ -32,13 +32,27 @@ internal static class LinkRouting
     public static ImmutableArray<PortPlacement> Place(ImmutableArray<DiagramPortDefinition> ports)
     {
         var builder = ImmutableArray.CreateBuilder<PortPlacement>(ports.Length);
-        foreach (var port in ports)
+        for (var i = 0; i < ports.Length; i++)
         {
+            var port = ports[i];
             var ratio = port.Ratio;
             if (ratio is null)
             {
-                var spaced = ports.Where(x => (x.Side == port.Side) && (x.Ratio is null)).ToList();
-                ratio = (spaced.IndexOf(port) + 1) / (double)(spaced.Count + 1);
+                var before = 0;
+                var count = 0;
+                for (var j = 0; j < ports.Length; j++)
+                {
+                    if ((ports[j].Side == port.Side) && (ports[j].Ratio is null))
+                    {
+                        count++;
+                        if (j < i)
+                        {
+                            before++;
+                        }
+                    }
+                }
+
+                ratio = (before + 1) / (double)(count + 1);
             }
 
             builder.Add(new PortPlacement(port, ratio.Value));
@@ -53,7 +67,16 @@ internal static class LinkRouting
         foreach (var port in ports)
         {
             var definition = port.Definition;
-            builder.Add(new DiagramPort(definition.Id, definition.Direction, definition.Kind, definition.Side, port.PositionIn(box.Bounds), definition.Label));
+            builder.Add(new DiagramPort
+            {
+                Id = definition.Id,
+                Direction = definition.Direction,
+                Kind = definition.Kind,
+                Side = definition.Side,
+                Position = port.PositionIn(box.Bounds),
+                Label = definition.Label,
+                Visibility = definition.Visibility
+            });
         }
 
         return builder.MoveToImmutable();
