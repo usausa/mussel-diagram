@@ -46,6 +46,14 @@ internal sealed record ScriptOptions
     public required double QuickAddSpacing { get; init; }
 
     public string? LinkType { get; init; }
+
+    public required bool DropEnabled { get; init; }
+
+    public required bool TextEditEnabled { get; init; }
+
+    public required bool TooltipEnabled { get; init; }
+
+    public required bool HostSearch { get; init; }
 }
 
 internal sealed record ScriptBounds(double X, double Y, double Width, double Height);
@@ -111,7 +119,29 @@ internal sealed record ScriptBox
 
     public required bool Whole { get; init; }
 
+    public bool Editable { get; init; }
+
     public IReadOnlyList<ScriptPort>? Ports { get; init; }
+}
+
+internal sealed record ScriptSlot
+{
+    public required string Name { get; init; }
+
+    public required bool Editable { get; init; }
+
+    public required int MaxLines { get; init; }
+}
+
+internal sealed record ScriptCommand
+{
+    public required string Name { get; init; }
+
+    public required IReadOnlyList<string> Keys { get; init; }
+
+    public required bool Enabled { get; init; }
+
+    public required bool Local { get; init; }
 }
 
 internal sealed record ScriptLink
@@ -149,7 +179,11 @@ internal sealed record ScriptType
 
     public string? Category { get; init; }
 
+    public string? CategoryLabel { get; init; }
+
     public IReadOnlyList<string>? Search { get; init; }
+
+    public IReadOnlyList<ScriptSlot>? Slots { get; init; }
 
     public required bool Group { get; init; }
 
@@ -217,7 +251,7 @@ internal sealed record ScriptTable(long Version, IReadOnlyList<ScriptBox> Boxes,
 
 internal sealed record ScriptChanges(long Version, IReadOnlyList<ScriptBox> Boxes, IReadOnlyList<ScriptLink> Links, IReadOnlyList<string> Removed);
 
-internal sealed record ScriptCommitResult(bool Accepted, long Version, string? Reason, int Rejections);
+internal sealed record ScriptCommitResult(bool Accepted, long Version, string? Reason, int Rejections, string? ElementId = null);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, GenerationMode = JsonSourceGenerationMode.Serialization, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(ScriptOptions))]
@@ -226,6 +260,8 @@ internal sealed record ScriptCommitResult(bool Accepted, long Version, string? R
 [JsonSerializable(typeof(ScriptTable))]
 [JsonSerializable(typeof(ScriptChanges))]
 [JsonSerializable(typeof(ScriptCommitResult))]
+[JsonSerializable(typeof(List<ScriptCommand>))]
+[JsonSerializable(typeof(IReadOnlyList<string>))]
 internal sealed partial class ScriptJsonContext : JsonSerializerContext;
 
 internal static class ScriptJson
@@ -241,4 +277,6 @@ internal static class ScriptJson
     public static JsonElement ToElement(ScriptChanges value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptChanges);
 
     public static JsonElement ToElement(ScriptCommitResult value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptCommitResult);
+
+    public static JsonElement ToElement(IReadOnlyList<string> value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.IReadOnlyListString);
 }

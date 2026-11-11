@@ -60,11 +60,27 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramReconnectedEventArgs> Reconnected { get; set; }
 
-    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, long baseVersion, int rejectionsSeen) =>
-        CommitAsync(
+    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, string? splitLinkId, long baseVersion, int rejectionsSeen)
+    {
+        Splice? split = null;
+        return CommitAsync(
             DiagramOperation.Move,
             rejectionsSeen,
-            () => CheckMove(ids, baseVersion) ?? (reparent ? CheckParent(ids, parentId) : null),
+            () =>
+            {
+                var reason = CheckMove(ids, baseVersion) ?? (reparent ? CheckParent(ids, parentId) : null);
+                split = (reason is null) && (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0)
+                    ? SpliceOf(ids[0], splitLinkId, baseVersion, editor =>
+                    {
+                        editor.Move(ids, offset);
+                        if (reparent)
+                        {
+                            editor.SetParent(ids, parentId);
+                        }
+                    })
+                    : null;
+                return reason;
+            },
             async () =>
             {
                 var args = new DiagramMovingEventArgs(ids, offset, reparent, reparent ? parentId : null);
@@ -80,9 +96,15 @@ public sealed partial class MusselDiagramView
                     {
                         Diagram.SetParent(ids, parentId);
                     }
+
+                    if (split is { } splice)
+                    {
+                        ApplySplice(splice);
+                    }
                 }
             },
             snapshot => Moved.InvokeAsync(new DiagramMovedEventArgs(ids, offset, reparent, reparent ? parentId : null, snapshot)));
+    }
 
     internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, long baseVersion, int rejectionsSeen) =>
         CommitAsync(
@@ -166,7 +188,8 @@ public sealed partial class MusselDiagramView
         Func<DiagramReason?> check,
         Func<Task<DiagramReason?>> before,
         Action write,
-        Func<DiagramSnapshot, Task> after)
+        Func<DiagramSnapshot, Task> after,
+        string? elementId = null)
     {
         await commitLock.WaitAsync().ConfigureAwait(true);
         try
@@ -197,7 +220,8 @@ public sealed partial class MusselDiagramView
             write();
             var result = Snapshot;
             await after(result).ConfigureAwait(true);
-            return new ScriptCommitResult(true, result.Version, null, rejections);
+            await RefreshCommandsAsync().ConfigureAwait(true);
+            return new ScriptCommitResult(true, result.Version, null, rejections, elementId);
         }
         finally
         {
@@ -208,12 +232,20 @@ public sealed partial class MusselDiagramView
     private DiagramLink NewLink(string id, DiagramLinkEnd source, DiagramLinkEnd target, string linkType) =>
         new() { Id = id, Type = linkType, Source = source, Target = target, Data = Diagram.Index.FindLinkType(linkType)?.DefaultData };
 
-    private DiagramBox? NewBox(string type, DiagramRect bounds, string? parentId) => Diagram.Index.FindBoxType(type) switch
+    private DiagramBox? NewBox(string type, DiagramRect bounds, string? parentId, string? value = null)
     {
-        DiagramNodeType node => new DiagramNode { Type = node.Name, Bounds = bounds, ParentId = parentId, Data = node.DefaultData },
-        DiagramGroupType { Kind: DiagramGroupKind.Tree } group => new DiagramGroup { Type = group.Name, Bounds = bounds, ParentId = parentId, Data = group.DefaultData },
-        _ => null
-    };
+        var boxType = Diagram.Index.FindBoxType(type);
+        if (boxType is not (DiagramNodeType or DiagramGroupType { Kind: DiagramGroupKind.Tree }))
+        {
+            return null;
+        }
+
+        var content = boxType.CreateContent?.Invoke(new DiagramCreateContext { Snapshot = Snapshot, Type = boxType, Value = value });
+        var data = content is null ? boxType.DefaultData : content.Data;
+        return boxType is DiagramNodeType
+            ? new DiagramNode { Type = boxType.Name, Bounds = bounds, ParentId = parentId, Label = content?.Label, Texts = content?.Texts ?? [], Data = data }
+            : new DiagramGroup { Type = boxType.Name, Bounds = bounds, ParentId = parentId, Label = content?.Label, Texts = content?.Texts ?? [], Data = data };
+    }
 
     private DiagramSnapshot? SnapshotAt(long version) =>
         version == Snapshot.Version ? Snapshot : history.GetValueOrDefault(version);

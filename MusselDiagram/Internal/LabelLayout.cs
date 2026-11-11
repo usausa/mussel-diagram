@@ -2,7 +2,7 @@ namespace MusselDiagram.Internal;
 
 using System.Collections.Immutable;
 
-internal sealed record LabelBox(string Text, double X, double Y, string Anchor, string VerticalAlign, double Width, int MaxLines, DiagramTextFormat? Format);
+internal sealed record LabelBox(string Slot, string Text, bool IsDefault, double X, double Y, string Anchor, string VerticalAlign, double Width, int MaxLines, DiagramTextFormat? Format);
 
 internal static class LabelLayout
 {
@@ -14,31 +14,39 @@ internal static class LabelLayout
 
     private static readonly DiagramLabelSlot GroupSlot = new() { Name = "label", Placement = DiagramLabelPlacement.Header, MaxLines = 1 };
 
-    public static ImmutableArray<LabelBox> Arrange(DiagramBox box, DiagramBoxType? type, bool hasHeaderIcon)
+    public static ImmutableArray<DiagramLabelSlot> SlotsOf(DiagramBox box, DiagramBoxType? type) =>
+        (type is null) || type.Slots.IsEmpty ? [box is DiagramGroup ? GroupSlot : NodeSlot] : type.Slots;
+
+    public static ImmutableArray<DiagramLabelSlot> SlotsOf(DiagramBoxType type, bool isGroup) =>
+        type.Slots.IsEmpty ? [isGroup ? GroupSlot : NodeSlot] : type.Slots;
+
+    public static ImmutableArray<LabelBox> Arrange(DiagramBox box, DiagramBoxType? type, bool hasHeaderIcon, bool editable)
     {
-        var slots = (type is null) || type.Slots.IsEmpty ? [box is DiagramGroup ? GroupSlot : NodeSlot] : type.Slots;
+        var slots = SlotsOf(box, type);
         var builder = ImmutableArray.CreateBuilder<LabelBox>(slots.Length);
         for (var i = 0; i < slots.Length; i++)
         {
             var slot = slots[i];
             var text = i == 0 ? box.Label : box.Texts.GetValueOrDefault(slot.Name);
-            if (string.IsNullOrEmpty(text))
+            var isDefault = false;
+            if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(slot.DefaultText))
             {
                 text = slot.DefaultText;
+                isDefault = true;
             }
 
-            if (string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text) && !(editable && slot.Editable))
             {
                 continue;
             }
 
-            builder.Add(Place(text, slot, box.Bounds.Width, box.Bounds.Height, hasHeaderIcon));
+            builder.Add(Place(text ?? string.Empty, isDefault, slot, box.Bounds.Width, box.Bounds.Height, hasHeaderIcon));
         }
 
         return builder.ToImmutable();
     }
 
-    private static LabelBox Place(string text, DiagramLabelSlot slot, double width, double height, bool hasHeaderIcon)
+    private static LabelBox Place(string text, bool isDefault, DiagramLabelSlot slot, double width, double height, bool hasHeaderIcon)
     {
         var (x, y, anchor, align) = slot.Placement switch
         {
@@ -75,6 +83,6 @@ internal static class LabelLayout
             };
         }
 
-        return new LabelBox(text, x, y, anchor, align, Math.Max(slotWidth, 1), slot.MaxLines ?? 0, slot.Format);
+        return new LabelBox(slot.Name, text, isDefault, x, y, anchor, align, Math.Max(slotWidth, 1), slot.MaxLines ?? 0, slot.Format);
     }
 }

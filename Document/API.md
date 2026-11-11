@@ -43,7 +43,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `Resizing`, `Resized` | `DiagramResizingEventArgs`, `DiagramResizedEventArgs` | `ElementId` and `Bounds` |
 | `Connecting`, `Connected` | `DiagramConnectingEventArgs`, `DiagramConnectedEventArgs` | `Source`, `Target`, `LinkType` and `PlacedElement` (from the type picker); `Connected` also has `LinkId` |
 | `Reconnecting`, `Reconnected` | `DiagramReconnectingEventArgs`, `DiagramReconnectedEventArgs` | `LinkId`, `End` (`DiagramLinkEndSide`) and `NewEnd` |
-| `Dropping`, `Dropped` | `DiagramDroppingEventArgs`, `DiagramDroppedEventArgs` | `Type`, `Bounds`, `ParentId`, `Value` and `SplitLinkId` |
+| `Dropping`, `Dropped` | `DiagramDroppingEventArgs`, `DiagramDroppedEventArgs` | `ElementId` (of the new element), `Type`, `Bounds`, `ParentId`, `Value` and `SplitLinkId` |
 | `Deleting`, `Deleted` | `DiagramDeletingEventArgs`, `DiagramDeletedEventArgs` | `ElementIds`, including the elements deleted along with them, and `IsCut` |
 | `TextCommitting`, `TextCommitted` | `DiagramTextCommittingEventArgs`, `DiagramTextCommittedEventArgs` | `ElementId`, `Slot`, `OldText` and `NewText` |
 | `Pasting`, `Pasted` | `DiagramPastingEventArgs`, `DiagramPastedEventArgs` | `Elements` and `IdMap` (old to new IDs) |
@@ -59,7 +59,7 @@ The arguments of the before events (`…ing`) have `Cancel` and `Reason` (`strin
 | `SelectedIds`, `SelectAsync(ids)`, `ClearSelectionAsync()` | The selection |
 | `Zoom`, `Center`, `SetViewportAsync(zoom, center)` | The zoom and the center of the visible area |
 | `ZoomToFitAsync()`, `ZoomToSelectionAsync()`, `CenterOnAsync(id)` | Fitting and centering |
-| `OpenTypePickerAsync(position)` | Opens the type picker for quick add at a position |
+| `OpenTypePickerAsync(position)` | Opens the type picker for quick add at a position, or at the pointer when `null` |
 | `Commands` | The `DiagramCommandRegistry` of the view |
 | `ExportSvgAsync(options)`, `ExportImageAsync(options)` | Export; see Export |
 | `FocusAsync()` | Gives the view the focus |

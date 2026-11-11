@@ -58,3 +58,29 @@ body {
 .diagram-page {
     height: 100%;
 }
+
+.diagram-with-palette {
+    display: flex;
+}
+
+.diagram-sidebar {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 200px;
+    border-right: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.diagram-sidebar > .mussel-diagram-palette {
+    flex: 1;
+}
+
+.diagram-source {
+    padding: 8px;
+    border-top: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.diagram-with-palette > .mussel-diagram {
+    flex: 1;
+    min-width: 0;
+}

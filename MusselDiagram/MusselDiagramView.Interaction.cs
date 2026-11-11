@@ -77,6 +77,7 @@ public sealed partial class MusselDiagramView
 
         SelectedIds = ids;
         await SelectionChanged.InvokeAsync(SelectedIds).ConfigureAwait(true);
+        await RefreshCommandsAsync().ConfigureAwait(true);
     }
 
     private void Remember(DiagramSnapshot snapshot)

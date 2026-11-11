@@ -4,8 +4,6 @@ using System.Text.Json;
 
 internal static class ScriptTables
 {
-    private const DiagramPermissions UnregisteredPermissions = DiagramPermissions.Select | DiagramPermissions.Move | DiagramPermissions.Delete;
-
     public static ScriptTable Build(DiagramSnapshot snapshot, SchemaIndex index) =>
         new(
             snapshot.Version,
@@ -44,23 +42,9 @@ internal static class ScriptTables
                 .ToDictionary(static x => JsonNamingPolicy.CamelCase.ConvertName(x.ToString()), static x => BuiltInTexts.Reason(x)!, StringComparer.Ordinal));
     }
 
-    public static DiagramPermissions PermissionsOf(DiagramBox box, SchemaIndex index)
-    {
-        var type = index.FindBoxType(box);
-        var permissions = type is null
-            ? (box.Permissions ?? UnregisteredPermissions) & UnregisteredPermissions
-            : box.Permissions ?? type.Permissions;
-        return box.Locked ? permissions & DiagramPermissions.Select : permissions;
-    }
+    public static DiagramPermissions PermissionsOf(DiagramBox box, SchemaIndex index) => ElementPermissions.Of(box, index);
 
-    public static DiagramPermissions PermissionsOf(DiagramLink link, SchemaIndex index)
-    {
-        var type = index.FindLinkType(link.Type);
-        var permissions = type is null
-            ? (link.Permissions ?? UnregisteredPermissions) & UnregisteredPermissions
-            : link.Permissions ?? type.Permissions;
-        return link.Locked ? permissions & DiagramPermissions.Select : permissions;
-    }
+    public static DiagramPermissions PermissionsOf(DiagramLink link, SchemaIndex index) => ElementPermissions.Of(link, index);
 
     public static bool CanMove(DiagramBox box, SchemaIndex index) => (PermissionsOf(box, index) & DiagramPermissions.Move) != 0;
 
@@ -105,6 +89,7 @@ internal static class ScriptTables
             Resizable = CanResize(box, index),
             Connectable = (type is not null) && ((permissions & DiagramPermissions.Connect) != 0),
             Whole = (type is not null) && (type.ConnectsAsWhole || ports.IsEmpty),
+            Editable = (type is not null) && ((permissions & DiagramPermissions.EditText) != 0),
             Ports = ports.IsEmpty ? null : [.. ports.Select(Port)]
         };
     }
@@ -140,7 +125,9 @@ internal static class ScriptTables
             Name = type.Name,
             Label = type.DisplayName ?? type.Name,
             Category = type.Category,
+            CategoryLabel = type.Category is { } category ? context.Index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null,
             Search = type.SearchWords.IsEmpty ? null : [.. type.SearchWords],
+            Slots = [.. LabelLayout.SlotsOf(type, isGroup).Select(static x => new ScriptSlot { Name = x.Name, Editable = x.Editable, MaxLines = x.MaxLines ?? 0 })],
             Group = isGroup,
             Overlay = group?.Kind == DiagramGroupKind.Overlay,
             Content = group?.Sizing == DiagramGroupSizing.Content,

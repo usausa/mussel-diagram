@@ -13,8 +13,8 @@ public sealed class ParityTests
     {
         NodeTypes =
         [
-            new DiagramNodeType { Name = "box" },
-            new DiagramNodeType { Name = "locked" },
+            new DiagramNodeType { Name = "box", DisplayName = "Web server", Category = "compute", SearchWords = ["ec2", "instance"] },
+            new DiagramNodeType { Name = "locked", DisplayName = "Server" },
             new DiagramNodeType
             {
                 Name = "svc",
@@ -28,7 +28,8 @@ public sealed class ParityTests
             },
             new DiagramNodeType { Name = "db", Ports = [new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Kind = "sql", Side = DiagramSide.Left }], ConnectsAsWhole = true }
         ],
-        GroupTypes = [new DiagramGroupType { Name = "zone" }],
+        GroupTypes = [new DiagramGroupType { Name = "zone", DisplayName = "Availability zone", Category = "network" }],
+        Categories = [new DiagramCategory { Name = "compute", DisplayName = "Compute" }, new DiagramCategory { Name = "network", DisplayName = "Network" }],
         LinkTypes =
         [
             new DiagramLinkType { Name = "ortho" },
@@ -57,7 +58,7 @@ public sealed class ParityTests
         diagram.Connect(new DiagramLink { Id = "dup", Type = "ortho", Source = new DiagramLinkEnd("a"), Target = new DiagramLinkEnd("b") });
         var snapshot = diagram.Snapshot;
         var index = diagram.Index;
-        var context = new RenderContext(index, "parity");
+        var context = new RenderContext(index, "parity", true);
 
         var ends = snapshot.Nodes.SelectMany(box => index.PortsOf(box).Select(x => new DiagramLinkEnd(box.Id, x.Id)).Append(new DiagramLinkEnd(box.Id))).ToList();
         var routes = new JsonArray();
@@ -102,13 +103,26 @@ public sealed class ParityTests
             numbers.Add(new JsonObject { ["value"] = value, ["expected"] = LinkRouting.Format(value) });
         }
 
+        var searches = new JsonArray();
+        var boxTypes = Schema.NodeTypes.Cast<DiagramBoxType>().Concat(Schema.GroupTypes).ToList();
+        foreach (var query in new[] { "server", "SERVER", "ec2", "comp", "net zone", "web serv", "db", " ", "x" })
+        {
+            searches.Add(new JsonObject
+            {
+                ["query"] = query,
+                ["names"] = new JsonArray([.. boxTypes.Select(static x => JsonValue.Create(x.Name))]),
+                ["expected"] = new JsonArray([.. TypeSearch.Search(boxTypes, query, index, null).Select(static x => JsonValue.Create(x.Name))])
+            });
+        }
+
         var data = new JsonObject
         {
             ["table"] = JsonNode.Parse(ScriptJson.ToElement(ScriptTables.Build(snapshot, index)).GetRawText()),
             ["schema"] = JsonNode.Parse(ScriptJson.ToElement(ScriptTables.Schema(context)).GetRawText()),
             ["routes"] = routes,
             ["rules"] = rules,
-            ["numbers"] = numbers
+            ["numbers"] = numbers,
+            ["searches"] = searches
         };
         var file = Path.Combine(Path.GetTempPath(), $"mussel-diagram-parity-{Guid.NewGuid():N}.json");
         await File.WriteAllTextAsync(file, data.ToJsonString(), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
@@ -126,6 +140,7 @@ public sealed class ParityTests
             Assert.Contains(rules, x => x?["expected"] is null);
             Assert.Contains(rules, x => (string?)x?["expected"] == "limit");
             Assert.Contains(rules, x => (string?)x?["expected"] == "cycle");
+            Assert.Contains(searches, x => x?["expected"]?.AsArray().Count == 2);
         }
         finally
         {

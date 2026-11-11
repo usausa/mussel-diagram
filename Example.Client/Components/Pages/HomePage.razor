@@ -2,6 +2,13 @@
 
 <PageTitle>MusselDiagram</PageTitle>
 
-<div class="diagram-page">
-    <MusselDiagramView Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)" />
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar">
+        @if (view is not null)
+        {
+            <MusselDiagramPalette View="view" />
+            <MusselDiagramDragSource View="view" Type="server" Value="Imported server" class="diagram-source">Imported server</MusselDiagramDragSource>
+        }
+    </aside>
+    <MusselDiagramView @ref="view" Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)" />
 </div>

@@ -112,6 +112,18 @@ public sealed class Diagram
     public void SetMembers(string groupId, IEnumerable<string> memberIds, DiagramWriteOptions? options = null) =>
         Write(options, DiagramChangeOrigin.Api, editor => editor.SetMembers(groupId, memberIds));
 
+    public void BringToFront(IEnumerable<string> ids, DiagramWriteOptions? options = null) =>
+        Write(options, DiagramChangeOrigin.Api, editor => editor.Reorder(ids, OrderMove.Front));
+
+    public void SendToBack(IEnumerable<string> ids, DiagramWriteOptions? options = null) =>
+        Write(options, DiagramChangeOrigin.Api, editor => editor.Reorder(ids, OrderMove.Back));
+
+    public void BringForward(IEnumerable<string> ids, DiagramWriteOptions? options = null) =>
+        Write(options, DiagramChangeOrigin.Api, editor => editor.Reorder(ids, OrderMove.Forward));
+
+    public void SendBackward(IEnumerable<string> ids, DiagramWriteOptions? options = null) =>
+        Write(options, DiagramChangeOrigin.Api, editor => editor.Reorder(ids, OrderMove.Backward));
+
     public IDisposable BeginUpdate(DiagramWriteOptions? options = null) => BeginUpdate(options, DiagramChangeOrigin.Api);
 
     public void Undo()

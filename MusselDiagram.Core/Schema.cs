@@ -15,6 +15,8 @@ public sealed record DiagramSchema
 
     public ImmutableArray<DiagramIconSet> IconSets { get; init; } = [];
 
+    public ImmutableArray<DiagramCategory> Categories { get; init; } = [];
+
     public string? DefaultLinkType { get; init; }
 
     public string? DefaultGroupType { get; init; }
@@ -61,6 +63,8 @@ public abstract record DiagramBoxType : DiagramType
 
     public bool InPalette { get; init; } = true;
 
+    public Func<DiagramCreateContext, DiagramContent>? CreateContent { get; init; }
+
     public ImmutableArray<string>? AllowedParents { get; init; }
 
     public bool TopLevel { get; init; } = true;
@@ -74,6 +78,35 @@ public abstract record DiagramBoxType : DiagramType
     public bool Undeletable { get; init; }
 
     public bool Start { get; init; }
+
+    public Func<DiagramBox, string?>? GetTooltip { get; init; }
+}
+
+public sealed record DiagramCreateContext
+{
+    public required DiagramSnapshot Snapshot { get; init; }
+
+    public required DiagramBoxType Type { get; init; }
+
+    public string? Value { get; init; }
+}
+
+public sealed record DiagramContent
+{
+    public string? Label { get; init; }
+
+    public ImmutableDictionary<string, string> Texts { get; init; } = [];
+
+    public object? Data { get; init; }
+}
+
+public sealed record DiagramCategory
+{
+    public required string Name { get; init; }
+
+    public string? DisplayName { get; init; }
+
+    public bool Collapsed { get; init; }
 }
 
 public sealed record DiagramNodeType : DiagramBoxType;
@@ -116,6 +149,8 @@ public sealed record DiagramLinkType : DiagramType
     public bool AllowCrossParent { get; init; } = true;
 
     public bool AllowCycles { get; init; } = true;
+
+    public Func<DiagramLink, string?>? GetTooltip { get; init; }
 }
 
 public sealed record DiagramSharedItemType : DiagramType
@@ -155,6 +190,8 @@ public sealed record DiagramLabelSlot
     public double? Width { get; init; }
 
     public int? MaxLines { get; init; }
+
+    public bool Editable { get; init; } = true;
 
     public string? DefaultText { get; init; }
 }
@@ -236,4 +273,8 @@ public sealed record DiagramIcon
     public double Height { get; init; } = 24;
 
     public string? Name { get; init; }
+
+    public string? Category { get; init; }
+
+    public ImmutableArray<string> SearchWords { get; init; } = [];
 }

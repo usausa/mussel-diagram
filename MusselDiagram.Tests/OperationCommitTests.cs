@@ -46,9 +46,9 @@ public sealed class OperationCommitTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moving, moving.Add));
 
-        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(400, 0), true, "servers", diagram.Snapshot.Version, 0));
-        var nested = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(0, 10), true, "servers", diagram.Snapshot.Version, accepted.Rejections));
-        var pinned = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["pin"], new DiagramPoint(0, 10), true, null, diagram.Snapshot.Version, nested.Rejections));
+        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(400, 0), true, "servers", null, diagram.Snapshot.Version, 0));
+        var nested = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(0, 10), true, "servers", null, diagram.Snapshot.Version, accepted.Rejections));
+        var pinned = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["pin"], new DiagramPoint(0, 10), true, null, null, diagram.Snapshot.Version, nested.Rejections));
 
         Assert.True(accepted.Accepted);
         Assert.Equal("servers", ((DiagramBox)diagram.Find("a")!).ParentId);

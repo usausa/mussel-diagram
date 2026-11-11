@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
     collectLines, snapAxis, matchingLines, gridSnap, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
+    keyName, nextZoom,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -171,11 +172,33 @@ test('nesting follows the allowed parents and children', () => {
 });
 
 test('the type list is searched by words and ranked by the label', () => {
-    const types = [{ name: 'a', label: 'Web server' }, { name: 'b', label: 'Server', search: ['ec2'] }, { name: 'c', label: 'Database', category: 'Storage' }];
+    const types = [{ name: 'a', label: 'Web server' }, { name: 'b', label: 'Server', search: ['ec2'] }, { name: 'c', label: 'Database', category: 'storage', categoryLabel: 'Storage' }];
     assert.deepEqual(searchTypes(types, 'server').map((t) => t.name), ['b', 'a']);
     assert.deepEqual(searchTypes(types, 'ec2').map((t) => t.name), ['b']);
     assert.deepEqual(searchTypes(types, 'stor data').map((t) => t.name), ['c']);
     assert.equal(searchTypes(types, ' ').length, 3);
+});
+
+test('keys are named with the modifiers in a fixed order', () => {
+    const key = (k, extra = {}) => keyName({ key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra }, false);
+    assert.equal(key('z', { ctrlKey: true }), 'Ctrl+Z');
+    assert.equal(key('Z', { ctrlKey: true, shiftKey: true }), 'Ctrl+Shift+Z');
+    assert.equal(key('=', { ctrlKey: true }), 'Ctrl+Plus');
+    assert.equal(key('+', { ctrlKey: true, shiftKey: true }), 'Ctrl+Plus');
+    assert.equal(key('-', { ctrlKey: true }), 'Ctrl+Minus');
+    assert.equal(key('F8', { shiftKey: true }), 'Shift+F8');
+    assert.equal(key('Delete'), 'Delete');
+    assert.equal(key('f', { ctrlKey: true, altKey: true, shiftKey: true, code: 'KeyF' }), 'Ctrl+Alt+Shift+F');
+    assert.equal(key('Control', { ctrlKey: true }), null);
+    assert.equal(keyName({ key: 'c', code: 'KeyC', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, true), 'Ctrl+C');
+});
+
+test('command zoom moves in steps on a 5% grid and passes 100%', () => {
+    assert.equal(nextZoom(1, 1, 0.05, 8), 1.2);
+    assert.equal(nextZoom(1.2, -1, 0.05, 8), 1);
+    assert.equal(nextZoom(0.9, 1, 0.05, 8), 1);
+    assert.equal(nextZoom(7.5, 1, 0.05, 8), 8);
+    assert.equal(nextZoom(0.05, -1, 0.05, 8), 0.05);
 });
 
 test('quick add places the element beside the connection point', () => {

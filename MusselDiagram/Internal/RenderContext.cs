@@ -12,9 +12,10 @@ internal sealed class RenderContext
 
     private readonly Dictionary<(string Type, DiagramMarker Kind), string> markerIds = [];
 
-    public RenderContext(SchemaIndex index, string viewId)
+    public RenderContext(SchemaIndex index, string viewId, bool tooltips)
     {
         Index = index;
+        Tooltips = tooltips;
         var icons = ImmutableArray.CreateBuilder<IconDefinition>();
         foreach (var set in index.Schema.IconSets)
         {
@@ -55,6 +56,8 @@ internal sealed class RenderContext
     }
 
     public SchemaIndex Index { get; }
+
+    public bool Tooltips { get; }
 
     public ImmutableArray<IconDefinition> Icons { get; }
 

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { routeLink, toPath, checkConnection, formatNumber, DiagramTable } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
+import { routeLink, toPath, checkConnection, formatNumber, searchTypes, DiagramTable } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const data = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const table = new DiagramTable(data.table);
@@ -30,5 +30,11 @@ for (const item of data.numbers) {
         mismatches.push({ kind: 'number', item, actual });
     }
 }
-console.log(JSON.stringify({ routes: data.routes.length, rules: data.rules.length, numbers: data.numbers.length, mismatches: mismatches.slice(0, 20) }));
+for (const item of data.searches ?? []) {
+    const actual = searchTypes(schema.list.filter((t) => item.names.includes(t.name)), item.query).map((t) => t.name);
+    if (JSON.stringify(actual) !== JSON.stringify(item.expected)) {
+        mismatches.push({ kind: 'search', item, actual });
+    }
+}
+console.log(JSON.stringify({ routes: data.routes.length, rules: data.rules.length, numbers: data.numbers.length, searches: (data.searches ?? []).length, mismatches: mismatches.slice(0, 20) }));
 process.exit(mismatches.length === 0 ? 0 : 1);

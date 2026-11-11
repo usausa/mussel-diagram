@@ -1093,9 +1093,93 @@ internal sealed class SnapshotEditor
         return true;
     }
 
-    private void ReorderGroups()
+    public void Reorder(IEnumerable<string> ids, OrderMove move)
     {
-        var tree = groups.Items.Where(static x => x.Kind == DiagramGroupKind.Tree).ToList();
+        var targets = ids.ToHashSet(StringComparer.Ordinal);
+        Shift(nodes, targets, move, static _ => string.Empty);
+        Shift(links, targets, move, static _ => string.Empty);
+        if (!groups.Items.Any(x => targets.Contains(x.Id)))
+        {
+            return;
+        }
+
+        var original = groups.Items.ToArray();
+        var shifted = Rearrange(original, targets, move, static x => x.Kind == DiagramGroupKind.Overlay ? null : x.ParentId ?? string.Empty);
+        var final = TreeOrder(shifted);
+        for (var i = 0; i < final.Count; i++)
+        {
+            if (!ReferenceEquals(final[i], original[i]))
+            {
+                Changes.MarkUpdated(final[i].Id, DiagramChangeParts.Order);
+            }
+        }
+
+        groups.Reset(final);
+    }
+
+    private static List<T> Rearrange<T>(IReadOnlyList<T> items, HashSet<string> targets, OrderMove move, Func<T, string?> sibling)
+        where T : DiagramElement
+    {
+        if (move == OrderMove.Front)
+        {
+            return [.. items.Where(x => !targets.Contains(x.Id)), .. items.Where(x => targets.Contains(x.Id))];
+        }
+
+        if (move == OrderMove.Back)
+        {
+            return [.. items.Where(x => targets.Contains(x.Id)), .. items.Where(x => !targets.Contains(x.Id))];
+        }
+
+        var order = items.ToList();
+        var step = move == OrderMove.Forward ? 1 : -1;
+        var start = move == OrderMove.Forward ? order.Count - 1 : 0;
+        for (var i = start; (i >= 0) && (i < order.Count); i -= step)
+        {
+            if (!targets.Contains(order[i].Id))
+            {
+                continue;
+            }
+
+            var key = sibling(order[i]);
+            var j = i + step;
+            while ((j >= 0) && (j < order.Count) && !string.Equals(sibling(order[j]), key, StringComparison.Ordinal))
+            {
+                j += step;
+            }
+
+            if ((j >= 0) && (j < order.Count) && !targets.Contains(order[j].Id))
+            {
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+        }
+
+        return order;
+    }
+
+    private void Shift<T>(ElementList<T> list, HashSet<string> targets, OrderMove move, Func<T, string?> sibling)
+        where T : DiagramElement
+    {
+        if (!list.Items.Any(x => targets.Contains(x.Id)))
+        {
+            return;
+        }
+
+        var original = list.Items.ToArray();
+        var order = Rearrange(original, targets, move, sibling);
+        for (var i = 0; i < order.Count; i++)
+        {
+            if (!ReferenceEquals(order[i], original[i]))
+            {
+                Changes.MarkUpdated(order[i].Id, DiagramChangeParts.Order);
+            }
+        }
+
+        list.Reset(order);
+    }
+
+    private static List<DiagramGroup> TreeOrder(IReadOnlyList<DiagramGroup> groups)
+    {
+        var tree = groups.Where(static x => x.Kind == DiagramGroupKind.Tree).ToList();
         var ids = tree.Select(static x => x.Id).ToHashSet(StringComparer.Ordinal);
         var childGroups = new Dictionary<string, List<DiagramGroup>>(StringComparer.Ordinal);
         foreach (var group in tree)
@@ -1138,7 +1222,13 @@ internal sealed class SnapshotEditor
         }
 
         ordered.AddRange(tree.Where(x => !placed.Contains(x.Id)));
-        ordered.AddRange(groups.Items.Where(static x => x.Kind == DiagramGroupKind.Overlay));
+        ordered.AddRange(groups.Where(static x => x.Kind == DiagramGroupKind.Overlay));
+        return ordered;
+    }
+
+    private void ReorderGroups()
+    {
+        var ordered = TreeOrder(groups.Items);
         for (var i = 0; i < ordered.Count; i++)
         {
             if (!ReferenceEquals(ordered[i], groups[i]))

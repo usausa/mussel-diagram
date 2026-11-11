@@ -8,8 +8,18 @@ public sealed partial class HomePage
 {
     private readonly Diagram diagram = SampleDiagrams.CreateBasic();
 
+    private MusselDiagramView? view;
+
     [SupplyParameterFromQuery]
     public bool Wait { get; set; }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            StateHasChanged();
+        }
+    }
 
     private static void OnMoving(DiagramMovingEventArgs e)
     {

@@ -1,0 +1,37 @@
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@implements IAsyncDisposable
+
+<div @ref="root" @attributes="AdditionalAttributes" class="@RootClass">
+    <input class="mussel-diagram-palette-search" type="search" placeholder="Search" aria-label="Search" value="@query" @oninput="OnSearch" />
+    <div class="mussel-diagram-palette-list" role="listbox">
+        @if (rows.Count == 0)
+        {
+            <div class="mussel-diagram-palette-empty">@BuiltInTexts.NoMatches</div>
+        }
+        else
+        {
+            <Virtualize Items="rows" ItemSize="RowHeight" Context="row">
+                @if (row.Type is null)
+                {
+                    <button type="button" class="mussel-diagram-palette-header" aria-expanded="@(row.Open ? "true" : "false")" @onclick="() => Toggle(row.Category!)">@row.Label</button>
+                }
+                else
+                {
+                    <div class="mussel-diagram-palette-item" role="option" title="@row.Label" data-mussel-type="@row.Type.Name" data-disabled="@(Disabled ? string.Empty : null)">
+                        <svg class="mussel-diagram-palette-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            @if (row.IconId is not null)
+                            {
+                                <use href="@($"#{row.IconId}")" width="24" height="24" />
+                            }
+                            else
+                            {
+                                <rect class="mussel-diagram-palette-shape" x="3" y="6" width="18" height="12" />
+                            }
+                        </svg>
+                        <span class="mussel-diagram-palette-name">@row.Label</span>
+                    </div>
+                }
+            </Virtualize>
+        }
+    </div>
+</div>

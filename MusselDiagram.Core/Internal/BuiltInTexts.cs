@@ -23,6 +23,46 @@ internal static class BuiltInTexts
         _ => null
     };
 
+    public static string Command(string name) => name switch
+    {
+        "Undo" => "Undo",
+        "Redo" => "Redo",
+        "Delete" => "Delete",
+        "Cut" => "Cut",
+        "Copy" => "Copy",
+        "Paste" => "Paste",
+        "SelectAll" => "Select all",
+        "ClearSelection" => "Clear selection",
+        "EditText" => "Edit text",
+        "QuickAdd" => "Quick add",
+        "Group" => "Group",
+        "Ungroup" => "Ungroup",
+        "CreateOverlayGroup" => "Create overlay group",
+        "AddMembers" => "Add to group",
+        "RemoveMembers" => "Remove from group",
+        "BringToFront" => "Bring to front",
+        "SendToBack" => "Send to back",
+        "BringForward" => "Bring forward",
+        "SendBackward" => "Send backward",
+        "AlignLeft" => "Align left",
+        "AlignCenter" => "Align center",
+        "AlignRight" => "Align right",
+        "AlignTop" => "Align top",
+        "AlignMiddle" => "Align middle",
+        "AlignBottom" => "Align bottom",
+        "DistributeHorizontally" => "Distribute horizontally",
+        "DistributeVertically" => "Distribute vertically",
+        "ToggleLock" => "Lock or unlock",
+        "ZoomIn" => "Zoom in",
+        "ZoomOut" => "Zoom out",
+        "ResetZoom" => "Zoom to 100%",
+        "ZoomToFit" => "Fit to view",
+        "ZoomToSelection" => "Zoom to selection",
+        _ => name
+    };
+
+    public static string NoMatches => "No matches";
+
     public static string Issue(DiagramIssueKind kind, ImmutableArray<string> arguments)
     {
         var format = kind switch
@@ -42,6 +82,8 @@ internal static class BuiltInTexts
             DiagramIssueKind.KindMismatch => "The kind of the group differs from the kind of the type '{0}'.",
             DiagramIssueKind.InvalidSize => "The size is not positive.",
             DiagramIssueKind.UnreadableData => "The data cannot be read as the data type of '{0}'.",
+            DiagramIssueKind.RemovedSvgContent => "Removed from the icon '{0}': {1}",
+            DiagramIssueKind.RejectedUrl => "The icon '{0}' refers to URLs that were not used: {1}",
             _ => "{0}"
         };
         return string.Format(CultureInfo.InvariantCulture, format, [.. arguments]);

@@ -507,7 +507,7 @@ Pointer Events take the mouse, the pen and touch together. The view has `touch-a
 | Operation | Behaviour |
 |---|---|
 | Click | Changes the selection, and `ElementClicked` (`BackgroundClicked` for the background) reports the position and the modifier keys |
-| Double-click | On an editable slot, starts editing its text (Commands and keys). Elsewhere, `ElementDoubleClicked` (`BackgroundDoubleClicked` for the background) reports it |
+| Double-click | On an editable slot, starts editing its text (Commands and keys). On a node whose first editable slot is empty, edits that slot. Elsewhere, `ElementDoubleClicked` (`BackgroundDoubleClicked` for the background) reports it |
 | Hover | Shows the tooltip of the element with `<title>`: the text that a function of the schema makes from the data, otherwise the full text of a shortened label |
 
 Context menus on right-click and long press are not in the first version.
@@ -709,7 +709,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 |---|---|
 | Press | With the mouse and the pen, pressing an item and moving 4 px starts a drag. On touch, moving after a long press (250 ms) starts it, and moving before that scrolls the palette |
 | Outside the view | The icon of the item follows the pointer |
-| Over the view | A semi-transparent preview of the element (the shape and icon of the type, the default text of its label slots) is drawn at its real size for the zoom. The center of the preview follows the pointer, with snapping and guides (Snapping and guides). For a type drawn by a template, the preview is a frame of the default size with the icon |
+| Over the view | A semi-transparent preview of the element (the shape and icon of the type) is drawn at its real size for the zoom. The center of the preview follows the pointer, with snapping and guides (Snapping and guides). For a type drawn by a template, the preview is a frame of the default size with the icon |
 | Target highlight | The group that will be the parent, and a link to splice into, show the drop target look. Where the element cannot be placed, the "not allowed" look and the reason show |
 | Release | Where the element can be placed, it is added. Outside the view, over the palette, and where it cannot be placed, nothing happens |
 
@@ -940,7 +940,8 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - A key is written as modifiers (Ctrl, Alt, Shift) and a key joined with `+` (`Ctrl+Shift+Z`). On Mac, Ctrl means ⌘ and Alt means Option
 - A key belongs to one command only. The last assignment wins
 - JS matches the keys, and stops (`preventDefault`) and runs only the keys of enabled commands. The keys of disabled commands go to the browser
-- Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them. For the others, JS sends the name and the selection of that moment to C#
+- While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then
+- Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them, unless the app changed what they do or when they are enabled. For the others, JS sends the name and the selection of that moment to C#
 - During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input. During IME composition, no key is a command
 - Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving)
 - Moving elements with the arrow keys, and moving between elements with Tab, are not in the first version
@@ -1011,7 +1012,7 @@ The keys follow draw.io.
 ### Editing text in place
 
 - Starting: a double-click on an editable slot edits that slot. F2 and Enter edit the first editable slot of the only selected element
-- A slot is editable when its type declares it editable and the text editing permission (view, element, type) does not stop it
+- A slot is editable unless it is declared not editable (`Editable` is true by default, also for the label of a type without slots), and while the text editing permission (view, element, type) does not stop it
 - An HTML input lies over the SVG at the position and width of the slot, with a text size that follows the zoom. It grows with the lines. An empty slot shows the default text faintly, without filling it in
 
 | Key | Behaviour |

@@ -43,6 +43,13 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.AddAttribute(5, "style", style);
         }
 
+        if (Context.Tooltips && (type?.GetTooltip?.Invoke(box) is { Length: > 0 } tooltip))
+        {
+            builder.OpenElement(6, "title");
+            builder.AddContent(7, tooltip);
+            builder.CloseElement();
+        }
+
         AddShape(builder, look?.Shape ?? DiagramShape.Rectangle, look?.Path, width, height);
 
         var icon = box.Icon ?? look?.Icon;
@@ -70,10 +77,17 @@ internal sealed class DiagramBoxView : ComponentBase
         }
 
         var shown = type is null ? box with { Label = string.IsNullOrEmpty(box.Label) ? box.Type : box.Label } : box;
-        foreach (var label in LabelLayout.Arrange(shown, type, isGroup && ((iconId is not null) || (iconUrl is not null))))
+        var editable = (type is not null) && ((ScriptTables.PermissionsOf(box, Context.Index) & DiagramPermissions.EditText) != 0);
+        foreach (var label in LabelLayout.Arrange(shown, type, isGroup && ((iconId is not null) || (iconUrl is not null)), editable))
         {
             builder.OpenElement(40, "text");
             builder.AddAttribute(41, "class", "mussel-diagram-label");
+            builder.AddAttribute(50, "data-slot", label.Slot);
+            if (label.IsDefault)
+            {
+                builder.AddAttribute(51, "data-default", string.Empty);
+            }
+
             builder.AddAttribute(42, "x", Svg.Number(label.X));
             builder.AddAttribute(43, "y", Svg.Number(label.Y));
             builder.AddAttribute(44, "text-anchor", label.Anchor);

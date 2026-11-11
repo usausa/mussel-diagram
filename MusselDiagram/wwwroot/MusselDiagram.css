@@ -370,3 +370,166 @@
     pointer-events: none;
     transform: translate(-50%, 16px);
 }
+
+.mussel-diagram-label[data-editing] {
+    visibility: hidden;
+}
+
+.mussel-diagram-text-editor {
+    position: absolute;
+    z-index: 3;
+    box-sizing: content-box;
+    margin: 0;
+    padding: 0 2px;
+    overflow: hidden;
+    resize: none;
+    border: 1px solid var(--mussel-diagram-selection-color);
+    background-color: var(--mussel-tooltip-background, #ffffff);
+    color: var(--mussel-tooltip-text, #1f2328);
+    line-height: 1.2;
+    white-space: pre-wrap;
+    outline: none;
+    user-select: text;
+}
+
+.mussel-diagram-text-editor::placeholder {
+    color: var(--mussel-muted-text, #6e7781);
+}
+
+.mussel-diagram-drop-preview {
+    fill: var(--mussel-diagram-node-fill);
+    fill-opacity: 0.6;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-drop-preview-blocked {
+    stroke: var(--mussel-diagram-not-allowed-color);
+}
+
+[data-split-target] > .mussel-diagram-link-line {
+    stroke: var(--mussel-diagram-drop-target-color);
+    stroke-width: 3;
+}
+
+.mussel-diagram-drag-ghost {
+    position: fixed;
+    z-index: 1000;
+    width: 32px;
+    height: 32px;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    opacity: 0.8;
+}
+
+.mussel-diagram-drag-ghost > svg {
+    width: 100%;
+    height: 100%;
+}
+
+.mussel-diagram-palette {
+    --mussel-diagram-palette-background: #f6f8fa;
+    --mussel-diagram-palette-hover: rgba(26, 115, 232, 0.1);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    background-color: var(--mussel-diagram-palette-background);
+    color: var(--mussel-secondary-text, #57606a);
+    font: 12px var(--mussel-font-family, "Segoe UI", system-ui, sans-serif);
+    user-select: none;
+}
+
+:where(.mussel-dark) .mussel-diagram-palette,
+.mussel-diagram-palette.mussel-dark {
+    --mussel-diagram-palette-background: #262624;
+    --mussel-diagram-palette-hover: rgba(110, 168, 254, 0.16);
+}
+
+.mussel-diagram-palette-search {
+    margin: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--mussel-tooltip-border, #d0d7de);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
+.mussel-diagram-palette-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.mussel-diagram-palette-header {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: var(--mussel-primary-text, #1f2328);
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mussel-diagram-palette-header::before {
+    content: "\25B8";
+    display: inline-block;
+    width: 14px;
+}
+
+.mussel-diagram-palette-header[aria-expanded="true"]::before {
+    content: "\25BE";
+}
+
+.mussel-diagram-palette-item {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 8px;
+    cursor: grab;
+}
+
+.mussel-diagram-palette-item:hover {
+    background-color: var(--mussel-diagram-palette-hover);
+}
+
+.mussel-diagram-palette-item[data-disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.mussel-diagram-palette-icon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+}
+
+.mussel-diagram-palette-shape {
+    fill: #ffffff;
+    stroke: #57606a;
+}
+
+.mussel-diagram-palette-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mussel-diagram-palette-empty {
+    padding: 6px 8px;
+    color: var(--mussel-muted-text, #6e7781);
+}
+
+.mussel-diagram-drag-source {
+    cursor: grab;
+}

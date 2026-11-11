@@ -14,13 +14,17 @@ public static class SampleDiagrams
     {
         NodeTypes =
         [
-            IconNode("server", "Server", "sample:server"),
-            IconNode("database", "Database", "sample:database"),
+            IconNode("server", "Server", "sample:server") with
+            {
+                CreateContent = static c => new DiagramContent { Label = c.Value ?? $"Server {c.Snapshot.Nodes.Count(x => x.Type == "server") + 1}" }
+            },
+            IconNode("database", "Database", "sample:database") with { GetTooltip = static box => box.Label is null ? null : $"Database: {box.Label}" },
             IconNode("balancer", "Load balancer", "sample:balancer"),
             new DiagramNodeType
             {
                 Name = "process",
                 DisplayName = "Process",
+                Category = "flow",
                 Size = new DiagramSize(140, 60),
                 Look = new DiagramLook { Fill = "#E3F2FD", Stroke = "#1E88E5" },
                 Ports =
@@ -33,16 +37,24 @@ public static class SampleDiagrams
             {
                 Name = "decision",
                 DisplayName = "Decision",
+                Category = "flow",
                 Size = new DiagramSize(120, 80),
                 Look = new DiagramLook { Shape = DiagramShape.Diamond, Fill = "#FFF3E0", Stroke = "#FB8C00" }
             }
         ],
         GroupTypes =
         [
-            new DiagramGroupType { Name = "cloud", DisplayName = "Cloud", Look = new DiagramLook { Icon = "sample:cloud", Stroke = "#232F3E" } },
-            new DiagramGroupType { Name = "vpc", DisplayName = "VPC", Look = new DiagramLook { Stroke = "#8C4FFF" } },
-            new DiagramGroupType { Name = "subnet", DisplayName = "Subnet", Look = new DiagramLook { Stroke = "#7AA116", Fill = "rgba(122, 161, 22, 0.06)", Dash = DiagramDash.Dashed } }
+            new DiagramGroupType { Name = "cloud", DisplayName = "Cloud", Category = "network", Look = new DiagramLook { Icon = "sample:cloud", Stroke = "#232F3E" } },
+            new DiagramGroupType { Name = "vpc", DisplayName = "VPC", Category = "network", Look = new DiagramLook { Stroke = "#8C4FFF" } },
+            new DiagramGroupType { Name = "subnet", DisplayName = "Subnet", Category = "network", Look = new DiagramLook { Stroke = "#7AA116", Fill = "rgba(122, 161, 22, 0.06)", Dash = DiagramDash.Dashed } }
         ],
+        Categories =
+        [
+            new DiagramCategory { Name = "compute", DisplayName = "Compute" },
+            new DiagramCategory { Name = "network", DisplayName = "Network" },
+            new DiagramCategory { Name = "flow", DisplayName = "Flow" }
+        ],
+        DefaultGroupType = "vpc",
         LinkTypes = [new DiagramLinkType { Name = "arrow", DisplayName = "Arrow" }],
         IconSets =
         [
@@ -79,6 +91,7 @@ public static class SampleDiagrams
         diagram.Connect(Link("web1-db", "web1", "db"));
         diagram.Connect(Link("web2-db", "web2", "db"));
         diagram.Connect(Link("job-check", "job", "check"));
+        diagram.ClearHistory();
         return diagram;
     }
 
@@ -86,6 +99,7 @@ public static class SampleDiagrams
     {
         Name = name,
         DisplayName = displayName,
+        Category = "compute",
         Size = new DiagramSize(48, 48),
         Look = new DiagramLook { Icon = icon, Fill = "none", Stroke = "none" },
         Slots = [new DiagramLabelSlot { Name = "name", Placement = DiagramLabelPlacement.Below, Width = 110, MaxLines = 2 }]

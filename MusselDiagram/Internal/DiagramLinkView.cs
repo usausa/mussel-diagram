@@ -39,6 +39,13 @@ internal sealed class DiagramLinkView : ComponentBase
             builder.AddAttribute(4, "style", style);
         }
 
+        if (Context.Tooltips && (type?.GetTooltip?.Invoke(link) is { Length: > 0 } tooltip))
+        {
+            builder.OpenElement(5, "title");
+            builder.AddContent(6, tooltip);
+            builder.CloseElement();
+        }
+
         builder.OpenElement(10, "path");
         builder.AddAttribute(11, "class", "mussel-diagram-link-hit");
         builder.AddAttribute(12, "d", LinkRouting.ToPath(link.Route, form, 0, 0));

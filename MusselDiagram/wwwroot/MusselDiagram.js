@@ -98,6 +98,7 @@ export function firstLineOffset(lineCount, verticalAlign) {
 class LabelWriter {
     constructor(svg) {
         this.svg = svg;
+        this.tooltips = true;
         this.context = document.createElement('canvas').getContext('2d');
         this.pending = new Set();
         this.observer = new MutationObserver((records) => this.observe(records));
@@ -164,7 +165,7 @@ class LabelWriter {
             span.textContent = line;
             return span;
         });
-        if (truncated) {
+        if (truncated && this.tooltips && !label.parentElement?.querySelector(':scope > title')) {
             const title = document.createElementNS(SVG_NS, 'title');
             title.textContent = text;
             nodes.unshift(title);
@@ -199,6 +200,56 @@ const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .m
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: true, form: 'orthogonal', stub: 20, sourceCut: 0, targetCut: 10 };
+const TYPING_KEYS = new Set(['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V']);
+const ZOOM_STEP = 1.2;
+const controllers = new WeakMap();
+
+export function keyName(event, mac) {
+    let key = event.key;
+    if (!key || ['Control', 'Shift', 'Alt', 'Meta', 'Unidentified', 'Process', 'Dead'].includes(key)) {
+        return null;
+    }
+    const ctrl = mac ? event.metaKey : event.ctrlKey;
+    if ((key === '+') || (ctrl && (key === '='))) {
+        key = 'Plus';
+    } else if ((key === '-') || (ctrl && (key === '_'))) {
+        key = 'Minus';
+    } else if (key === ' ') {
+        key = 'Space';
+    } else if (key.length === 1) {
+        if (event.altKey && /^Key[A-Z]$/.test(event.code ?? '')) {
+            key = event.code.slice(3);
+        } else if (event.altKey && /^Digit[0-9]$/.test(event.code ?? '')) {
+            key = event.code.slice(5);
+        } else {
+            key = key.toUpperCase();
+        }
+    }
+    const parts = [];
+    if (ctrl) {
+        parts.push('Ctrl');
+    }
+    if (event.altKey) {
+        parts.push('Alt');
+    }
+    if (event.shiftKey && (/^[A-Z]$/.test(key) || ((key.length > 1) && (key !== 'Plus') && (key !== 'Minus')))) {
+        parts.push('Shift');
+    }
+    parts.push(key);
+    return parts.join('+');
+}
+
+export function nextZoom(zoom, direction, minZoom, maxZoom) {
+    let next = direction > 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+    next = Math.round(next * 20) / 20;
+    if (next === zoom) {
+        next = zoom + (direction * 0.05);
+    }
+    if (((zoom < 1) && (next > 1)) || ((zoom > 1) && (next < 1))) {
+        next = 1;
+    }
+    return Math.min(Math.max(next, minZoom), maxZoom);
+}
 
 export function zoomAround(view, factor, point) {
     return {
@@ -599,7 +650,7 @@ export function searchTypes(types, query) {
     }
     const ranked = [];
     types.forEach((type, order) => {
-        const haystack = [type.label, type.name, type.category ?? '', ...(type.search ?? [])].join('\u0001').toLowerCase();
+        const haystack = [type.label, type.name, type.categoryLabel ?? type.category ?? '', ...(type.search ?? [])].join('\u0001').toLowerCase();
         if (words.every((word) => haystack.includes(word))) {
             const label = type.label.toLowerCase();
             ranked.push({ type, order, rank: label === text ? 0 : (label.startsWith(text) ? 1 : 2) });
@@ -807,6 +858,18 @@ class DiagramController {
         this.gridKey = '';
         this.size = { width: root.clientWidth, height: root.clientHeight };
         this.labels = new LabelWriter(this.canvas);
+        this.labels.tooltips = options.tooltipEnabled !== false;
+        this.commandMap = new Map();
+        this.editor = null;
+        this.external = null;
+        this.externalFrame = 0;
+        this.paletteTypes = null;
+        this.selectWhenAdded = null;
+        this.lastPointer = null;
+        this.mac = /Mac|iPhone|iPad/.test(navigator.platform ?? '');
+        this.inFlight = new Set();
+        this.commandsInFlight = new Set();
+        this.commandChain = Promise.resolve();
         this.listeners = [];
         this.listen(root, 'wheel', (e) => this.onWheel(e), { passive: false });
         this.listen(root, 'pointerdown', (e) => this.onPointerDown(e));
@@ -818,6 +881,7 @@ class DiagramController {
         this.listen(root, 'keydown', (e) => this.onKeyDown(e));
         this.listen(root, 'keyup', (e) => this.onKeyUp(e));
         this.listen(root, 'blur', () => this.setSpace(false));
+        this.listen(root, 'dblclick', (e) => this.onDoubleClick(e));
         this.versionObserver = new MutationObserver(() => this.settlePending());
         this.versionObserver.observe(root, { attributes: true, attributeFilter: ['data-version'] });
         this.resizeObserver = new ResizeObserver(() => this.onResize());
@@ -825,6 +889,7 @@ class DiagramController {
         this.applyView();
         root.dataset.attached = '';
         this.notifyViewport();
+        controllers.set(root, this);
     }
 
     listen(target, type, handler, options) {
@@ -833,6 +898,11 @@ class DiagramController {
     }
 
     setOptions(options) {
+        const tooltips = options.tooltipEnabled !== false;
+        if (this.labels.tooltips !== tooltips) {
+            this.labels.tooltips = tooltips;
+            this.labels.writeAll(true);
+        }
         this.options = options;
         this.gridKey = '';
         this.updateGrid();
@@ -852,11 +922,37 @@ class DiagramController {
     setTable(table) {
         this.table.set(table);
         this.pruneSelection();
+        this.afterTableChange();
     }
 
     applyChanges(changes) {
         this.table.apply(changes);
         this.pruneSelection();
+        this.afterTableChange();
+    }
+
+    afterTableChange() {
+        if (this.editor && !this.table.boxes.has(this.editor.id)) {
+            this.closeEditor();
+        }
+        if (this.awaitedSelection?.size) {
+            let added = false;
+            for (const id of [...this.awaitedSelection]) {
+                if (this.table.boxes.has(id) || this.table.links.has(id)) {
+                    this.awaitedSelection.delete(id);
+                    this.selection.add(id);
+                    added = true;
+                }
+            }
+            if (added) {
+                this.drawSelection();
+            }
+        }
+        const id = this.selectWhenAdded;
+        if (id && (this.table.boxes.has(id) || this.table.links.has(id))) {
+            this.selectWhenAdded = null;
+            this.setSelection([id]);
+        }
     }
 
     reasonText(kind) {
@@ -891,6 +987,7 @@ class DiagramController {
         if (this.drawnZoom !== zoom) {
             this.drawSelection();
         }
+        this.placeEditor();
     }
 
     updateGrid() {
@@ -1086,11 +1183,13 @@ class DiagramController {
             world: this.toWorld(point),
             toggle: event.shiftKey || event.ctrlKey || event.metaKey,
             shift: event.shiftKey,
+            keys: { shift: event.shiftKey, ctrl: event.ctrlKey, alt: event.altKey, meta: event.metaKey },
             threshold: event.pointerType === 'touch' ? TOUCH_THRESHOLD : MOUSE_THRESHOLD,
         };
     }
 
     onPointerMove(event) {
+        this.lastPointer = this.point(event);
         if (this.pan?.pointerId === event.pointerId) {
             this.view = { ...this.view, x: this.view.x + (event.clientX - this.pan.x), y: this.view.y + (event.clientY - this.pan.y) };
             this.pan.x = event.clientX;
@@ -1134,6 +1233,7 @@ class DiagramController {
             this.finishDrag();
         } else {
             this.click(press);
+            this.notifyClick(press, false);
         }
     }
 
@@ -1184,18 +1284,23 @@ class DiagramController {
     }
 
     select(ids) {
-        this.selection = new Set(ids.filter((id) => this.table.boxes.has(id) || this.table.links.has(id)));
+        const known = (id) => this.table.boxes.has(id) || this.table.links.has(id);
+        this.selection = new Set(ids.filter(known));
+        this.awaitedSelection = new Set(ids.filter((id) => !known(id)));
         this.drawSelection();
     }
 
     setSelection(ids) {
+        this.awaitedSelection = null;
         const next = new Set(ids);
         if ((next.size === this.selection.size) && [...next].every((id) => this.selection.has(id))) {
             return;
         }
         this.selection = next;
         this.drawSelection();
-        this.dotnet?.invokeMethodAsync('OnSelectionChanged', [...next]).catch(() => {});
+        if (this.dotnet) {
+            this.track(this.dotnet.invokeMethodAsync('OnSelectionChanged', [...next]).catch(() => {}));
+        }
     }
 
     pruneSelection() {
@@ -1528,6 +1633,9 @@ class DiagramController {
 
     cancelDrag() {
         const drag = this.drag;
+        if (drag) {
+            this.markSplit(drag, null);
+        }
         if (!drag) {
             return;
         }
@@ -1725,8 +1833,28 @@ class DiagramController {
             this.placeMoved(drag);
         }
         this.updateDropTarget(drag);
+        this.updateSplit(drag);
         this.drawGuides(drag, { x: drag.bounds.x + dx, y: drag.bounds.y + dy, w: drag.bounds.w, h: drag.bounds.h });
         this.drawSelection();
+    }
+
+    updateSplit(drag) {
+        const root = drag.roots.length === 1 ? this.table.boxes.get(drag.roots[0]) : null;
+        const rect = this.root.getBoundingClientRect();
+        const client = drag.point ? { x: drag.point.x + rect.left, y: drag.point.y + rect.top } : null;
+        const split = (root?.kind === 'node') && (drag.links.size === 0) && !drag.alt && client
+            ? this.spliceAt(client, { ...root, x: root.x + drag.dx, y: root.y + drag.dy, parent: drag.canReparent && (drag.target !== undefined) ? drag.target : root.parent }, root.id)
+            : null;
+        this.markSplit(drag, split);
+    }
+
+    markSplit(state, split) {
+        if (state.split?.linkId === split?.linkId) {
+            return;
+        }
+        state.split?.element?.removeAttribute('data-split-target');
+        state.split = split;
+        split?.element?.setAttribute('data-split-target', '');
     }
 
     updateDropTarget(drag) {
@@ -1791,7 +1919,9 @@ class DiagramController {
         if (reparent) {
             this.table.index();
         }
-        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, this.baseOf(drag), this.rejections));
+        const splitLinkId = drag.split?.linkId ?? null;
+        this.markSplit(drag, null);
+        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, this.baseOf(drag), this.rejections));
     }
 
     startResize(press) {
@@ -2115,16 +2245,23 @@ class DiagramController {
     }
 
     pickerTypes(from, placement) {
-        const fromBox = this.table.boxes.get(from.element);
-        const linkType = this.linkTypeFor(from);
+        const fromBox = from ? this.table.boxes.get(from.element) : null;
+        const linkType = from ? this.linkTypeFor(from) : null;
         const items = [];
         for (const type of this.schema.list) {
             if (type.overlay || ((type.max ?? null) !== null && (this.table.countOfType(type.name) >= type.max))) {
                 continue;
             }
+            if (!from && !this.inPalette(type)) {
+                continue;
+            }
             const bounds = this.placementBounds(placement, type);
             const parent = this.placementParent(placement, type, bounds, fromBox);
             if (parent === undefined) {
+                continue;
+            }
+            if (!from) {
+                items.push({ type, bounds, parent, end: null });
                 continue;
             }
             const virtual = {
@@ -2221,6 +2358,19 @@ class DiagramController {
 
     filterPicker() {
         const picker = this.picker;
+        if (this.options.hostSearch && this.dotnet) {
+            const token = (picker.token ?? 0) + 1;
+            picker.token = token;
+            this.dotnet.invokeMethodAsync('SearchTypes', picker.search.value, picker.items.map((x) => x.type.name)).then((names) => {
+                if ((this.picker !== picker) || (picker.token !== token)) {
+                    return;
+                }
+                picker.shown = names.map((name) => picker.items.find((x) => x.type.name === name)).filter((x) => x);
+                picker.active = 0;
+                this.renderPicker();
+            }).catch(() => {});
+            return;
+        }
         const types = searchTypes(picker.items.map((x) => x.type), picker.search.value);
         picker.shown = types.map((type) => picker.items.find((x) => x.type === type));
         picker.active = 0;
@@ -2264,6 +2414,10 @@ class DiagramController {
             return;
         }
         const from = this.picker.from;
+        if (!from) {
+            this.layers.preview.replaceChildren(svg('rect', { class: 'mussel-diagram-place-frame', x: item.bounds.x, y: item.bounds.y, width: item.bounds.w, height: item.bounds.h }));
+            return;
+        }
         const fromBox = this.table.boxes.get(from.element);
         const type = this.schema.linkTypes.get(this.linkTypeFor(from)) ?? DEFAULT_LINK_TYPE;
         const virtual = { ...item.bounds, id: '\u0000placed', ports: item.type.ports };
@@ -2304,12 +2458,18 @@ class DiagramController {
             return;
         }
         const from = picker.from;
-        const linkType = this.linkTypeFor(from);
         this.closePicker();
         const frame = svg('rect', { class: 'mussel-diagram-place-frame', x: item.bounds.x, y: item.bounds.y, width: item.bounds.w, height: item.bounds.h });
         this.layers.pending.append(frame);
         const center = centerOf(item.bounds);
         const operation = { base: this.table.version, queued: this.pending.length > 0, point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
+        if (!from) {
+            this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
+                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, this.baseOf(operation), this.rejections));
+            this.root.focus({ preventScroll: true });
+            return;
+        }
+        const linkType = this.linkTypeFor(from);
         this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame] }, () => this.dotnet.invokeMethodAsync(
             'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.baseOf(operation), this.rejections));
         this.root.focus({ preventScroll: true });
@@ -2343,6 +2503,7 @@ class DiagramController {
             }
         }
         this.commits = this.commits.then(() => this.send(entry, operation, call));
+        this.track(this.commits);
     }
 
     async send(entry, operation, call) {
@@ -2366,8 +2527,13 @@ class DiagramController {
             entry.version = result.version;
             this.lastVersion = Math.max(this.lastVersion, result.version);
             this.settlePending();
+            if (entry.selectNew && result.elementId) {
+                this.selectNew(result.elementId);
+            }
+            entry.accepted?.();
             return;
         }
+        entry.rejected?.(result?.reason ?? null);
         this.revertFrom(entry);
         if (result?.reason) {
             this.showReason(result.reason, operation.point);
@@ -2449,8 +2615,17 @@ class DiagramController {
     }
 
     onKeyDown(event) {
-        if (this.picker?.element.contains(event.target)) {
+        if (this.picker?.element.contains(event.target) || (this.editor && (event.target === this.editor.input))) {
             return;
+        }
+        if (!event.isComposing && (event.keyCode !== 229)) {
+            const key = keyName(event, this.mac);
+            const command = key ? this.commandMap.get(key) : undefined;
+            if (command && !this.isTyping(event, key) && (command.enabled || (this.busy() && !command.local))) {
+                event.preventDefault();
+                this.runCommand(command);
+                return;
+            }
         }
         if ((event.code === 'Space') && !event.repeat && this.options.panEnabled) {
             event.preventDefault();
@@ -2487,6 +2662,602 @@ class DiagramController {
         this.notifyViewport();
     }
 
+    selectNew(id) {
+        if (this.table.boxes.has(id) || this.table.links.has(id)) {
+            this.setSelection([id]);
+        } else {
+            this.selectWhenAdded = id;
+        }
+        this.root.focus({ preventScroll: true });
+    }
+
+    setCommands(commands) {
+        this.commandMap = new Map();
+        for (const command of commands) {
+            for (const key of command.keys) {
+                this.commandMap.set(key, command);
+            }
+        }
+    }
+
+    setPaletteTypes(names) {
+        this.paletteTypes = names ? new Set(names) : null;
+    }
+
+    inPalette(type) {
+        return type.palette && (!this.paletteTypes || this.paletteTypes.has(type.name));
+    }
+
+    isTyping(event, key) {
+        const target = event.target;
+        if ((target === this.root) || !target?.closest?.('input, textarea, select, button, [contenteditable]')) {
+            return false;
+        }
+        const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+        return plain || TYPING_KEYS.has(key);
+    }
+
+    runCommand(command) {
+        if (command.local) {
+            switch (command.name) {
+                case 'SelectAll':
+                    this.selectAll();
+                    return;
+                case 'ClearSelection':
+                    this.setSelection([]);
+                    return;
+                case 'ZoomIn':
+                    this.zoomStep(1);
+                    return;
+                case 'ZoomOut':
+                    this.zoomStep(-1);
+                    return;
+                case 'ResetZoom':
+                    this.resetZoom();
+                    return;
+                case 'ZoomToFit':
+                    this.fitAll(20);
+                    return;
+                case 'ZoomToSelection':
+                    this.fitSelection(20);
+                    return;
+                default:
+                    break;
+            }
+        }
+        const selection = [...this.selection, ...(this.awaitedSelection ?? [])];
+        const run = this.commandChain.then(async () => {
+            await this.whenIdle();
+            if (this.commandFor(command.name)?.enabled) {
+                await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, selection);
+            }
+        }).catch(() => {});
+        this.commandChain = run;
+        this.track(run, true);
+    }
+
+    commandFor(name) {
+        for (const command of this.commandMap.values()) {
+            if (command.name === name) {
+                return command;
+            }
+        }
+        return undefined;
+    }
+
+    track(promise, command) {
+        const set = command ? this.commandsInFlight : this.inFlight;
+        set.add(promise);
+        promise.finally(() => set.delete(promise));
+        return promise;
+    }
+
+    busy() {
+        return (this.inFlight.size + this.commandsInFlight.size) > 0;
+    }
+
+    async whenIdle() {
+        while (this.inFlight.size > 0) {
+            await Promise.allSettled([...this.inFlight]);
+        }
+    }
+
+    selectAll() {
+        if (!this.options.selectionEnabled) {
+            return;
+        }
+        const ids = [];
+        for (const box of this.table.boxes.values()) {
+            if (box.selectable) {
+                ids.push(box.id);
+            }
+        }
+        for (const link of this.table.links.values()) {
+            if (link.selectable) {
+                ids.push(link.id);
+            }
+        }
+        this.setSelection(ids);
+    }
+
+    centerPoint() {
+        return { x: this.size.width / 2, y: this.size.height / 2 };
+    }
+
+    zoomStep(direction) {
+        if (!this.options.zoomEnabled) {
+            return;
+        }
+        const zoom = nextZoom(this.view.zoom, direction, this.options.minZoom, this.options.maxZoom);
+        this.view = zoomAround(this.view, zoom / this.view.zoom, this.centerPoint());
+        this.applyView();
+        this.notifyViewport();
+    }
+
+    resetZoom() {
+        if (!this.options.zoomEnabled) {
+            return;
+        }
+        this.view = zoomAround(this.view, 1 / this.view.zoom, this.centerPoint());
+        this.applyView();
+        this.notifyViewport();
+    }
+
+    boundsOf(ids) {
+        const boxes = ids.map((id) => this.table.boxes.get(id)).filter((b) => b && (b.kind !== 'overlay'));
+        if (boxes.length === 0) {
+            return null;
+        }
+        const left = Math.min(...boxes.map((b) => b.x));
+        const top = Math.min(...boxes.map((b) => b.y));
+        return { x: left, y: top, width: Math.max(...boxes.map((b) => b.x + b.w)) - left, height: Math.max(...boxes.map((b) => b.y + b.h)) - top };
+    }
+
+    fitAll(margin) {
+        const bounds = this.boundsOf([...this.table.boxes.keys()]);
+        if (bounds) {
+            this.fit(bounds, margin);
+        }
+    }
+
+    fitSelection(margin) {
+        const ids = [];
+        for (const id of this.selection) {
+            const link = this.table.links.get(id);
+            if (link) {
+                ids.push(link.source, link.target);
+            } else {
+                ids.push(id);
+            }
+        }
+        const bounds = this.boundsOf(ids);
+        if (bounds) {
+            this.fit(bounds, margin);
+        }
+    }
+
+    centerOn(id) {
+        const bounds = this.boundsOf([id]);
+        if (!bounds) {
+            return;
+        }
+        const zoom = this.view.zoom;
+        this.view = { zoom, x: (this.size.width / 2) - ((bounds.x + (bounds.width / 2)) * zoom), y: (this.size.height / 2) - ((bounds.y + (bounds.height / 2)) * zoom) };
+        this.applyView();
+        this.notifyViewport();
+    }
+
+    focus() {
+        this.root.focus({ preventScroll: true });
+    }
+
+    quickAdd(x, y) {
+        if (!this.options.dropEnabled || this.waiting) {
+            return;
+        }
+        let screen;
+        if ((x === undefined) || (x === null)) {
+            const pointer = this.lastPointer;
+            screen = pointer && (pointer.x >= 0) && (pointer.y >= 0) && (pointer.x <= this.size.width) && (pointer.y <= this.size.height) ? pointer : this.centerPoint();
+        } else {
+            screen = { x: (x * this.view.zoom) + this.view.x, y: (y * this.view.zoom) + this.view.y };
+        }
+        this.openPicker(null, { kind: 'point', point: this.toWorld(screen) }, screen);
+    }
+
+    notifyClick(press, twice) {
+        const kind = press.hit.kind;
+        if ((kind !== 'element') && (kind !== 'background')) {
+            return;
+        }
+        const keys = press.keys ?? {};
+        this.dotnet?.invokeMethodAsync('OnClickedAsync', kind === 'element' ? press.hit.id : null, press.world.x, press.world.y, !!keys.shift, !!keys.ctrl, !!keys.alt, !!keys.meta, twice).catch(() => {});
+    }
+
+    onDoubleClick(event) {
+        const under = document.elementFromPoint(event.clientX, event.clientY) ?? event.target;
+        if (this.drag || this.editor || this.picker || under.closest?.(NO_DRAG_SELECTOR)) {
+            return;
+        }
+        const hit = this.pressTarget({ target: under, clientX: event.clientX, clientY: event.clientY });
+        if (hit.kind === 'element' && hit.box) {
+            const slot = this.slotAt(hit.id, event);
+            if (slot) {
+                this.editText(hit.id, slot);
+                return;
+            }
+        }
+        const point = this.point(event);
+        this.notifyClick({ hit, world: this.toWorld(point), keys: { shift: event.shiftKey, ctrl: event.ctrlKey, alt: event.altKey, meta: event.metaKey } }, true);
+    }
+
+    editableSlots(id) {
+        const box = this.table.boxes.get(id);
+        if (!this.options.textEditEnabled || !box?.editable) {
+            return [];
+        }
+        return (this.schema.types.get(box.type)?.slots ?? []).filter((x) => x.editable);
+    }
+
+    slotAt(id, event) {
+        const slots = this.editableSlots(id);
+        if (slots.length === 0) {
+            return null;
+        }
+        const element = this.element(id);
+        for (const slot of slots) {
+            const label = element?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(slot.name)}"]`);
+            const rect = label?.getBoundingClientRect();
+            if (rect && (rect.width > 0) && (event.clientX >= rect.left - 4) && (event.clientX <= rect.right + 4) && (event.clientY >= rect.top - 4) && (event.clientY <= rect.bottom + 4)) {
+                return slot.name;
+            }
+        }
+        const first = slots[0];
+        const label = element?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(first.name)}"]`);
+        return (this.table.boxes.get(id)?.kind === 'node') && label && (!label.getAttribute('data-label') || label.hasAttribute('data-default')) ? first.name : null;
+    }
+
+    editText(id, slot) {
+        if (this.waiting || this.drag) {
+            return;
+        }
+        const definition = this.editableSlots(id).find((x) => x.name === slot);
+        const label = this.element(id)?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(slot)}"]`);
+        if (!definition || !label) {
+            return;
+        }
+        this.closeEditor();
+        this.hideReason();
+        const isDefault = label.hasAttribute('data-default');
+        const text = isDefault ? '' : (label.getAttribute('data-label') ?? '');
+        const input = document.createElement('textarea');
+        input.className = 'mussel-diagram-text-editor mussel-diagram-nowheel';
+        input.value = text;
+        input.placeholder = isDefault ? (label.getAttribute('data-label') ?? '') : '';
+        input.rows = 1;
+        input.spellcheck = false;
+        input.setAttribute('aria-label', slot);
+        this.root.append(input);
+        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, base: this.table.version, pending: false };
+        label.setAttribute('data-editing', '');
+        input.addEventListener('keydown', (e) => this.onEditorKey(e));
+        input.addEventListener('input', () => this.placeEditor());
+        input.addEventListener('blur', () => {
+            if (this.editor?.input === input) {
+                this.finishEdit(true);
+            }
+        });
+        this.placeEditor();
+        input.focus({ preventScroll: true });
+        input.select();
+    }
+
+    placeEditor() {
+        const editor = this.editor;
+        if (!editor) {
+            return;
+        }
+        const box = this.table.boxes.get(editor.id);
+        if (!box) {
+            return;
+        }
+        const label = editor.label;
+        const style = getComputedStyle(label);
+        const fontSize = parseFloat(style.fontSize) || 12;
+        const width = Number(label.getAttribute('data-width')) || box.w;
+        const anchor = label.getAttribute('text-anchor') ?? 'start';
+        const valign = label.getAttribute('data-valign') ?? 'top';
+        const x = Number(label.getAttribute('x')) || 0;
+        const y = Number(label.getAttribute('y')) || 0;
+        const lines = Math.max(1, editor.input.value.split('\n').length);
+        const height = lines * fontSize * LINE_HEIGHT;
+        const left = anchor === 'middle' ? x - (width / 2) : (anchor === 'end' ? x - width : x);
+        const top = valign === 'middle' ? y - (height / 2) : (valign === 'bottom' ? y - height : y);
+        const zoom = this.view.zoom;
+        const input = editor.input;
+        input.style.left = `${((box.x + left) * zoom) + this.view.x}px`;
+        input.style.top = `${((box.y + top) * zoom) + this.view.y}px`;
+        input.style.width = `${width * zoom}px`;
+        input.style.fontSize = `${fontSize * zoom}px`;
+        input.style.fontFamily = style.fontFamily;
+        input.style.fontWeight = style.fontWeight;
+        input.style.textAlign = anchor === 'middle' ? 'center' : (anchor === 'end' ? 'right' : 'left');
+        input.style.height = 'auto';
+        input.style.height = `${input.scrollHeight}px`;
+    }
+
+    onEditorKey(event) {
+        const editor = this.editor;
+        if (!editor || event.isComposing || (event.keyCode === 229)) {
+            return;
+        }
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeEditor();
+            this.root.focus({ preventScroll: true });
+            return;
+        }
+        if (event.key !== 'Enter') {
+            return;
+        }
+        const newline = (event.shiftKey || event.altKey) && !event.ctrlKey && !event.metaKey;
+        if (newline && (editor.maxLines !== 1)) {
+            if (event.altKey) {
+                event.preventDefault();
+                editor.input.setRangeText('\n', editor.input.selectionStart, editor.input.selectionEnd, 'end');
+                this.placeEditor();
+            }
+            return;
+        }
+        event.preventDefault();
+        if (!newline) {
+            this.finishEdit(true);
+        }
+    }
+
+    finishEdit(commit) {
+        const editor = this.editor;
+        if (!editor || editor.pending) {
+            return;
+        }
+        const value = editor.maxLines === 1 ? editor.input.value.replace(/\s*\n\s*/g, ' ') : editor.input.value;
+        if (!commit || (value === editor.text)) {
+            this.closeEditor();
+            return;
+        }
+        const label = editor.label;
+        const box = this.table.boxes.get(editor.id);
+        const point = box ? { x: ((box.x + box.w / 2) * this.view.zoom) + this.view.x, y: ((box.y + box.h / 2) * this.view.zoom) + this.view.y } : null;
+        const operation = { base: editor.base, queued: this.pending.length > 0, point };
+        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, this.baseOf(operation), this.rejections);
+        if (!this.options.optimistic) {
+            editor.pending = true;
+            editor.input.readOnly = true;
+            editor.input.setAttribute('data-pending', '');
+            this.commit(operation, {
+                saved: new Map(),
+                previous: new Map(),
+                accepted: () => {
+                    if (this.editor === editor) {
+                        this.closeEditor();
+                    }
+                },
+                rejected: () => {
+                    if (this.editor === editor) {
+                        editor.pending = false;
+                        editor.input.readOnly = false;
+                        editor.input.removeAttribute('data-pending');
+                        editor.base = this.table.version;
+                        editor.input.focus({ preventScroll: true });
+                    }
+                },
+            }, call);
+            return;
+        }
+        const saved = new Map();
+        this.save(saved, label, 'data-label');
+        this.save(saved, label, 'data-default');
+        this.closeEditor();
+        if (value.length === 0) {
+            label.setAttribute('data-label', '');
+        } else {
+            label.setAttribute('data-label', value);
+            label.removeAttribute('data-default');
+        }
+        this.commit(operation, { saved, previous: new Map() }, call);
+        this.root.focus({ preventScroll: true });
+    }
+
+    closeEditor() {
+        const editor = this.editor;
+        if (!editor) {
+            return;
+        }
+        this.editor = null;
+        editor.label.removeAttribute('data-editing');
+        editor.input.remove();
+    }
+
+    spliceAt(clientPoint, node, exceptId) {
+        const elements = document.elementsFromPoint(clientPoint.x, clientPoint.y);
+        const hit = elements.find((e) => e.classList?.contains('mussel-diagram-link-hit') && this.canvas.contains(e));
+        const id = hit?.closest('.mussel-diagram-link')?.getAttribute('data-id');
+        const link = id ? this.table.links.get(id) : null;
+        if (!link || (link.source === exceptId) || (link.target === exceptId)) {
+            return null;
+        }
+        const type = this.schema.types.get(node.type);
+        const virtual = { ...node, id: '\u0000split', registered: true, connectable: type?.connectable ?? true, whole: type?.whole ?? true, ports: type?.ports };
+        const saved = this.table.boxes.get(exceptId);
+        if (saved) {
+            this.table.boxes.delete(exceptId);
+        }
+        this.table.boxes.set(virtual.id, virtual);
+        try {
+            const candidates = [...(type?.ports ?? []).map((p) => p.id), ...(virtual.whole || !(type?.ports?.length) ? [null] : [])];
+            const into = candidates.find((port) => !checkConnection(this.table, this.schema, { element: link.source, port: link.sourcePort ?? null }, { element: virtual.id, port }, link.type, link.id));
+            const out = candidates.find((port) => !checkConnection(this.table, this.schema, { element: virtual.id, port }, { element: link.target, port: link.targetPort ?? null }, link.type, link.id));
+            return (into !== undefined) && (out !== undefined) ? { linkId: link.id, element: this.element(link.id) } : null;
+        } finally {
+            this.table.boxes.delete(virtual.id);
+            if (saved) {
+                this.table.boxes.set(exceptId, saved);
+            }
+        }
+    }
+
+    startExternal(typeName, value, item) {
+        const type = this.schema.types.get(typeName);
+        if (!this.options.dropEnabled || this.waiting || this.drag || !type || type.overlay) {
+            return null;
+        }
+        this.closeEditor();
+        this.closePicker();
+        const ghost = document.createElement('div');
+        ghost.className = 'mussel-diagram-drag-ghost';
+        const icon = item?.querySelector('svg')?.cloneNode(true);
+        if (icon) {
+            ghost.append(icon);
+        }
+        document.body.append(ghost);
+        this.external = { type, value: value ?? null, ghost, lines: this.snapLines(new Set()), inside: false, point: null, client: null, alt: false, bounds: null, parent: undefined, allowed: false, split: null, snappedX: false, snappedY: false };
+        this.root.classList.add('mussel-diagram-dropping');
+        return this.external;
+    }
+
+    moveExternal(event) {
+        const external = this.external;
+        if (!external) {
+            return;
+        }
+        external.client = { x: event.clientX, y: event.clientY };
+        external.alt = event.altKey;
+        external.ghost.style.left = `${event.clientX}px`;
+        external.ghost.style.top = `${event.clientY}px`;
+        const rect = this.root.getBoundingClientRect();
+        const under = document.elementFromPoint(event.clientX, event.clientY);
+        external.inside = (event.clientX >= rect.left) && (event.clientX <= rect.right) && (event.clientY >= rect.top) && (event.clientY <= rect.bottom) && !!under && this.root.contains(under) && !this.picker?.element.contains(under);
+        external.ghost.hidden = external.inside;
+        external.point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        if (!external.inside) {
+            this.clearExternalMarks();
+            return;
+        }
+        this.updateExternal();
+        if (!this.externalFrame) {
+            this.externalFrame = requestAnimationFrame(() => this.externalTick());
+        }
+    }
+
+    externalTick() {
+        this.externalFrame = 0;
+        const external = this.external;
+        if (!external?.inside) {
+            return;
+        }
+        const speed = this.edgeSpeed(external.point);
+        if ((speed.x !== 0) || (speed.y !== 0)) {
+            this.view = { ...this.view, x: this.view.x - speed.x, y: this.view.y - speed.y };
+            this.applyView();
+            this.updateExternal();
+            this.externalFrame = requestAnimationFrame(() => this.externalTick());
+        }
+    }
+
+    updateExternal() {
+        const external = this.external;
+        const type = external.type;
+        const world = this.toWorld(external.point);
+        let x = world.x - (type.w / 2);
+        let y = world.y - (type.h / 2);
+        const snapX = this.snapAxisOrGrid(external.lines.x, [x, x + (type.w / 2), x + type.w], x, external.alt);
+        const snapY = this.snapAxisOrGrid(external.lines.y, [y, y + (type.h / 2), y + type.h], y, external.alt);
+        x += snapX.delta;
+        y += snapY.delta;
+        external.snappedX = snapX.line !== null;
+        external.snappedY = snapY.line !== null;
+        external.bounds = { x, y, w: type.w, h: type.h };
+        const group = this.boxAt(world, (box) => (box.kind === 'group') && !box.locked && canNest(this.schema, type.name, box));
+        const parent = group ? group.id : (canNest(this.schema, type.name, null) ? null : undefined);
+        const full = ((type.max ?? null) !== null) && (this.table.countOfType(type.name) >= type.max);
+        external.parent = parent;
+        external.allowed = !full && (parent !== undefined);
+        this.clearMarks();
+        this.hideReason();
+        if (parent) {
+            this.mark(this.element(parent), 'data-drop-target');
+        }
+        const split = external.allowed && !type.group && !external.alt
+            ? this.spliceAt(external.client, { id: '\u0000placed', type: type.name, kind: 'node', ...external.bounds, parent }, null)
+            : null;
+        this.markSplit(external, split);
+        if (!external.allowed) {
+            this.showReason(this.reasonText(full ? 'count' : 'nesting'), external.point, true);
+        }
+        this.drawGuides(external, external.bounds);
+        this.drawExternalPreview(external);
+    }
+
+    drawExternalPreview(external) {
+        const { bounds, type } = external;
+        const shape = type.shape === 'ellipse'
+            ? svg('ellipse', { cx: bounds.x + (bounds.w / 2), cy: bounds.y + (bounds.h / 2), rx: bounds.w / 2, ry: bounds.h / 2 })
+            : (type.shape === 'diamond'
+                ? svg('polygon', { points: `${bounds.x + (bounds.w / 2)},${bounds.y} ${bounds.x + bounds.w},${bounds.y + (bounds.h / 2)} ${bounds.x + (bounds.w / 2)},${bounds.y + bounds.h} ${bounds.x},${bounds.y + (bounds.h / 2)}` })
+                : svg('rect', { x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h }));
+        const group = svg('g', { class: external.allowed ? 'mussel-diagram-drop-preview' : 'mussel-diagram-drop-preview mussel-diagram-drop-preview-blocked' });
+        group.append(shape);
+        if (type.icon) {
+            const size = type.group ? 24 : null;
+            group.append(svg('use', { href: `#${type.icon}`, x: bounds.x, y: bounds.y, width: size ?? bounds.w, height: size ?? bounds.h }));
+        }
+        this.layers.preview.replaceChildren(group);
+    }
+
+    clearExternalMarks() {
+        this.clearMarks();
+        this.hideReason();
+        this.layers.guides.replaceChildren();
+        this.layers.preview.replaceChildren();
+        if (this.external) {
+            this.markSplit(this.external, null);
+        }
+    }
+
+    dropExternal(event) {
+        const external = this.external;
+        if (!external) {
+            return;
+        }
+        this.moveExternal(event);
+        const { inside, allowed, bounds, parent, type, value } = external;
+        const splitLinkId = external.split?.linkId ?? null;
+        this.cancelExternal();
+        if (!inside || !allowed || !bounds) {
+            return;
+        }
+        const frame = svg('rect', { class: 'mussel-diagram-place-frame', x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h });
+        this.layers.pending.append(frame);
+        const operation = { base: this.table.version, queued: this.pending.length > 0, point: external.point };
+        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
+            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, this.baseOf(operation), this.rejections));
+        this.root.focus({ preventScroll: true });
+    }
+
+    cancelExternal() {
+        const external = this.external;
+        if (!external) {
+            return;
+        }
+        cancelAnimationFrame(this.externalFrame);
+        this.externalFrame = 0;
+        this.clearExternalMarks();
+        external.ghost.remove();
+        this.external = null;
+        this.root.classList.remove('mussel-diagram-dropping');
+    }
+
     dispose() {
         clearTimeout(this.settleTimer);
         cancelAnimationFrame(this.frameRequest);
@@ -2499,11 +3270,86 @@ class DiagramController {
             remove();
         }
         this.labels.dispose();
+        this.closeEditor();
+        this.cancelExternal();
+        controllers.delete(this.root);
         this.stage.style.transform = '';
         delete this.root.dataset.attached;
     }
 }
 
+class DragSource {
+    constructor(element, viewRoot) {
+        this.element = element;
+        this.viewRoot = viewRoot;
+        this.onDown = (event) => this.down(event);
+        element.addEventListener('pointerdown', this.onDown);
+    }
+
+    down(event) {
+        if ((event.button !== 0) || (event.pointerType === 'touch')) {
+            return;
+        }
+        const item = event.target.closest?.('[data-mussel-type]');
+        const controller = controllers.get(this.viewRoot);
+        if (!item || !this.element.contains(item) || item.hasAttribute('data-disabled') || !controller) {
+            return;
+        }
+        event.preventDefault();
+        const start = { x: event.clientX, y: event.clientY };
+        let dragging = false;
+        const move = (e) => {
+            if (!dragging) {
+                if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < MOUSE_THRESHOLD) {
+                    return;
+                }
+                dragging = !!controller.startExternal(item.getAttribute('data-mussel-type'), item.getAttribute('data-mussel-value'), item);
+                if (!dragging) {
+                    end();
+                    return;
+                }
+            }
+            controller.moveExternal(e);
+        };
+        const up = (e) => {
+            if (dragging) {
+                controller.dropExternal(e);
+            }
+            end();
+        };
+        const cancel = () => {
+            if (dragging) {
+                controller.cancelExternal();
+            }
+            end();
+        };
+        const key = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cancel();
+            }
+        };
+        const end = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', cancel);
+            window.removeEventListener('keydown', key, true);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', cancel);
+        window.addEventListener('keydown', key, true);
+    }
+
+    dispose() {
+        this.element.removeEventListener('pointerdown', this.onDown);
+    }
+}
+
 export function attach(root, dotnet, options, table, schema) {
     return new DiagramController(root, dotnet, options, table, schema);
+}
+
+export function attachSource(element, viewRoot) {
+    return new DragSource(element, viewRoot);
 }

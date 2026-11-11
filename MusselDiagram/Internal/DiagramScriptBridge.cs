@@ -13,8 +13,26 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
     public Task OnSelectionChanged(string[] ids) => view.OnSelectionChangedAsync(ids);
 
     [JSInvokable]
-    public async Task<JsonElement> CommitMoveAsync(string[] ids, double dx, double dy, bool reparent, string? parentId, long baseVersion, int rejectionsSeen) =>
-        ScriptJson.ToElement(await view.CommitMoveAsync(ids, new DiagramPoint(dx, dy), reparent, parentId, baseVersion, rejectionsSeen).ConfigureAwait(true));
+    public async Task<JsonElement> CommitMoveAsync(string[] ids, double dx, double dy, bool reparent, string? parentId, string? splitLinkId, long baseVersion, int rejectionsSeen) =>
+        ScriptJson.ToElement(await view.CommitMoveAsync(ids, new DiagramPoint(dx, dy), reparent, parentId, splitLinkId, baseVersion, rejectionsSeen).ConfigureAwait(true));
+
+    [JSInvokable]
+    public async Task<JsonElement> CommitDropAsync(string type, double x, double y, double width, double height, string? parentId, string? value, string? splitLinkId, long baseVersion, int rejectionsSeen) =>
+        ScriptJson.ToElement(await view.CommitDropAsync(type, new DiagramRect(x, y, width, height), parentId, value, splitLinkId, baseVersion, rejectionsSeen).ConfigureAwait(true));
+
+    [JSInvokable]
+    public async Task<JsonElement> CommitTextAsync(string id, string slot, string text, long baseVersion, int rejectionsSeen) =>
+        ScriptJson.ToElement(await view.CommitTextAsync(id, slot, text, baseVersion, rejectionsSeen).ConfigureAwait(true));
+
+    [JSInvokable]
+    public Task ExecuteCommandAsync(string name, string[] selection) => view.ExecuteFromScriptAsync(name, selection);
+
+    [JSInvokable]
+    public Task OnClickedAsync(string? id, double x, double y, bool shift, bool ctrl, bool alt, bool meta, bool twice) =>
+        view.OnClickedAsync(id, new DiagramPoint(x, y), shift, ctrl, alt, meta, twice);
+
+    [JSInvokable]
+    public JsonElement SearchTypes(string query, string[] names) => ScriptJson.ToElement(view.SearchTypes(query, names));
 
     [JSInvokable]
     public async Task<JsonElement> CommitResizeAsync(string id, double x, double y, double width, double height, long baseVersion, int rejectionsSeen) =>

@@ -31,7 +31,7 @@ public sealed class CommitTests : BunitContext
             .Add(p => p.Moved, moved.Add));
         var version = diagram.Snapshot.Version;
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 20), false, null, version, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 20), false, null, null, version, 0));
 
         Assert.True(result.Accepted);
         Assert.Equal(version + 1, result.Version);
@@ -59,7 +59,7 @@ public sealed class CommitTests : BunitContext
             .Add(p => p.CommitRejected, rejected.Add));
         var before = diagram.Snapshot;
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, before.Version, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, before.Version, 0));
 
         Assert.False(result.Accepted);
         Assert.Equal("Not now", result.Reason);
@@ -79,8 +79,8 @@ public sealed class CommitTests : BunitContext
         await cut.InvokeAsync(() => diagram.Move(["a"], new DiagramPoint(0, 5)));
         await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("b")! with { Label = "B" }));
 
-        var stale = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, seen, 0));
-        var unrelated = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, seen, stale.Rejections));
+        var stale = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, seen, 0));
+        var unrelated = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, seen, stale.Rejections));
 
         Assert.False(stale.Accepted);
         Assert.Equal(MusselDiagram.Internal.BuiltInTexts.Reason(DiagramReasonKind.Changed), stale.Reason);
@@ -95,10 +95,10 @@ public sealed class CommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
         var version = diagram.Snapshot.Version;
 
-        var locked = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, version, 0));
-        var typed = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["d"], new DiagramPoint(10, 0), false, null, version, locked.Rejections));
+        var locked = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, version, 0));
+        var typed = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["d"], new DiagramPoint(10, 0), false, null, null, version, locked.Rejections));
         cut.Render(static parameters => parameters.Add(static p => p.ReadOnly, true));
-        var readOnly = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, version, typed.Rejections));
+        var readOnly = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, version, typed.Rejections));
 
         Assert.False(locked.Accepted);
         Assert.False(typed.Accepted);
@@ -116,9 +116,9 @@ public sealed class CommitTests : BunitContext
             .Add(p => p.Moving, e => e.Cancel = decisions.Dequeue()));
         var version = diagram.Snapshot.Version;
 
-        var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, version, 0));
-        var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, version, 0));
-        var third = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, version, second.Rejections));
+        var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, version, 0));
+        var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, version, 0));
+        var third = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, version, second.Rejections));
 
         Assert.False(first.Accepted);
         Assert.False(second.Accepted);

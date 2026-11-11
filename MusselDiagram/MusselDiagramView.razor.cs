@@ -14,8 +14,6 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private readonly string viewId = DiagramIds.Create()[..8];
 
-    private ElementReference root;
-
     private IJSObjectReference? module;
 
     private IJSObjectReference? controller;
@@ -25,6 +23,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     private Diagram? subscribed;
 
     private SchemaIndex? renderedIndex;
+
+    private bool renderedTooltips;
 
     private DiagramRect? area;
 
@@ -70,6 +70,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     public DiagramPoint Center => Viewport?.Center ?? default;
 
     internal RenderContext RenderContext { get; private set; } = default!;
+
+    internal ElementReference Root { get; private set; }
 
     [Inject]
     private IJSRuntime Runtime { get; set; } = default!;
@@ -197,7 +199,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 pendingChanges.Clear();
                 var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index));
                 var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext));
-                controller = await module.InvokeAsync<IJSObjectReference>("attach", root, self, options, table, schema).ConfigureAwait(true);
+                controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
+                await SyncCommandsAsync(controller).ConfigureAwait(true);
                 if (pendingView is not null)
                 {
                     var view = pendingView;
@@ -228,6 +231,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             var changed = tableChanged;
             tableChanged = false;
             await SyncScriptAsync(controller, changed).ConfigureAwait(true);
+            await SyncCommandsAsync(controller).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {
@@ -316,13 +320,14 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private void RefreshContext()
     {
-        if (ReferenceEquals(renderedIndex, Diagram.Index))
+        if (ReferenceEquals(renderedIndex, Diagram.Index) && (renderedTooltips == TooltipEnabled))
         {
             return;
         }
 
         renderedIndex = Diagram.Index;
-        RenderContext = new RenderContext(Diagram.Index, viewId);
+        renderedTooltips = TooltipEnabled;
+        RenderContext = new RenderContext(Diagram.Index, viewId, TooltipEnabled);
         tableChanged = true;
         schemaChanged = true;
     }
@@ -349,7 +354,11 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         SnapTolerance = SnapTolerance,
         ConnectionRadius = ConnectionRadius,
         QuickAddSpacing = QuickAddSpacing,
-        LinkType = LinkType
+        LinkType = LinkType,
+        DropEnabled = DropEnabled && !ReadOnly,
+        TextEditEnabled = TextEditEnabled && !ReadOnly,
+        TooltipEnabled = TooltipEnabled,
+        HostSearch = SearchNormalizer is not null
     };
 
     private async Task ReleaseAsync()
