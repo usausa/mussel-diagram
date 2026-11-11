@@ -13,6 +13,16 @@ public static class LargeDiagram
     public static Diagram Create()
     {
         var diagram = new Diagram(SampleDiagrams.Schema);
+        using (diagram.BeginUpdate(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }))
+        {
+            Build(diagram);
+        }
+
+        return diagram;
+    }
+
+    private static void Build(Diagram diagram)
+    {
         diagram.Add(Group("cloud", "cloud", 20, 20, 4160, 2560, null, "AWS Cloud"));
         var subnets = new List<(string Id, double X, double Y, int Vpc)>();
         for (var r = 0; r < 2; r++)
@@ -87,8 +97,6 @@ public static class LargeDiagram
             var target = pool[index] == source ? pool[(index + 1) % pool.Length] : pool[index];
             diagram.Connect(new DiagramLink { Id = $"l{k:000}", Type = "arrow", Source = new DiagramLinkEnd(source), Target = new DiagramLinkEnd(target) });
         }
-
-        return diagram;
     }
 
     private static DiagramGroup Group(string id, string type, double x, double y, double width, double height, string? parentId, string label) =>

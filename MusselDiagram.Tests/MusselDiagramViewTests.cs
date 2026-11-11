@@ -76,7 +76,8 @@ public sealed class MusselDiagramViewTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
 
         var line = cut.Find("g.mussel-diagram-link[data-id='ab'] > path.mussel-diagram-link-line");
-        Assert.Equal("M120,80L300,80", line.GetAttribute("d"));
+        Assert.Equal("M130,80L290,80", line.GetAttribute("d"));
+        Assert.Equal("M120,80L300,80", cut.Find("g.mussel-diagram-link[data-id='ab'] > path.mussel-diagram-link-hit").GetAttribute("d"));
         Assert.StartsWith("url(#mussel-diagram-", line.GetAttribute("marker-start"), StringComparison.Ordinal);
         Assert.StartsWith("url(#mussel-diagram-", line.GetAttribute("marker-end"), StringComparison.Ordinal);
 

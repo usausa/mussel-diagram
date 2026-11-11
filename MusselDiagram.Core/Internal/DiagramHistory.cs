@@ -59,7 +59,7 @@ internal sealed class DiagramHistory
 
     private static DiagramSnapshot Apply(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
     {
-        var editor = new SnapshotEditor(target, index) { SkipKindCheck = true };
+        var editor = new SnapshotEditor(target, index) { SkipKindCheck = true, SkipAppRouter = true };
         editor.Delete(changes.Deleted.Where(target.Contains));
 
         var added = changes.Added.ToHashSet(StringComparer.Ordinal);
@@ -111,7 +111,7 @@ internal sealed class DiagramHistory
         {
             if ((editor.Find(id) is { } current) && (before.Find(id) is { } from) && (after.Find(id) is { } to))
             {
-                var patched = Patch(from, to, current, editor);
+                var patched = Patch(from, to, current, editor, after);
                 if (!ReferenceEquals(patched, current))
                 {
                     try
@@ -145,7 +145,49 @@ internal sealed class DiagramHistory
         }
     }
 
-    private static DiagramElement Patch(DiagramElement from, DiagramElement to, DiagramElement current, SnapshotEditor editor)
+    private static bool RoutesOnly(ChangeSet changes) =>
+        (changes.Added.Count == 0) && (changes.Deleted.Count == 0) && changes.Updated.Values.All(static x => x == DiagramChangeParts.Route);
+
+    private static DiagramSnapshot ApplyRoutes(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes)
+    {
+        if (target.Nodes != before.Nodes)
+        {
+            return target;
+        }
+
+        var patched = new Dictionary<string, DiagramLink>(StringComparer.Ordinal);
+        foreach (var id in changes.Updated.Keys)
+        {
+            if ((target.Find(id) is DiagramLink mine) && (after.Find(id) is DiagramLink theirs) &&
+                (mine.Source == theirs.Source) && (mine.Target == theirs.Target) && string.Equals(mine.Type, theirs.Type, StringComparison.Ordinal) &&
+                SameEnd(mine.Source.ElementId) && SameEnd(mine.Target.ElementId))
+            {
+                patched[id] = mine with { Route = theirs.Route, RouteState = theirs.RouteState, RouteError = theirs.RouteError };
+            }
+        }
+
+        if (patched.Count == 0)
+        {
+            return target;
+        }
+
+        var links = target.Links.ToBuilder();
+        for (var i = 0; i < links.Count; i++)
+        {
+            if (patched.TryGetValue(links[i].Id, out var link))
+            {
+                links[i] = link;
+            }
+        }
+
+        var elements = target.Elements.SetItems(patched.Select(static x => new KeyValuePair<string, DiagramElement>(x.Key, x.Value)));
+        return new DiagramSnapshot(target.Version, elements, target.Nodes, target.Groups, links.MoveToImmutable(), target.SharedItems, target.CachedObstacles);
+
+        bool SameEnd(string id) =>
+            (target.Find(id) is { } mine) && (after.Find(id) is { } theirs) && SnapshotContent.Same(mine, theirs);
+    }
+
+    private static DiagramElement Patch(DiagramElement from, DiagramElement to, DiagramElement current, SnapshotEditor editor, DiagramSnapshot after)
     {
         switch (current)
         {
@@ -199,6 +241,13 @@ internal sealed class DiagramHistory
                     Locked = Pick(a.Locked, b.Locked, link.Locked),
                     Permissions = Pick(a.Permissions, b.Permissions, link.Permissions)
                 };
+                if ((!a.Route.SequenceEqual(b.Route) || (a.RouteState != b.RouteState)) &&
+                    (patchedLink.Source == b.Source) && (patchedLink.Target == b.Target) &&
+                    SameEnd(b.Source.ElementId) && SameEnd(b.Target.ElementId))
+                {
+                    patchedLink = patchedLink with { Route = b.Route, RouteState = b.RouteState, RouteError = b.RouteError };
+                }
+
                 return SnapshotContent.Same(patchedLink, link) ? link : patchedLink;
             case DiagramSharedItem item when (from is DiagramSharedItem a) && (to is DiagramSharedItem b):
                 var patchedItem = item with
@@ -211,6 +260,9 @@ internal sealed class DiagramHistory
             default:
                 return current;
         }
+
+        bool SameEnd(string id) =>
+            (editor.Find(id) is { } mine) && (after.Find(id) is { } theirs) && SnapshotContent.Same(mine, theirs);
     }
 
     private static T Pick<T>(T from, T to, T current) => EqualityComparer<T>.Default.Equals(from, to) ? current : to;
@@ -245,7 +297,7 @@ internal sealed class DiagramHistory
         {
             if (!rebased.TryGetValue(snapshot, out var result))
             {
-                result = Apply(snapshot, before, after, changes, index);
+                result = RoutesOnly(changes) ? ApplyRoutes(snapshot, before, after, changes) : Apply(snapshot, before, after, changes, index);
                 rebased[snapshot] = result;
             }
 

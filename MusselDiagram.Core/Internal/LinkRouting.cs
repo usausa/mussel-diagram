@@ -21,6 +21,10 @@ internal static class LinkRouting
 {
     public const double DefaultStubLength = 20;
 
+    public const double DefaultObstacleMargin = 10;
+
+    public const double MarkerLength = 10;
+
     public static DiagramPoint PortPosition(DiagramRect bounds, DiagramSide side, double ratio, double offset) => side switch
     {
         DiagramSide.Top => new(bounds.X + (bounds.Width * ratio), bounds.Y - offset),
@@ -82,15 +86,11 @@ internal static class LinkRouting
         return builder.MoveToImmutable();
     }
 
-    public static ImmutableArray<DiagramPoint> Route(DiagramBox source, PortPlacement? sourcePort, DiagramBox target, PortPlacement? targetPort, DiagramLinkType? linkType)
+    public static (LinkAnchor Start, LinkAnchor End) Anchors(DiagramRect source, PortPlacement? sourcePort, DiagramRect target, PortPlacement? targetPort)
     {
-        var sourceToward = targetPort?.PositionIn(target.Bounds) ?? target.Bounds.Center;
-        var targetToward = sourcePort?.PositionIn(source.Bounds) ?? source.Bounds.Center;
-        var start = Anchor(source.Bounds, sourcePort, sourceToward);
-        var end = Anchor(target.Bounds, targetPort, targetToward);
-        return linkType?.Form == DiagramLineForm.Straight
-            ? [start.Position, end.Position]
-            : Orthogonal(start, end, linkType?.StubLength ?? DefaultStubLength);
+        var sourceToward = targetPort?.PositionIn(target) ?? target.Center;
+        var targetToward = sourcePort?.PositionIn(source) ?? source.Center;
+        return (Anchor(source, sourcePort, sourceToward), Anchor(target, targetPort, targetToward));
     }
 
     public static LinkAnchor Anchor(DiagramRect bounds, PortPlacement? port, DiagramPoint toward)
@@ -107,6 +107,45 @@ internal static class LinkRouting
             ? (dx >= 0 ? DiagramSide.Right : DiagramSide.Left)
             : (dy >= 0 ? DiagramSide.Bottom : DiagramSide.Top);
         return new LinkAnchor(PortPosition(bounds, side, 0.5, 0), side);
+    }
+
+    public static ImmutableArray<DiagramPoint> Simple(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType)
+    {
+        var stub = linkType?.StubLength ?? DefaultStubLength;
+        return (linkType?.Form ?? DiagramLineForm.Orthogonal) switch
+        {
+            DiagramLineForm.Straight => [start.Position, end.Position],
+            DiagramLineForm.Curved => Curve(start, end, stub),
+            _ => Orthogonal(start, end, stub)
+        };
+    }
+
+    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, ObstacleIndex obstacles, DiagramBox source, DiagramBox target)
+    {
+        if ((linkType?.Form ?? DiagramLineForm.Orthogonal) != DiagramLineForm.Orthogonal)
+        {
+            return Simple(start, end, linkType);
+        }
+
+        return OrthogonalRouter.Route(
+            start,
+            end,
+            linkType?.StubLength ?? DefaultStubLength,
+            linkType?.ObstacleMargin ?? DefaultObstacleMargin,
+            obstacles,
+            source.Id,
+            target.Id,
+            source.Bounds,
+            target.Bounds);
+    }
+
+    public static ImmutableArray<DiagramPoint> Curve(LinkAnchor start, LinkAnchor end, double stub)
+    {
+        var dx = end.Position.X - start.Position.X;
+        var dy = end.Position.Y - start.Position.Y;
+        var distance = Math.Sqrt((dx * dx) + (dy * dy));
+        var reach = Math.Max(stub, distance / 2);
+        return [start.Position, Step(start.Position, start.Side, reach), Step(end.Position, end.Side, reach), end.Position];
     }
 
     public static ImmutableArray<DiagramPoint> Orthogonal(LinkAnchor start, LinkAnchor end, double stub)
@@ -142,25 +181,51 @@ internal static class LinkRouting
         return Simplify(points);
     }
 
-    public static string ToPath(ImmutableArray<DiagramPoint> points)
+    public static string ToPath(ImmutableArray<DiagramPoint> points, DiagramLineForm form, double sourceCut, double targetCut)
     {
-        var builder = new StringBuilder();
-        for (var i = 0; i < points.Length; i++)
+        if (points.Length < 2)
         {
-            builder.Append(i == 0 ? 'M' : 'L')
-                .Append(Format(points[i].X))
-                .Append(',')
-                .Append(Format(points[i].Y));
+            return string.Empty;
         }
 
+        var first = Cut(points[0], points[1], sourceCut);
+        var last = Cut(points[^1], points[^2], targetCut);
+        var builder = new StringBuilder();
+        Append(builder, 'M', first);
+        if ((form == DiagramLineForm.Curved) && (points.Length == 4))
+        {
+            Append(builder, 'C', points[1]);
+            builder.Append(' ');
+            Append(builder, null, points[2]);
+            builder.Append(' ');
+            Append(builder, null, last);
+            return builder.ToString();
+        }
+
+        for (var i = 1; i < points.Length - 1; i++)
+        {
+            Append(builder, 'L', points[i]);
+        }
+
+        Append(builder, 'L', last);
         return builder.ToString();
     }
 
-    public static string Format(double value) => Math.Round(value, 2).ToString(CultureInfo.InvariantCulture);
+    public static (double Source, double Target) Cuts(DiagramLinkType? type) =>
+        (type is null)
+            ? (0, MarkerLength)
+            : (type.SourceMarker == DiagramMarker.None ? 0 : MarkerLength, type.TargetMarker == DiagramMarker.None ? 0 : MarkerLength);
 
-    private static bool IsHorizontal(DiagramSide side) => side is DiagramSide.Left or DiagramSide.Right;
+    public static double Angle(DiagramPoint from, DiagramPoint to) =>
+        Math.Round(Math.Atan2(to.Y - from.Y, to.X - from.X) * 180 / Math.PI, 2);
 
-    private static DiagramPoint Step(DiagramPoint point, DiagramSide side, double length) => side switch
+    public static string Format(double value)
+    {
+        Span<char> buffer = stackalloc char[24];
+        return new string(buffer[..Write(buffer, value)]);
+    }
+
+    public static DiagramPoint Step(DiagramPoint point, DiagramSide side, double length) => side switch
     {
         DiagramSide.Top => point with { Y = point.Y - length },
         DiagramSide.Right => point with { X = point.X + length },
@@ -168,7 +233,9 @@ internal static class LinkRouting
         _ => point with { X = point.X - length }
     };
 
-    private static ImmutableArray<DiagramPoint> Simplify(List<DiagramPoint> points)
+    public static bool IsHorizontal(DiagramSide side) => side is DiagramSide.Left or DiagramSide.Right;
+
+    public static ImmutableArray<DiagramPoint> Simplify(List<DiagramPoint> points)
     {
         var builder = ImmutableArray.CreateBuilder<DiagramPoint>(points.Count);
         foreach (var point in points)
@@ -188,6 +255,71 @@ internal static class LinkRouting
         }
 
         return builder.ToImmutable();
+    }
+
+    private static DiagramPoint Cut(DiagramPoint end, DiagramPoint toward, double length)
+    {
+        if (length <= 0)
+        {
+            return end;
+        }
+
+        var dx = toward.X - end.X;
+        var dy = toward.Y - end.Y;
+        var distance = Math.Sqrt((dx * dx) + (dy * dy));
+        if (distance <= 0)
+        {
+            return end;
+        }
+
+        var ratio = Math.Min(length, distance) / distance;
+        return new DiagramPoint(end.X + (dx * ratio), end.Y + (dy * ratio));
+    }
+
+    private static void Append(StringBuilder builder, char? command, DiagramPoint point)
+    {
+        if (command is { } value)
+        {
+            builder.Append(value);
+        }
+
+        Span<char> buffer = stackalloc char[24];
+        builder.Append(buffer[..Write(buffer, point.X)]);
+        builder.Append(',');
+        builder.Append(buffer[..Write(buffer, point.Y)]);
+    }
+
+    private static int Write(Span<char> buffer, double value)
+    {
+        int written;
+        if (!(Math.Abs(value) < 1e15))
+        {
+            (Math.Floor((value * 100) + 0.5) / 100).TryFormat(buffer, out written, default, CultureInfo.InvariantCulture);
+            return written;
+        }
+
+        var scaled = (long)Math.Floor((value * 100) + 0.5);
+        var length = 0;
+        if (scaled < 0)
+        {
+            buffer[length++] = '-';
+            scaled = -scaled;
+        }
+
+        (scaled / 100).TryFormat(buffer[length..], out written, default, CultureInfo.InvariantCulture);
+        length += written;
+        var fraction = (int)(scaled % 100);
+        if (fraction != 0)
+        {
+            buffer[length++] = '.';
+            buffer[length++] = (char)('0' + (fraction / 10));
+            if ((fraction % 10) != 0)
+            {
+                buffer[length++] = (char)('0' + (fraction % 10));
+            }
+        }
+
+        return length;
     }
 
     private static bool IsCollinear(DiagramPoint a, DiagramPoint b, DiagramPoint c) =>

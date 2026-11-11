@@ -39,9 +39,9 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `ElementClicked`, `ElementDoubleClicked` | `DiagramElementPointerEventArgs` | `ElementId`, `Position`, `ShiftKey`, `CtrlKey`, `AltKey`, `MetaKey` |
 | `BackgroundClicked`, `BackgroundDoubleClicked` | `DiagramPointerEventArgs` | `Position` and the modifier keys |
 | `BadgeClicked` | `DiagramBadgeClickedEventArgs` | `ElementId` and `Badge`, for kinds with `Clickable` |
-| `Moving`, `Moved` | `DiagramMovingEventArgs`, `DiagramMovedEventArgs` | `ElementIds`, `Offset` and `NewParentId` |
+| `Moving`, `Moved` | `DiagramMovingEventArgs`, `DiagramMovedEventArgs` | `ElementIds`, `Offset`, `ParentChanged` and `NewParentId` (`null` for the top level) |
 | `Resizing`, `Resized` | `DiagramResizingEventArgs`, `DiagramResizedEventArgs` | `ElementId` and `Bounds` |
-| `Connecting`, `Connected` | `DiagramConnectingEventArgs`, `DiagramConnectedEventArgs` | `Source`, `Target`, `LinkType` and `PlacedElement` (from the type picker) |
+| `Connecting`, `Connected` | `DiagramConnectingEventArgs`, `DiagramConnectedEventArgs` | `Source`, `Target`, `LinkType` and `PlacedElement` (from the type picker); `Connected` also has `LinkId` |
 | `Reconnecting`, `Reconnected` | `DiagramReconnectingEventArgs`, `DiagramReconnectedEventArgs` | `LinkId`, `End` (`DiagramLinkEndSide`) and `NewEnd` |
 | `Dropping`, `Dropped` | `DiagramDroppingEventArgs`, `DiagramDroppedEventArgs` | `Type`, `Bounds`, `ParentId`, `Value` and `SplitLinkId` |
 | `Deleting`, `Deleted` | `DiagramDeletingEventArgs`, `DiagramDeletedEventArgs` | `ElementIds`, including the elements deleted along with them, and `IsCut` |
@@ -135,7 +135,7 @@ The model. It works without a view. Writing is not thread-safe.
 | `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed. Throws `DiagramException` when the text is not a diagram or its version is newer |
 | `IsModified`, `MarkSaved()` | Whether the contents changed since `MarkSaved` |
 | `GetPorts(id)` | The ports of an element (`DiagramPort`) with their positions |
-| `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, the positions and angles of the markers, and `Path` |
+| `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, `SourceAngle` and `TargetAngle` (the direction each end marker points, in degrees: 0 right, 90 down), and `Path` (shortened at ends with markers) |
 
 Every writing method takes an optional `DiagramWriteOptions`: `Tag` (any object, given back in `Changed`) and `History` (`DiagramHistoryMode`: `Record`, `Skip` or `Merge`). `BeginUpdate` takes it too, and the outermost scope decides.  
 A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, sizes that are not finite and positive) throws `DiagramException` and leaves the snapshot as it was.  
@@ -240,7 +240,7 @@ An immutable record. The declarative parts can also be read with `DiagramSchemaJ
 
 ### Routing
 
-`IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first.  
+`IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
 `DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles) and `LinkType`. `DiagramRouteResult`: `Points`, or `Error` with a reason.  
 
 ## 🖼️ Icons

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
+import {
+    wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
+    collectLines, snapAxis, matchingLines, gridSnap, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
+} from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
 
@@ -74,12 +77,14 @@ const service = (id, x, y) => box(id, x, y, [
 ]);
 
 test('links are routed the same way as in C#', () => {
-    const link = (source, target, sourcePort, targetPort) => ({ source, target, sourcePort, targetPort, stub: 20, straight: false });
+    const link = (source, target, sourcePort, targetPort) => ({ source, target, sourcePort, targetPort, stub: 20, form: 'orthogonal' });
     assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 300, 0))), 'M100,25L300,25');
     assert.equal(toPath(routeLink(link('a', 'c'), box('a', 0, 0), box('c', 0, 300))), 'M50,50L50,300');
     assert.equal(toPath(routeLink(link('a', 'b', 'out', 'in'), service('a', 0, 0), service('b', 300, 100))), 'M100,25L200,25L200,125L300,125');
     assert.equal(toPath(routeLink(link('a', 'c', 'out', 'top'), service('a', 0, 0), service('c', 300, 400))), 'M100,25L325,25L325,400');
-    assert.equal(toPath(routeLink({ ...link('a', 'b'), straight: true }, box('a', 0, 0), box('b', 300, 100))), 'M100,25L300,125');
+    assert.equal(toPath(routeLink({ ...link('a', 'b'), form: 'straight' }, box('a', 0, 0), box('b', 300, 100))), 'M100,25L300,125');
+    assert.equal(toPath(routeLink({ ...link('a', 'b'), form: 'curved' }, box('a', 0, 0), box('b', 400, 0)), 'curved'), 'M100,25C250,25 250,25 400,25');
+    assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 300, 0)), 'orthogonal', 10, 10), 'M110,25L290,25');
 });
 
 test('the table knows descendants, moving sets and links', () => {
@@ -92,7 +97,7 @@ test('the table knows descendants, moving sets and links', () => {
             box('b', 500, 0),
             { ...box('asg', 0, 0), kind: 'overlay', members: ['b'] },
         ],
-        links: [{ id: 'ab', source: 'a', target: 'b', stub: 20, straight: false }],
+        links: [{ id: 'ab', source: 'a', target: 'b', stub: 20, form: 'orthogonal' }],
     });
     assert.deepEqual(table.descendants('vpc').sort(), ['a', 'subnet']);
     assert.deepEqual(table.ancestors('a'), ['subnet', 'vpc']);
@@ -103,4 +108,78 @@ test('the table knows descendants, moving sets and links', () => {
     assert.equal(table.version, 4);
     assert.equal(table.linksOf(['a']).size, 0);
     assert.ok(table.boxes.has('c'));
+});
+
+test('moving edges snap to the nearest line, then to the grid', () => {
+    const lines = collectLines([box('a', 100, 100), box('b', 300, 200)]);
+    assert.deepEqual(snapAxis(lines.x, [96, 147, 197], 8), { delta: 3, value: 150 });
+    assert.equal(snapAxis(lines.x, [50], 8), null);
+    assert.equal(matchingLines(lines.x, [200, 300]).length, 2);
+    assert.equal(gridSnap(14, 10), 10);
+    assert.equal(gridSnap(15, 10), 20);
+});
+
+test('resizing keeps the minimum size and the children inside', () => {
+    const edges = resizeEdges({ x: 0, y: 0, w: 100, h: 100 }, 'nw', 90, 95);
+    assert.deepEqual(limitResize(edges, 'nw', { minW: 20, minH: 20, inner: null }), { x: 80, y: 80, w: 20, h: 20 });
+    const inner = { left: 10, top: 10, right: 70, bottom: 70 };
+    assert.deepEqual(limitResize(resizeEdges({ x: 0, y: 0, w: 100, h: 100 }, 'e', -60, 0), 'e', { minW: 10, minH: 10, inner }), { x: 0, y: 0, w: 70, h: 100 });
+});
+
+test('connections follow the declared rules', () => {
+    const port = (id, direction, extra) => ({ id, side: direction === 'in' ? 'left' : 'right', ratio: 0.5, offset: 0, direction, ...extra });
+    const node = (id, type, ports, extra) => ({ id, type, kind: 'node', x: 0, y: 0, w: 100, h: 50, registered: true, connectable: true, whole: !ports, ports, ...extra });
+    const table = new DiagramTable({
+        version: 1,
+        boxes: [
+            node('a', 'svc', [port('in', 'in', { max: 1 }), port('out', 'out')]),
+            node('b', 'svc', [port('in', 'in', { max: 1 }), port('out', 'out')]),
+            node('c', 'box', null),
+            node('d', 'box', null, { connectable: false }),
+            node('e', 'box', null, { registered: false }),
+        ],
+        links: [{ id: 'ab', type: 'arrow', source: 'a', sourcePort: 'out', target: 'b', targetPort: 'in' }],
+    });
+    const schema = { types: new Map(), linkTypes: new Map([['arrow', { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: false }]]) };
+    const check = (source, target) => checkConnection(table, schema, source, target, 'arrow', null);
+    assert.equal(check({ element: 'a', port: 'in' }, { element: 'b', port: 'in' }), 'direction');
+    assert.equal(check({ element: 'c', port: null }, { element: 'b', port: 'in' }), 'limit');
+    assert.equal(check({ element: 'a', port: 'out' }, { element: 'b', port: 'in' }), 'limit');
+    assert.equal(check({ element: 'b', port: 'out' }, { element: 'a', port: 'in' }), 'cycle');
+    assert.equal(check({ element: 'c', port: null }, { element: 'd', port: null }), 'permission');
+    assert.equal(check({ element: 'c', port: null }, { element: 'e', port: null }), 'noConnectionPoint');
+    assert.equal(check({ element: 'c', port: null }, { element: 'c', port: null }), 'selfOrDuplicate');
+    assert.equal(checkConnection(table, schema, { element: 'a', port: 'out' }, { element: 'b', port: 'in' }, 'arrow', 'ab'), null);
+});
+
+test('nesting follows the allowed parents and children', () => {
+    const schema = {
+        types: new Map([
+            ['db', { name: 'db', parents: ['subnet'], topLevel: false }],
+            ['subnet', { name: 'subnet', children: ['db'] }],
+            ['vpc', { name: 'vpc' }],
+            ['web', { name: 'web' }],
+        ]),
+    };
+    const group = (type, extra) => ({ id: type, type, kind: 'group', registered: true, ...extra });
+    assert.equal(canNest(schema, 'db', group('subnet')), true);
+    assert.equal(canNest(schema, 'db', group('vpc')), false);
+    assert.equal(canNest(schema, 'web', group('subnet')), false);
+    assert.equal(canNest(schema, 'web', group('vpc', { locked: true })), false);
+    assert.equal(canNest(schema, 'db', null), false);
+    assert.equal(canNest(schema, 'web', null), true);
+});
+
+test('the type list is searched by words and ranked by the label', () => {
+    const types = [{ name: 'a', label: 'Web server' }, { name: 'b', label: 'Server', search: ['ec2'] }, { name: 'c', label: 'Database', category: 'Storage' }];
+    assert.deepEqual(searchTypes(types, 'server').map((t) => t.name), ['b', 'a']);
+    assert.deepEqual(searchTypes(types, 'ec2').map((t) => t.name), ['b']);
+    assert.deepEqual(searchTypes(types, 'stor data').map((t) => t.name), ['c']);
+    assert.equal(searchTypes(types, ' ').length, 3);
+});
+
+test('quick add places the element beside the connection point', () => {
+    const origin = { x: 100, y: 100, w: 100, h: 50 };
+    assert.deepEqual(placeBeside(origin, 'right', { w: 40, h: 20 }, 80), { x: 280, y: 115, w: 40, h: 20 });
+    assert.deepEqual(placeBeside(origin, 'top', { w: 40, h: 20 }, 80, 130), { x: 110, y: 0, w: 40, h: 20 });
 });

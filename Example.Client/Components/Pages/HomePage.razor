@@ -3,5 +3,5 @@
 <PageTitle>MusselDiagram</PageTitle>
 
 <div class="diagram-page">
-    <MusselDiagramView Diagram="diagram" Moving="OnMoving" />
+    <MusselDiagramView Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)" />
 </div>

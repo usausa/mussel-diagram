@@ -32,6 +32,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private bool tableChanged;
 
+    private bool schemaChanged;
+
     private Func<IJSObjectReference, ValueTask>? pendingView;
 
     private bool disposed;
@@ -88,6 +90,17 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         foreach (var group in Snapshot.Groups)
         {
             if ((group.Kind == DiagramGroupKind.Tree) && IsShown(group.Id, group.Bounds))
+            {
+                AddBox(builder, group);
+            }
+        }
+    };
+
+    private RenderFragment OverlayGroups => builder =>
+    {
+        foreach (var group in Snapshot.Groups)
+        {
+            if ((group.Kind == DiagramGroupKind.Overlay) && IsShown(group.Id, group.Bounds))
             {
                 AddBox(builder, group);
             }
@@ -161,12 +174,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     protected override void OnParametersSet()
     {
         Subscribe(Diagram);
-        if (!ReferenceEquals(renderedIndex, Diagram.Index))
-        {
-            renderedIndex = Diagram.Index;
-            RenderContext = new RenderContext(Diagram.Index, viewId);
-            tableChanged = true;
-        }
+        RefreshContext();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -178,25 +186,18 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
         try
         {
-            var options = ScriptJson.ToElement(new ScriptOptions(
-                MinZoom,
-                MaxZoom,
-                WheelMode == DiagramWheelMode.Zoom ? "zoom" : "pan",
-                PanEnabled,
-                ZoomEnabled,
-                SelectionEnabled,
-                MoveEnabled && !ReadOnly,
-                LivePreviewLimit,
-                CommitMode == DiagramCommitMode.Optimistic));
+            var options = ScriptJson.ToElement(CreateOptions());
             if (firstRender)
             {
                 module = await Runtime.InvokeAsync<IJSObjectReference>("import", ModulePath).ConfigureAwait(true);
                 self ??= DotNetObjectReference.Create(new DiagramScriptBridge(this));
                 sentOptions = options.GetRawText();
                 tableChanged = false;
+                schemaChanged = false;
                 pendingChanges.Clear();
                 var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index));
-                controller = await module.InvokeAsync<IJSObjectReference>("attach", root, self, options, table).ConfigureAwait(true);
+                var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext));
+                controller = await module.InvokeAsync<IJSObjectReference>("attach", root, self, options, table, schema).ConfigureAwait(true);
                 if (pendingView is not null)
                 {
                     var view = pendingView;
@@ -216,6 +217,12 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             {
                 sentOptions = options.GetRawText();
                 await controller.InvokeVoidAsync("setOptions", options).ConfigureAwait(true);
+            }
+
+            if (schemaChanged)
+            {
+                schemaChanged = false;
+                await controller.InvokeVoidAsync("setSchema", ScriptJson.ToElement(ScriptTables.Schema(RenderContext))).ConfigureAwait(true);
             }
 
             var changed = tableChanged;
@@ -285,6 +292,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         if (subscribed is not null)
         {
             subscribed.Changed -= OnDiagramChanged;
+            subscribed.SchemaChanged -= OnSchemaChanged;
         }
 
         subscribed = diagram;
@@ -293,10 +301,56 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         if (diagram is not null)
         {
             diagram.Changed += OnDiagramChanged;
+            diagram.SchemaChanged += OnSchemaChanged;
             Remember(diagram.Snapshot);
             tableChanged = true;
         }
     }
+
+    private void OnSchemaChanged(object? sender, EventArgs e) =>
+        _ = InvokeAsync(() =>
+        {
+            RefreshContext();
+            StateHasChanged();
+        });
+
+    private void RefreshContext()
+    {
+        if (ReferenceEquals(renderedIndex, Diagram.Index))
+        {
+            return;
+        }
+
+        renderedIndex = Diagram.Index;
+        RenderContext = new RenderContext(Diagram.Index, viewId);
+        tableChanged = true;
+        schemaChanged = true;
+    }
+
+    private ScriptOptions CreateOptions() => new()
+    {
+        MinZoom = MinZoom,
+        MaxZoom = MaxZoom,
+        WheelMode = WheelMode == DiagramWheelMode.Zoom ? "zoom" : "pan",
+        PanEnabled = PanEnabled,
+        ZoomEnabled = ZoomEnabled,
+        SelectionEnabled = SelectionEnabled,
+        BoxSelectionEnabled = SelectionEnabled && BoxSelectionEnabled,
+        MoveEnabled = MoveEnabled && !ReadOnly,
+        ResizeEnabled = ResizeEnabled && !ReadOnly,
+        ConnectEnabled = ConnectEnabled && !ReadOnly,
+        LivePreviewLimit = LivePreviewLimit,
+        Optimistic = CommitMode == DiagramCommitMode.Optimistic,
+        GridVisible = GridVisible,
+        GridStyle = GridStyle == DiagramGridStyle.Lines ? "lines" : "dots",
+        GridSize = GridSize,
+        SnapToGrid = SnapToGrid,
+        SnapToElements = SnapToElements,
+        SnapTolerance = SnapTolerance,
+        ConnectionRadius = ConnectionRadius,
+        QuickAddSpacing = QuickAddSpacing,
+        LinkType = LinkType
+    };
 
     private async Task ReleaseAsync()
     {

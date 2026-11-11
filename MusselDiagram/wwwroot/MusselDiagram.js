@@ -184,8 +184,21 @@ const MOUSE_THRESHOLD = 4;
 const TOUCH_THRESHOLD = 8;
 const REASON_DURATION = 3000;
 const SELECTION_PADDING = 4;
+const HANDLE_SIZE = 8;
+const PORT_RADIUS = 4;
+const ARROW_DELAY = 140;
+const ARROW_OFFSET = 16;
+const ARROW_SIZE = 7;
+const EDGE_ZONE = 40;
+const EDGE_SPEED = 16;
+const GRID_MINIMUM = 8;
+const MIN_SIZE = 10;
+const GUIDE_EPSILON = 0.01;
 const ELEMENT_SELECTOR = '.mussel-diagram-node, .mussel-diagram-group, .mussel-diagram-link';
 const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .mussel-diagram-nodrag';
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const SIDES = ['top', 'right', 'bottom', 'left'];
+const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: true, form: 'orthogonal', stub: 20, sourceCut: 0, targetCut: 10 };
 
 export function zoomAround(view, factor, point) {
     return {
@@ -238,6 +251,10 @@ export function portPosition(box, side, ratio, offset) {
 
 function centerOf(box) {
     return { x: box.x + (box.w / 2), y: box.y + (box.h / 2) };
+}
+
+function contains(box, point) {
+    return (point.x >= box.x) && (point.x <= box.x + box.w) && (point.y >= box.y) && (point.y <= box.y + box.h);
 }
 
 export function anchorOf(box, port, toward) {
@@ -308,28 +325,300 @@ export function orthogonalRoute(start, end, stub) {
     return simplify(points);
 }
 
-function findPort(box, id) {
-    return id ? (box.ports ?? []).find((p) => p.id === id) : undefined;
+export function curveRoute(start, end, stub) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const reach = Math.max(stub, Math.sqrt((dx * dx) + (dy * dy)) / 2);
+    return [{ x: start.x, y: start.y }, stepOut(start, start.side, reach), stepOut(end, end.side, reach), { x: end.x, y: end.y }];
 }
 
-export function routeLink(link, source, target) {
+export function routeBetween(start, end, form, stub) {
+    if (form === 'straight') {
+        return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
+    }
+    return form === 'curved' ? curveRoute(start, end, stub) : orthogonalRoute(start, end, stub);
+}
+
+function findPort(box, id) {
+    return id ? (box?.ports ?? []).find((p) => p.id === id) : undefined;
+}
+
+export function linkAnchors(link, source, target) {
     const sourcePort = findPort(source, link.sourcePort);
     const targetPort = findPort(target, link.targetPort);
     const sourceToward = targetPort ? portPosition(target, targetPort.side, targetPort.ratio, targetPort.offset) : centerOf(target);
     const targetToward = sourcePort ? portPosition(source, sourcePort.side, sourcePort.ratio, sourcePort.offset) : centerOf(source);
-    const start = anchorOf(source, sourcePort, sourceToward);
-    const end = anchorOf(target, targetPort, targetToward);
-    return link.straight
-        ? [{ x: start.x, y: start.y }, { x: end.x, y: end.y }]
-        : orthogonalRoute(start, end, link.stub);
+    return { start: anchorOf(source, sourcePort, sourceToward), end: anchorOf(target, targetPort, targetToward) };
 }
 
-function formatNumber(value) {
+export function routeLink(link, source, target) {
+    const { start, end } = linkAnchors(link, source, target);
+    return routeBetween(start, end, link.form ?? 'orthogonal', link.stub ?? DEFAULT_LINK_TYPE.stub);
+}
+
+export function formatNumber(value) {
     return String(Math.round(value * 100) / 100);
 }
 
-export function toPath(points) {
-    return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${formatNumber(p.x)},${formatNumber(p.y)}`).join('');
+function cutPoint(end, toward, length) {
+    if (!(length > 0)) {
+        return end;
+    }
+    const dx = toward.x - end.x;
+    const dy = toward.y - end.y;
+    const distance = Math.sqrt((dx * dx) + (dy * dy));
+    if (distance <= 0) {
+        return end;
+    }
+    const ratio = Math.min(length, distance) / distance;
+    return { x: end.x + (dx * ratio), y: end.y + (dy * ratio) };
+}
+
+export function toPath(points, form = 'orthogonal', sourceCut = 0, targetCut = 0) {
+    if (points.length < 2) {
+        return '';
+    }
+    const text = (point) => `${formatNumber(point.x)},${formatNumber(point.y)}`;
+    const first = cutPoint(points[0], points[1], sourceCut);
+    const last = cutPoint(points[points.length - 1], points[points.length - 2], targetCut);
+    if ((form === 'curved') && (points.length === 4)) {
+        return `M${text(first)}C${text(points[1])} ${text(points[2])} ${text(last)}`;
+    }
+    let path = `M${text(first)}`;
+    for (let i = 1; i < points.length - 1; i++) {
+        path += `L${text(points[i])}`;
+    }
+    return `${path}L${text(last)}`;
+}
+
+export function collectLines(boxes) {
+    const x = [];
+    const y = [];
+    for (const box of boxes) {
+        x.push({ value: box.x, box }, { value: box.x + (box.w / 2), box }, { value: box.x + box.w, box });
+        y.push({ value: box.y, box }, { value: box.y + (box.h / 2), box }, { value: box.y + box.h, box });
+    }
+    x.sort((a, b) => a.value - b.value);
+    y.sort((a, b) => a.value - b.value);
+    return { x, y };
+}
+
+function lowerBound(lines, value) {
+    let low = 0;
+    let high = lines.length;
+    while (low < high) {
+        const middle = (low + high) >> 1;
+        if (lines[middle].value < value) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+export function nearestLine(lines, value, tolerance) {
+    const index = lowerBound(lines, value);
+    let best = null;
+    for (const line of [lines[index - 1], lines[index]]) {
+        if (line && (Math.abs(line.value - value) <= tolerance) && (!best || (Math.abs(line.value - value) < Math.abs(best.value - value)))) {
+            best = line;
+        }
+    }
+    return best;
+}
+
+export function snapAxis(lines, values, tolerance) {
+    let best = null;
+    for (const value of values) {
+        const line = nearestLine(lines, value, tolerance);
+        if (line && (!best || (Math.abs(line.value - value) < Math.abs(best.delta)))) {
+            best = { delta: line.value - value, value: line.value };
+        }
+    }
+    return best;
+}
+
+export function matchingLines(lines, values) {
+    const result = [];
+    for (const value of values) {
+        for (let i = lowerBound(lines, value - GUIDE_EPSILON); (i < lines.length) && (lines[i].value <= value + GUIDE_EPSILON); i++) {
+            result.push(lines[i]);
+        }
+    }
+    return result;
+}
+
+export function gridSnap(value, size) {
+    return size > 0 ? Math.round(value / size) * size : value;
+}
+
+export function resizeEdges(box, handle, dx, dy) {
+    return {
+        left: box.x + (handle.includes('w') ? dx : 0),
+        top: box.y + (handle.includes('n') ? dy : 0),
+        right: box.x + box.w + (handle.includes('e') ? dx : 0),
+        bottom: box.y + box.h + (handle.includes('s') ? dy : 0),
+    };
+}
+
+export function limitResize(edges, handle, limits) {
+    let { left, top, right, bottom } = edges;
+    const inner = limits.inner;
+    if (handle.includes('w')) {
+        left = Math.min(left, right - limits.minW, inner ? inner.left : Number.POSITIVE_INFINITY);
+    }
+    if (handle.includes('e')) {
+        right = Math.max(right, left + limits.minW, inner ? inner.right : Number.NEGATIVE_INFINITY);
+    }
+    if (handle.includes('n')) {
+        top = Math.min(top, bottom - limits.minH, inner ? inner.top : Number.POSITIVE_INFINITY);
+    }
+    if (handle.includes('s')) {
+        bottom = Math.max(bottom, top + limits.minH, inner ? inner.bottom : Number.NEGATIVE_INFINITY);
+    }
+    return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+function resolvePoint(box, portId) {
+    if (!box || !box.registered) {
+        return null;
+    }
+    if (portId) {
+        const port = findPort(box, portId);
+        return port ? { box, port } : null;
+    }
+    return box.whole ? { box, port: null } : null;
+}
+
+function linksAt(table, element, portId, exceptLinkId) {
+    let count = 0;
+    for (const link of table.linksByBox.get(element) ?? []) {
+        if (link.id === exceptLinkId) {
+            continue;
+        }
+        if (((link.source === element) && ((link.sourcePort ?? null) === portId)) || ((link.target === element) && ((link.targetPort ?? null) === portId))) {
+            count++;
+        }
+    }
+    return count;
+}
+
+function accepts(port, type) {
+    return !port || ((!port.accepts || port.accepts.includes(type)) && (!port.rejects || !port.rejects.includes(type)));
+}
+
+function makesCycle(table, sourceId, targetId, linkType, exceptLinkId) {
+    if (sourceId === targetId) {
+        return true;
+    }
+    const seen = new Set([targetId]);
+    const queue = [targetId];
+    while (queue.length > 0) {
+        const current = queue.shift();
+        for (const link of table.linksByBox.get(current) ?? []) {
+            if ((link.source !== current) || (link.type !== linkType) || (link.id === exceptLinkId)) {
+                continue;
+            }
+            if (link.target === sourceId) {
+                return true;
+            }
+            if (!seen.has(link.target)) {
+                seen.add(link.target);
+                queue.push(link.target);
+            }
+        }
+    }
+    return false;
+}
+
+export function checkConnection(table, schema, sourceEnd, targetEnd, linkTypeName, exceptLinkId) {
+    const source = resolvePoint(table.boxes.get(sourceEnd.element), sourceEnd.port);
+    const target = resolvePoint(table.boxes.get(targetEnd.element), targetEnd.port);
+    if (!source || !target) {
+        return 'noConnectionPoint';
+    }
+    if ((source.port?.direction === 'in') || (target.port?.direction === 'out')) {
+        return 'direction';
+    }
+    if (source.port?.kind && target.port?.kind && (source.port.kind !== target.port.kind)) {
+        return 'portKind';
+    }
+    if (!source.box.connectable || !target.box.connectable) {
+        return 'permission';
+    }
+    const sourcePort = sourceEnd.port ?? null;
+    const targetPort = targetEnd.port ?? null;
+    if (((source.port?.max ?? null) !== null) && (linksAt(table, sourceEnd.element, sourcePort, exceptLinkId) >= source.port.max)) {
+        return 'limit';
+    }
+    if (((target.port?.max ?? null) !== null) && (linksAt(table, targetEnd.element, targetPort, exceptLinkId) >= target.port.max)) {
+        return 'limit';
+    }
+    const type = schema.linkTypes.get(linkTypeName) ?? DEFAULT_LINK_TYPE;
+    if (!type.allowSelf && (sourceEnd.element === targetEnd.element)) {
+        return 'selfOrDuplicate';
+    }
+    if (!type.allowDuplicate) {
+        for (const link of table.linksByBox.get(sourceEnd.element) ?? []) {
+            if ((link.id !== exceptLinkId) && (link.source === sourceEnd.element) && ((link.sourcePort ?? null) === sourcePort) &&
+                (link.target === targetEnd.element) && ((link.targetPort ?? null) === targetPort)) {
+                return 'selfOrDuplicate';
+            }
+        }
+    }
+    if (!accepts(source.port, target.box.type) || !accepts(target.port, source.box.type)) {
+        return 'peerType';
+    }
+    if (!type.allowCrossParent && ((source.box.parent ?? null) !== (target.box.parent ?? null))) {
+        return 'crossParent';
+    }
+    if (!type.allowCycles && makesCycle(table, sourceEnd.element, targetEnd.element, linkTypeName, exceptLinkId)) {
+        return 'cycle';
+    }
+    return null;
+}
+
+export function canNest(schema, typeName, parent) {
+    const type = schema.types.get(typeName);
+    if (!parent) {
+        return !type || (type.topLevel !== false);
+    }
+    if (!type || (parent.kind !== 'group') || parent.locked || !parent.registered) {
+        return false;
+    }
+    const parentType = schema.types.get(parent.type);
+    return (!parentType?.children || parentType.children.includes(typeName)) && (!type.parents || type.parents.includes(parent.type));
+}
+
+export function searchTypes(types, query) {
+    const text = query.trim().toLowerCase();
+    const words = text.split(/\s+/).filter((w) => w.length > 0);
+    if (words.length === 0) {
+        return types;
+    }
+    const ranked = [];
+    types.forEach((type, order) => {
+        const haystack = [type.label, type.name, type.category ?? '', ...(type.search ?? [])].join('\u0001').toLowerCase();
+        if (words.every((word) => haystack.includes(word))) {
+            const label = type.label.toLowerCase();
+            ranked.push({ type, order, rank: label === text ? 0 : (label.startsWith(text) ? 1 : 2) });
+        }
+    });
+    return ranked.sort((a, b) => (a.rank - b.rank) || (a.order - b.order)).map((x) => x.type);
+}
+
+export function placeBeside(box, side, size, spacing, along) {
+    switch (side) {
+        case 'top':
+            return { x: (along ?? centerOf(box).x) - (size.w / 2), y: box.y - spacing - size.h, w: size.w, h: size.h };
+        case 'bottom':
+            return { x: (along ?? centerOf(box).x) - (size.w / 2), y: box.y + box.h + spacing, w: size.w, h: size.h };
+        case 'left':
+            return { x: box.x - spacing - size.w, y: (along ?? centerOf(box).y) - (size.h / 2), w: size.w, h: size.h };
+        default:
+            return { x: box.x + box.w + spacing, y: (along ?? centerOf(box).y) - (size.h / 2), w: size.w, h: size.h };
+    }
 }
 
 function pushTo(map, key, value) {
@@ -430,23 +719,79 @@ export class DiagramTable {
         }
         return result;
     }
+
+    countOfType(type) {
+        let count = 0;
+        for (const box of this.boxes.values()) {
+            if (box.registered && (box.type === type)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    innerBounds(id, padding) {
+        const children = (this.children.get(id) ?? []).map((child) => this.boxes.get(child)).filter((b) => b);
+        if (children.length === 0) {
+            return null;
+        }
+        const [left, top, right, bottom] = padding ?? [0, 0, 0, 0];
+        return {
+            left: Math.min(...children.map((b) => b.x)) - left,
+            top: Math.min(...children.map((b) => b.y)) - top,
+            right: Math.max(...children.map((b) => b.x + b.w)) + right,
+            bottom: Math.max(...children.map((b) => b.y + b.h)) + bottom,
+        };
+    }
+}
+
+function svg(name, attributes) {
+    const element = document.createElementNS(SVG_NS, name);
+    for (const [key, value] of Object.entries(attributes ?? {})) {
+        element.setAttribute(key, String(value));
+    }
+    return element;
+}
+
+function restore(saved) {
+    for (const [element, value] of saved) {
+        for (const [attribute, old] of value) {
+            if (old === null) {
+                element.removeAttribute(attribute);
+            } else {
+                element.setAttribute(attribute, old);
+            }
+        }
+    }
 }
 
 class DiagramController {
-    constructor(root, dotnet, options, table) {
+    constructor(root, dotnet, options, table, schema) {
         this.root = root;
         this.dotnet = dotnet;
         this.options = options;
         this.table = new DiagramTable(table);
+        this.setSchema(schema);
         this.stage = root.querySelector('.mussel-diagram-stage');
         this.canvas = root.querySelector('.mussel-diagram-canvas');
         this.viewports = [...root.querySelectorAll('.mussel-diagram-viewport')];
         this.overlay = root.querySelector('.mussel-diagram-overlay > .mussel-diagram-viewport');
+        this.gridLayer = root.querySelector('.mussel-diagram-grid');
+        this.uid = Math.random().toString(36).slice(2, 10);
+        this.layers = {};
+        for (const name of ['candidates', 'guides', 'selection', 'pending', 'preview', 'handles']) {
+            const layer = svg('g', { class: `mussel-diagram-layer-${name}` });
+            this.overlay?.append(layer);
+            this.layers[name] = layer;
+        }
         this.view = { x: 0, y: 0, zoom: 1 };
         this.gesture = null;
         this.pan = null;
         this.press = null;
         this.drag = null;
+        this.hover = null;
+        this.picker = null;
+        this.marks = [];
         this.selection = new Set();
         this.marked = [];
         this.commits = Promise.resolve();
@@ -458,6 +803,8 @@ class DiagramController {
         this.spaceDown = false;
         this.settleTimer = 0;
         this.frameRequest = 0;
+        this.drawnZoom = null;
+        this.gridKey = '';
         this.size = { width: root.clientWidth, height: root.clientHeight };
         this.labels = new LabelWriter(this.canvas);
         this.listeners = [];
@@ -467,6 +814,7 @@ class DiagramController {
         this.listen(root, 'pointerup', (e) => this.onPointerUp(e));
         this.listen(root, 'pointercancel', (e) => this.onPointerCancel(e));
         this.listen(root, 'lostpointercapture', (e) => this.onPointerCancel(e));
+        this.listen(root, 'pointerleave', () => this.clearHover());
         this.listen(root, 'keydown', (e) => this.onKeyDown(e));
         this.listen(root, 'keyup', (e) => this.onKeyUp(e));
         this.listen(root, 'blur', () => this.setSpace(false));
@@ -486,6 +834,19 @@ class DiagramController {
 
     setOptions(options) {
         this.options = options;
+        this.gridKey = '';
+        this.updateGrid();
+        this.drawSelection();
+    }
+
+    setSchema(schema) {
+        this.schema = {
+            list: schema.types,
+            types: new Map(schema.types.map((t) => [t.name, t])),
+            linkTypes: new Map(schema.linkTypes.map((t) => [t.name, t])),
+            defaultLinkType: schema.defaultLinkType ?? schema.linkTypes[0]?.name ?? null,
+            reasons: schema.reasons ?? {},
+        };
     }
 
     setTable(table) {
@@ -498,9 +859,22 @@ class DiagramController {
         this.pruneSelection();
     }
 
+    reasonText(kind) {
+        return this.schema.reasons[kind] ?? kind;
+    }
+
     point(event) {
         const rect = this.root.getBoundingClientRect();
         return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+
+    toWorld(point) {
+        return { x: (point.x - this.view.x) / this.view.zoom, y: (point.y - this.view.y) / this.view.zoom };
+    }
+
+    visibleArea() {
+        const { x, y, zoom } = this.view;
+        return { x: -x / zoom, y: -y / zoom, w: this.size.width / zoom, h: this.size.height / zoom };
     }
 
     element(id) {
@@ -513,7 +887,51 @@ class DiagramController {
         for (const viewport of this.viewports) {
             viewport.setAttribute('transform', transform);
         }
-        this.drawSelection();
+        this.updateGrid();
+        if (this.drawnZoom !== zoom) {
+            this.drawSelection();
+        }
+    }
+
+    updateGrid() {
+        if (!this.gridLayer) {
+            return;
+        }
+        if (!this.options.gridVisible) {
+            if (this.gridKey !== 'off') {
+                this.gridLayer.replaceChildren();
+                this.gridKey = 'off';
+            }
+            return;
+        }
+        const zoom = this.view.zoom;
+        let spacing = this.options.gridSize > 0 ? this.options.gridSize : 10;
+        while (spacing * zoom < GRID_MINIMUM) {
+            spacing *= 2;
+        }
+        const key = `${this.options.gridStyle}:${spacing}:${zoom}`;
+        if (key !== this.gridKey) {
+            this.gridKey = key;
+            const id = `mussel-diagram-${this.uid}-grid`;
+            const size = spacing * 4;
+            const pattern = svg('pattern', { id, width: size, height: size, patternUnits: 'userSpaceOnUse' });
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; (j < 4) && (this.options.gridStyle !== 'lines'); j++) {
+                    pattern.append(svg('circle', { class: (i === 0) && (j === 0) ? 'mussel-diagram-grid-major' : 'mussel-diagram-grid-minor', cx: i * spacing, cy: j * spacing, r: 1 / zoom }));
+                }
+                if (this.options.gridStyle === 'lines') {
+                    const major = i === 0 ? 'mussel-diagram-grid-major' : 'mussel-diagram-grid-minor';
+                    pattern.append(svg('path', { class: major, d: `M${i * spacing},0V${size}M0,${i * spacing}H${size}`, 'stroke-width': 1 / zoom }));
+                }
+            }
+            this.gridRect = svg('rect', { class: 'mussel-diagram-grid-fill', fill: `url(#${id})` });
+            this.gridLayer.replaceChildren(pattern, this.gridRect);
+        }
+        const area = this.visibleArea();
+        this.gridRect.setAttribute('x', String(area.x));
+        this.gridRect.setAttribute('y', String(area.y));
+        this.gridRect.setAttribute('width', String(area.w));
+        this.gridRect.setAttribute('height', String(area.h));
     }
 
     notifyViewport() {
@@ -537,7 +955,7 @@ class DiagramController {
     }
 
     onWheel(event) {
-        if (event.target.closest?.('.mussel-diagram-nowheel')) {
+        if (event.target.closest?.('.mussel-diagram-nowheel, .mussel-diagram-picker')) {
             return;
         }
         event.preventDefault();
@@ -601,13 +1019,47 @@ class DiagramController {
         }
         const id = target.getAttribute('data-id');
         if (this.table.boxes.has(id)) {
-            return { id, box: true };
+            return { kind: 'element', id, box: true };
         }
-        return this.table.links.has(id) ? { id, box: false } : null;
+        return this.table.links.has(id) ? { kind: 'element', id, box: false } : null;
+    }
+
+    pressTarget(event) {
+        const target = event.target;
+        if (this.overlay?.contains(target)) {
+            const handle = target.closest('[data-handle]');
+            if (handle) {
+                return { kind: 'handle', id: handle.getAttribute('data-id'), handle: handle.getAttribute('data-handle') };
+            }
+            const end = target.closest('[data-end]');
+            if (end) {
+                return { kind: 'end', id: end.getAttribute('data-id'), side: end.getAttribute('data-end') };
+            }
+            const arrow = target.closest('[data-arrow]');
+            if (arrow) {
+                return { kind: 'arrow', id: arrow.getAttribute('data-id'), side: arrow.getAttribute('data-arrow') };
+            }
+        }
+        const port = target.closest?.('.mussel-diagram-port');
+        if (port && this.canvas.contains(port) && this.options.connectEnabled) {
+            const id = port.closest(ELEMENT_SELECTOR)?.getAttribute('data-id');
+            const box = this.table.boxes.get(id);
+            const definition = findPort(box, port.getAttribute('data-port'));
+            if (box?.connectable && definition && (definition.direction !== 'in')) {
+                return { kind: 'port', id, port: definition.id };
+            }
+        }
+        return this.hit(event) ?? { kind: 'background' };
     }
 
     onPointerDown(event) {
         this.hideReason();
+        if (this.picker) {
+            if (this.picker.element.contains(event.target)) {
+                return;
+            }
+            this.closePicker();
+        }
         this.root.focus({ preventScroll: true });
         const panButton = (event.button === 1) || ((event.button === 0) && this.spaceDown);
         if (panButton) {
@@ -624,12 +1076,16 @@ class DiagramController {
             return;
         }
         this.root.setPointerCapture(event.pointerId);
+        const point = this.point(event);
         this.press = {
             pointerId: event.pointerId,
-            hit: this.hit(event),
+            hit: this.pressTarget(event),
             x: event.clientX,
             y: event.clientY,
+            point,
+            world: this.toWorld(point),
             toggle: event.shiftKey || event.ctrlKey || event.metaKey,
+            shift: event.shiftKey,
             threshold: event.pointerType === 'touch' ? TOUCH_THRESHOLD : MOUSE_THRESHOLD,
         };
     }
@@ -643,6 +1099,9 @@ class DiagramController {
             return;
         }
         if (this.press?.pointerId !== event.pointerId) {
+            if (!this.press && !this.drag && !this.pan) {
+                this.updateHover(event);
+            }
             return;
         }
         if (!this.drag) {
@@ -650,16 +1109,11 @@ class DiagramController {
             if ((distance < this.press.threshold) || !this.startDrag(this.press)) {
                 return;
             }
+            this.clearHover();
         }
-        this.drag.dx = (event.clientX - this.press.x) / this.view.zoom;
-        this.drag.dy = (event.clientY - this.press.y) / this.view.zoom;
         this.drag.point = this.point(event);
-        if (!this.frameRequest) {
-            this.frameRequest = requestAnimationFrame(() => {
-                this.frameRequest = 0;
-                this.renderDrag();
-            });
-        }
+        this.drag.alt = event.altKey;
+        this.requestFrame();
     }
 
     onPointerUp(event) {
@@ -675,6 +1129,8 @@ class DiagramController {
         const press = this.press;
         this.press = null;
         if (this.drag) {
+            this.drag.point = this.point(event);
+            this.drag.alt = event.altKey;
             this.finishDrag();
         } else {
             this.click(press);
@@ -694,12 +1150,21 @@ class DiagramController {
     }
 
     click(press) {
-        if (!this.options.selectionEnabled) {
+        const hit = press.hit;
+        if ((hit.kind === 'port') || (hit.kind === 'arrow')) {
+            const box = this.table.boxes.get(hit.id);
+            const port = findPort(box, hit.port);
+            const side = hit.kind === 'arrow' ? hit.side : port?.side;
+            if (box && side) {
+                this.openPicker({ element: hit.id, port: hit.port ?? null }, { kind: 'beside', box, side, port }, press.point);
+            }
             return;
         }
-        const hit = press.hit;
-        const selectable = hit && (hit.box ? this.table.boxes.get(hit.id)?.selectable : this.table.links.get(hit.id)?.selectable);
-        if (!hit || !selectable) {
+        if ((hit.kind === 'handle') || (hit.kind === 'end') || !this.options.selectionEnabled) {
+            return;
+        }
+        const selectable = (hit.kind === 'element') && (hit.box ? this.table.boxes.get(hit.id)?.selectable : this.table.links.get(hit.id)?.selectable);
+        if (!selectable) {
             if (!press.toggle) {
                 this.setSelection([]);
             }
@@ -759,40 +1224,407 @@ class DiagramController {
         if (!this.overlay) {
             return;
         }
-        if (!this.drag) {
+        const zoom = this.view.zoom;
+        this.drawnZoom = zoom;
+        const drag = this.drag;
+        if (!drag) {
             this.markSelection();
         }
-        const pad = SELECTION_PADDING / this.view.zoom;
+        const pad = SELECTION_PADDING / zoom;
         const frames = [];
+        const handles = [];
         for (const id of this.selection) {
             const box = this.table.boxes.get(id);
-            if (!box || (box.kind === 'overlay')) {
+            if (!box) {
+                const link = this.table.links.get(id);
+                if (link && !drag && link.connectable && this.options.connectEnabled) {
+                    handles.push(...this.endHandles(link));
+                }
                 continue;
             }
-            const moved = this.drag?.moving.has(id) && this.drag.live;
-            const rect = document.createElementNS(SVG_NS, 'rect');
-            rect.setAttribute('class', 'mussel-diagram-selection');
-            rect.setAttribute('x', String((box.x + (moved ? this.drag.dx : 0)) - pad));
-            rect.setAttribute('y', String((box.y + (moved ? this.drag.dy : 0)) - pad));
-            rect.setAttribute('width', String(box.w + (pad * 2)));
-            rect.setAttribute('height', String(box.h + (pad * 2)));
-            frames.push(rect);
+            if (box.kind === 'overlay') {
+                continue;
+            }
+            const moved = (drag?.kind === 'move') && drag.moving.has(id) && drag.live;
+            frames.push(svg('rect', {
+                class: 'mussel-diagram-selection',
+                x: (box.x + (moved ? drag.dx : 0)) - pad,
+                y: (box.y + (moved ? drag.dy : 0)) - pad,
+                width: box.w + (pad * 2),
+                height: box.h + (pad * 2),
+            }));
+            if (!drag && box.resizable && this.options.resizeEnabled) {
+                handles.push(...this.resizeHandles(box));
+            }
         }
-        if (this.drag && !this.drag.live) {
-            const { bounds } = this.drag;
-            const frame = document.createElementNS(SVG_NS, 'rect');
-            frame.setAttribute('class', 'mussel-diagram-drag-frame');
-            frame.setAttribute('x', String(bounds.x + this.drag.dx));
-            frame.setAttribute('y', String(bounds.y + this.drag.dy));
-            frame.setAttribute('width', String(bounds.w));
-            frame.setAttribute('height', String(bounds.h));
-            frames.push(frame);
+        if ((drag?.kind === 'move') && !drag.live) {
+            const { bounds } = drag;
+            frames.push(svg('rect', { class: 'mussel-diagram-drag-frame', x: bounds.x + drag.dx, y: bounds.y + drag.dy, width: bounds.w, height: bounds.h }));
         }
-        this.overlay.replaceChildren(...frames);
+        this.layers.selection.replaceChildren(...frames);
+        this.layers.handles.replaceChildren(...handles, ...this.arrowElements());
+    }
+
+    resizeHandles(box) {
+        const size = HANDLE_SIZE / this.view.zoom;
+        return HANDLES.map((handle) => {
+            const x = handle.includes('w') ? box.x : (handle.includes('e') ? box.x + box.w : box.x + (box.w / 2));
+            const y = handle.includes('n') ? box.y : (handle.includes('s') ? box.y + box.h : box.y + (box.h / 2));
+            return svg('rect', {
+                class: `mussel-diagram-handle mussel-diagram-handle-${handle}`,
+                'data-id': box.id,
+                'data-handle': handle,
+                x: x - (size / 2),
+                y: y - (size / 2),
+                width: size,
+                height: size,
+            });
+        });
+    }
+
+    endHandles(link) {
+        const source = this.table.boxes.get(link.source);
+        const target = this.table.boxes.get(link.target);
+        if (!source?.connectable || !target?.connectable) {
+            return [];
+        }
+        const { start, end } = linkAnchors(link, source, target);
+        const radius = HANDLE_SIZE / 2 / this.view.zoom;
+        return [['source', start], ['target', end]].map(([side, point]) => svg('circle', {
+            class: 'mussel-diagram-handle mussel-diagram-end-handle',
+            'data-id': link.id,
+            'data-end': side,
+            cx: point.x,
+            cy: point.y,
+            r: radius,
+        }));
+    }
+
+    arrowElements() {
+        if (!this.hover?.shown) {
+            return [];
+        }
+        const box = this.table.boxes.get(this.hover.id);
+        if (!box) {
+            return [];
+        }
+        const offset = ARROW_OFFSET / this.view.zoom;
+        const size = ARROW_SIZE / this.view.zoom;
+        return SIDES.map((side) => {
+            const base = portPosition(box, side, 0.5, offset);
+            const tip = stepOut(base, side, size);
+            const across = isHorizontal(side) ? { x: 0, y: size } : { x: size, y: 0 };
+            const d = `M${tip.x},${tip.y}L${base.x + across.x},${base.y + across.y}L${base.x - across.x},${base.y - across.y}Z`;
+            return svg('path', { class: 'mussel-diagram-arrow', 'data-id': box.id, 'data-arrow': side, d });
+        });
+    }
+
+    boxAt(point, filter) {
+        let best = null;
+        let bestDepth = -1;
+        for (const box of this.table.boxes.values()) {
+            if ((box.kind === 'overlay') || !contains(box, point) || (filter && !filter(box))) {
+                continue;
+            }
+            const depth = (box.kind === 'node' ? 100000 : 0) + this.table.ancestors(box.id).length;
+            if (depth >= bestDepth) {
+                best = box;
+                bestDepth = depth;
+            }
+        }
+        return best;
+    }
+
+    hitBoxAt(point, filter) {
+        const edge = (SELECTION_PADDING + 2) / this.view.zoom;
+        return this.boxAt(point, (box) => {
+            if (filter && !filter(box)) {
+                return false;
+            }
+            if (box.kind === 'node') {
+                return true;
+            }
+            const header = this.schema.types.get(box.type)?.padding?.[1] ?? 0;
+            return (point.x - box.x <= edge) || (box.x + box.w - point.x <= edge) || (point.y - box.y <= Math.max(edge, header)) || (box.y + box.h - point.y <= edge);
+        });
+    }
+
+    updateHover(event) {
+        if (!this.options.connectEnabled || this.waiting) {
+            this.clearHover();
+            return;
+        }
+        const world = this.toWorld(this.point(event));
+        const current = this.hover ? this.table.boxes.get(this.hover.id) : null;
+        if (current) {
+            const margin = (ARROW_OFFSET + (ARROW_SIZE * 2)) / this.view.zoom;
+            if (contains({ x: current.x - margin, y: current.y - margin, w: current.w + (margin * 2), h: current.h + (margin * 2) }, world)) {
+                return;
+            }
+        }
+        const box = this.hitBoxAt(world, (b) => b.whole && b.connectable);
+        if (box?.id === this.hover?.id) {
+            return;
+        }
+        this.clearHover();
+        if (box) {
+            this.hover = { id: box.id, shown: false, timer: setTimeout(() => this.showArrows(), ARROW_DELAY) };
+        }
+    }
+
+    showArrows() {
+        if (!this.hover || this.drag || this.press) {
+            return;
+        }
+        this.hover.shown = true;
+        this.drawSelection();
+    }
+
+    clearHover() {
+        if (!this.hover) {
+            return;
+        }
+        clearTimeout(this.hover.timer);
+        const shown = this.hover.shown;
+        this.hover = null;
+        if (shown) {
+            this.drawSelection();
+        }
+    }
+
+    requestFrame() {
+        if (!this.frameRequest) {
+            this.frameRequest = requestAnimationFrame(() => {
+                this.frameRequest = 0;
+                this.renderDrag();
+            });
+        }
+    }
+
+    edgeSpeed(point) {
+        if (!this.options.panEnabled) {
+            return { x: 0, y: 0 };
+        }
+        const axis = (value, size) => {
+            if (value < EDGE_ZONE) {
+                return -EDGE_SPEED * Math.min(1, (EDGE_ZONE - value) / EDGE_ZONE);
+            }
+            if (value > size - EDGE_ZONE) {
+                return EDGE_SPEED * Math.min(1, (value - (size - EDGE_ZONE)) / EDGE_ZONE);
+            }
+            return 0;
+        };
+        return { x: axis(point.x, this.size.width), y: axis(point.y, this.size.height) };
     }
 
     startDrag(press) {
-        if (!press.hit?.box || !this.options.moveEnabled || this.waiting) {
+        const hit = press.hit;
+        const editing = hit.kind !== 'background';
+        if (editing && this.waiting) {
+            return false;
+        }
+        let started = false;
+        switch (hit.kind) {
+            case 'element':
+                started = hit.box && this.startMove(press);
+                break;
+            case 'handle':
+                started = this.startResize(press);
+                break;
+            case 'port':
+                started = this.startConnect(press, { element: hit.id, port: hit.port }, null);
+                break;
+            case 'arrow':
+                started = this.startConnect(press, { element: hit.id, port: null }, hit.side);
+                break;
+            case 'end':
+                started = this.startReconnect(press);
+                break;
+            default:
+                started = this.startBoxSelection(press);
+                break;
+        }
+        if (started) {
+            this.drag.point = press.point;
+            this.root.classList.add('mussel-diagram-dragging');
+        }
+        return started;
+    }
+
+    renderDrag() {
+        const drag = this.drag;
+        if (!drag) {
+            return;
+        }
+        const speed = this.edgeSpeed(drag.point);
+        if ((speed.x !== 0) || (speed.y !== 0)) {
+            this.view = { ...this.view, x: this.view.x - speed.x, y: this.view.y - speed.y };
+            this.applyView();
+            this.requestFrame();
+        }
+        drag.world = this.toWorld(drag.point);
+        switch (drag.kind) {
+            case 'move':
+                this.updateMove(drag);
+                break;
+            case 'resize':
+                this.updateResize(drag);
+                break;
+            case 'connect':
+            case 'reconnect':
+                this.updateConnect(drag);
+                break;
+            default:
+                this.updateBoxSelection(drag);
+                break;
+        }
+    }
+
+    finishDrag() {
+        const drag = this.drag;
+        if (!drag) {
+            return;
+        }
+        cancelAnimationFrame(this.frameRequest);
+        this.frameRequest = 0;
+        drag.world = this.toWorld(drag.point);
+        switch (drag.kind) {
+            case 'move':
+                this.updateMove(drag);
+                break;
+            case 'resize':
+                this.updateResize(drag);
+                break;
+            case 'connect':
+            case 'reconnect':
+                this.updateConnect(drag);
+                break;
+            default:
+                break;
+        }
+        this.root.classList.remove('mussel-diagram-dragging', 'mussel-diagram-connecting');
+        this.drag = null;
+        this.clearMarks();
+        this.layers.guides.replaceChildren();
+        this.layers.candidates.replaceChildren();
+        this.hideReason();
+        switch (drag.kind) {
+            case 'move':
+                this.finishMove(drag);
+                break;
+            case 'resize':
+                this.finishResize(drag);
+                break;
+            case 'connect':
+            case 'reconnect':
+                this.finishConnect(drag);
+                break;
+            default:
+                this.finishBoxSelection(drag);
+                break;
+        }
+        this.drawSelection();
+    }
+
+    cancelDrag() {
+        const drag = this.drag;
+        if (!drag) {
+            return;
+        }
+        cancelAnimationFrame(this.frameRequest);
+        this.frameRequest = 0;
+        restore(drag.saved ?? new Map());
+        this.drag = null;
+        this.root.classList.remove('mussel-diagram-dragging', 'mussel-diagram-connecting');
+        this.clearMarks();
+        this.layers.guides.replaceChildren();
+        this.layers.candidates.replaceChildren();
+        this.layers.preview.replaceChildren();
+        this.hideReason();
+        this.drawSelection();
+    }
+
+    save(saved, element, attribute) {
+        if (!element) {
+            return;
+        }
+        let entry = saved.get(element);
+        if (!entry) {
+            entry = new Map();
+            saved.set(element, entry);
+        }
+        if (!entry.has(attribute)) {
+            entry.set(attribute, element.getAttribute(attribute));
+        }
+    }
+
+    mark(element, attribute) {
+        if (element && !element.hasAttribute(attribute)) {
+            element.setAttribute(attribute, '');
+            this.marks.push([element, attribute]);
+        }
+    }
+
+    clearMarks() {
+        for (const [element, attribute] of this.marks) {
+            element.removeAttribute(attribute);
+        }
+        this.marks = [];
+    }
+
+    snapLines(excluded) {
+        if (!this.options.snapToElements) {
+            return { x: [], y: [] };
+        }
+        const area = this.visibleArea();
+        const boxes = [];
+        for (const box of this.table.boxes.values()) {
+            if ((box.kind === 'overlay') || excluded.has(box.id)) {
+                continue;
+            }
+            if ((box.x + box.w < area.x) || (box.x > area.x + area.w) || (box.y + box.h < area.y) || (box.y > area.y + area.h)) {
+                continue;
+            }
+            boxes.push(box);
+        }
+        return collectLines(boxes);
+    }
+
+    snapAxisOrGrid(lines, values, anchor, alt) {
+        if (alt) {
+            return { delta: 0, line: null };
+        }
+        const element = this.options.snapToElements ? snapAxis(lines, values, this.options.snapTolerance / this.view.zoom) : null;
+        if (element) {
+            return { delta: element.delta, line: element.value };
+        }
+        if (this.options.snapToGrid && (anchor !== null)) {
+            return { delta: gridSnap(anchor, this.options.gridSize) - anchor, line: null };
+        }
+        return { delta: 0, line: null };
+    }
+
+    drawGuides(drag, rect) {
+        const guides = [];
+        if (!drag.alt) {
+            const xs = [rect.x, rect.x + (rect.w / 2), rect.x + rect.w];
+            const ys = [rect.y, rect.y + (rect.h / 2), rect.y + rect.h];
+            for (const line of drag.snappedX ? matchingLines(drag.lines.x, xs) : []) {
+                const top = Math.min(rect.y, line.box.y);
+                const bottom = Math.max(rect.y + rect.h, line.box.y + line.box.h);
+                guides.push(svg('line', { class: 'mussel-diagram-guide', x1: line.value, y1: top, x2: line.value, y2: bottom }));
+            }
+            for (const line of drag.snappedY ? matchingLines(drag.lines.y, ys) : []) {
+                const left = Math.min(rect.x, line.box.x);
+                const right = Math.max(rect.x + rect.w, line.box.x + line.box.w);
+                guides.push(svg('line', { class: 'mussel-diagram-guide', x1: left, y1: line.value, x2: right, y2: line.value }));
+            }
+        }
+        this.layers.guides.replaceChildren(...guides);
+    }
+
+    startMove(press) {
+        if (!this.options.moveEnabled) {
             return false;
         }
         if (!this.selection.has(press.hit.id)) {
@@ -809,43 +1641,109 @@ class DiagramController {
         const live = moving.size <= this.options.livePreviewLimit;
         const links = this.table.linksOf(moving);
         const boxes = [...moving].map((id) => this.table.boxes.get(id)).filter((b) => b && (b.kind !== 'overlay'));
+        if (boxes.length === 0) {
+            return false;
+        }
         const left = Math.min(...boxes.map((b) => b.x));
         const top = Math.min(...boxes.map((b) => b.y));
         const bounds = { x: left, y: top, w: Math.max(...boxes.map((b) => b.x + b.w)) - left, h: Math.max(...boxes.map((b) => b.y + b.h)) - top };
-        this.drag = { roots, moving, live, links, bounds, dx: 0, dy: 0, point: null, saved: new Map(), base: this.table.version, queued: this.pending.length > 0, elements: new Map(), paths: new Map() };
+        const pressed = this.table.boxes.get(press.hit.id);
+        const anchor = pressed && moving.has(pressed.id) ? { x: pressed.x, y: pressed.y } : { x: bounds.x, y: bounds.y };
+        const excluded = new Set(moving);
+        for (const id of roots) {
+            for (const ancestor of this.table.ancestors(id)) {
+                excluded.add(ancestor);
+            }
+        }
+        const rootBoxes = roots.map((id) => this.table.boxes.get(id));
+        const parents = new Set(rootBoxes.map((b) => b.parent ?? null));
+        const types = rootBoxes.map((b) => this.schema.types.get(b.type));
+        const canReparent = (parents.size === 1) && rootBoxes.every((b, i) => (b.kind !== 'overlay') && b.registered && !types[i]?.stay);
+        const stays = rootBoxes.filter((b, i) => types[i]?.stay && b.parent).map((b) => ({ box: b, parent: this.table.boxes.get(b.parent) })).filter((x) => x.parent && !this.schema.types.get(x.parent.type)?.content);
+        this.drag = {
+            kind: 'move',
+            roots,
+            moving,
+            live,
+            links,
+            bounds,
+            anchor,
+            lines: this.snapLines(excluded),
+            canReparent,
+            parent: canReparent ? [...parents][0] : undefined,
+            rootTypes: rootBoxes.map((b) => b.type),
+            stays,
+            startWorld: press.world,
+            dx: 0,
+            dy: 0,
+            saved: new Map(),
+            base: this.table.version,
+            queued: this.pending.length > 0,
+            elements: new Map(),
+            paths: new Map(),
+            target: undefined,
+        };
         for (const id of moving) {
             const element = this.element(id);
             if (element) {
                 this.drag.elements.set(id, element);
-                this.save(element, 'transform');
+                this.save(this.drag.saved, element, 'transform');
             }
         }
         for (const link of links) {
-            const paths = [...(this.element(link.id)?.querySelectorAll('path') ?? [])];
+            const element = this.element(link.id);
+            const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line') };
             this.drag.paths.set(link.id, paths);
-            for (const path of paths) {
-                this.save(path, 'd');
-            }
+            this.save(this.drag.saved, paths.hit, 'd');
+            this.save(this.drag.saved, paths.line, 'd');
         }
-        this.root.classList.add('mussel-diagram-dragging');
         return true;
     }
 
-    save(element, attribute) {
-        if (element && !this.drag.saved.has(element)) {
-            this.drag.saved.set(element, { attribute, value: element.getAttribute(attribute) });
+    updateMove(drag) {
+        let dx = drag.world.x - drag.startWorld.x;
+        let dy = drag.world.y - drag.startWorld.y;
+        const rect = { x: drag.bounds.x + dx, y: drag.bounds.y + dy, w: drag.bounds.w, h: drag.bounds.h };
+        const snapX = this.snapAxisOrGrid(drag.lines.x, [rect.x, rect.x + (rect.w / 2), rect.x + rect.w], drag.anchor.x + dx, drag.alt);
+        const snapY = this.snapAxisOrGrid(drag.lines.y, [rect.y, rect.y + (rect.h / 2), rect.y + rect.h], drag.anchor.y + dy, drag.alt);
+        dx += snapX.delta;
+        dy += snapY.delta;
+        for (const { box, parent } of drag.stays) {
+            const padding = this.schema.types.get(parent.type)?.padding ?? [0, 0, 0, 0];
+            const minX = parent.x + padding[0] - box.x;
+            const maxX = parent.x + parent.w - padding[2] - box.x - box.w;
+            const minY = parent.y + padding[1] - box.y;
+            const maxY = parent.y + parent.h - padding[3] - box.y - box.h;
+            dx = Math.min(Math.max(dx, minX), Math.max(minX, maxX));
+            dy = Math.min(Math.max(dy, minY), Math.max(minY, maxY));
         }
-    }
-
-    renderDrag() {
-        const drag = this.drag;
-        if (!drag) {
-            return;
-        }
+        drag.dx = dx;
+        drag.dy = dy;
+        drag.snappedX = snapX.line !== null;
+        drag.snappedY = snapY.line !== null;
         if (drag.live) {
             this.placeMoved(drag);
         }
+        this.updateDropTarget(drag);
+        this.drawGuides(drag, { x: drag.bounds.x + dx, y: drag.bounds.y + dy, w: drag.bounds.w, h: drag.bounds.h });
         this.drawSelection();
+    }
+
+    updateDropTarget(drag) {
+        if (!drag.canReparent) {
+            drag.target = undefined;
+            return;
+        }
+        const group = this.boxAt(drag.world, (box) => (box.kind === 'group') && !drag.moving.has(box.id) && drag.rootTypes.every((type) => canNest(this.schema, type, box)));
+        const target = group?.id ?? null;
+        if (target === drag.target) {
+            return;
+        }
+        drag.target = target;
+        this.clearMarks();
+        if ((target !== null) && (target !== drag.parent)) {
+            this.mark(this.element(target), 'data-drop-target');
+        }
     }
 
     placeMoved(drag) {
@@ -860,62 +1758,600 @@ class DiagramController {
             }
         }
         for (const link of drag.links) {
-            const source = moved(link.source);
-            const target = moved(link.target);
-            const paths = drag.paths.get(link.id) ?? [];
-            if (!source || !target || (paths.length === 0)) {
-                continue;
-            }
-            const path = toPath(routeLink(link, source, target));
-            for (const line of paths) {
-                line.setAttribute('d', path);
-            }
+            this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id));
         }
     }
 
-    finishDrag() {
-        const drag = this.drag;
-        if (!drag) {
+    drawLink(link, source, target, paths) {
+        if (!source || !target || !paths) {
             return;
         }
-        cancelAnimationFrame(this.frameRequest);
-        this.frameRequest = 0;
-        this.root.classList.remove('mussel-diagram-dragging');
+        const points = routeLink(link, source, target);
+        paths.hit?.setAttribute('d', toPath(points, link.form));
+        paths.line?.setAttribute('d', toPath(points, link.form, link.sourceCut, link.targetCut));
+    }
+
+    finishMove(drag) {
         if ((drag.dx === 0) && (drag.dy === 0)) {
-            this.drag = null;
-            this.drawSelection();
+            restore(drag.saved);
             return;
         }
         this.placeMoved(drag);
+        const reparent = drag.canReparent && (drag.target !== undefined) && (drag.target !== drag.parent);
+        const parentId = reparent ? drag.target : null;
         const previous = new Map();
         for (const id of drag.moving) {
             const box = this.table.boxes.get(id);
             if (box) {
                 previous.set(id, box);
-                this.table.boxes.set(id, { ...box, x: box.x + drag.dx, y: box.y + drag.dy });
+                const parent = reparent && drag.roots.includes(id) ? parentId : box.parent;
+                this.table.boxes.set(id, { ...box, x: box.x + drag.dx, y: box.y + drag.dy, parent });
             }
         }
-        this.drag = null;
-        this.drawSelection();
-        const entry = { saved: drag.saved, previous, version: null, elements: [...drag.saved.keys()] };
+        if (reparent) {
+            this.table.index();
+        }
+        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, this.baseOf(drag), this.rejections));
+    }
+
+    startResize(press) {
+        const box = this.table.boxes.get(press.hit.id);
+        if (!box?.resizable || !this.options.resizeEnabled) {
+            return false;
+        }
+        const type = this.schema.types.get(box.type);
+        const excluded = new Set([box.id, ...this.table.ancestors(box.id), ...this.table.descendants(box.id)]);
+        const links = this.table.linksOf([box.id]);
+        const drag = {
+            kind: 'resize',
+            id: box.id,
+            box,
+            handle: press.hit.handle,
+            limits: {
+                minW: type?.minW ?? MIN_SIZE,
+                minH: type?.minH ?? MIN_SIZE,
+                inner: box.kind === 'group' ? this.table.innerBounds(box.id, type?.padding) : null,
+            },
+            lines: this.snapLines(excluded),
+            links,
+            paths: new Map(),
+            saved: new Map(),
+            startWorld: press.world,
+            rect: { x: box.x, y: box.y, w: box.w, h: box.h },
+            base: this.table.version,
+            queued: this.pending.length > 0,
+        };
+        for (const link of links) {
+            const element = this.element(link.id);
+            const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line') };
+            drag.paths.set(link.id, paths);
+            this.save(drag.saved, paths.hit, 'd');
+            this.save(drag.saved, paths.line, 'd');
+        }
+        this.drag = drag;
+        return true;
+    }
+
+    updateResize(drag) {
+        const dx = drag.world.x - drag.startWorld.x;
+        const dy = drag.world.y - drag.startWorld.y;
+        const edges = resizeEdges(drag.box, drag.handle, dx, dy);
+        drag.snappedX = false;
+        drag.snappedY = false;
+        const snapEdge = (lines, value) => this.snapAxisOrGrid(lines, [value], value, drag.alt);
+        for (const [name, axis] of [['left', 'x'], ['right', 'x'], ['top', 'y'], ['bottom', 'y']]) {
+            const moving = { left: 'w', right: 'e', top: 'n', bottom: 's' }[name];
+            if (!drag.handle.includes(moving)) {
+                continue;
+            }
+            const snap = snapEdge(drag.lines[axis], edges[name]);
+            edges[name] += snap.delta;
+            if (snap.line !== null) {
+                drag[axis === 'x' ? 'snappedX' : 'snappedY'] = true;
+            }
+        }
+        drag.rect = limitResize(edges, drag.handle, drag.limits);
+        const resized = { ...drag.box, ...drag.rect };
+        for (const link of drag.links) {
+            const source = link.source === drag.id ? resized : this.table.boxes.get(link.source);
+            const target = link.target === drag.id ? resized : this.table.boxes.get(link.target);
+            this.drawLink(link, source, target, drag.paths.get(link.id));
+        }
+        this.drawGuides(drag, drag.rect);
+        this.layers.preview.replaceChildren(svg('rect', { class: 'mussel-diagram-resize-frame', x: drag.rect.x, y: drag.rect.y, width: drag.rect.w, height: drag.rect.h }));
+    }
+
+    finishResize(drag) {
+        const { rect, box } = drag;
+        this.layers.preview.replaceChildren();
+        if ((rect.x === box.x) && (rect.y === box.y) && (rect.w === box.w) && (rect.h === box.h)) {
+            restore(drag.saved);
+            return;
+        }
+        const frame = svg('rect', { class: 'mussel-diagram-resize-frame', x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+        this.layers.pending.append(frame);
+        const previous = new Map([[box.id, box]]);
+        this.table.boxes.set(box.id, { ...box, ...rect });
+        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, this.baseOf(drag), this.rejections));
+    }
+
+    connectionTargets(check) {
+        const area = this.visibleArea();
+        const margin = Math.max(area.w, area.h) / 2;
+        const targets = [];
+        for (const box of this.table.boxes.values()) {
+            if ((box.kind === 'overlay') || !box.registered || (box.x + box.w < area.x - margin) || (box.x > area.x + area.w + margin) || (box.y + box.h < area.y - margin) || (box.y > area.y + area.h + margin)) {
+                continue;
+            }
+            for (const port of box.ports ?? []) {
+                if (!check({ element: box.id, port: port.id })) {
+                    targets.push({ box, port });
+                }
+            }
+            if (box.whole && !check({ element: box.id, port: null })) {
+                targets.push({ box, port: null });
+            }
+        }
+        return targets;
+    }
+
+    linkTypeFor(from) {
+        const box = this.table.boxes.get(from.element);
+        return findPort(box, from.port)?.linkType ?? this.options.linkType ?? this.schema.defaultLinkType;
+    }
+
+    startConnect(press, from, side) {
+        const box = this.table.boxes.get(from.element);
+        if (!this.options.connectEnabled || !box?.connectable || (!from.port && !box.whole)) {
+            return false;
+        }
+        const linkType = this.linkTypeFor(from);
+        const check = (target) => checkConnection(this.table, this.schema, from, target, linkType, null);
+        this.drag = {
+            kind: 'connect',
+            from,
+            side,
+            linkType,
+            check,
+            targets: this.connectionTargets(check),
+            target: null,
+            saved: new Map(),
+            base: this.table.version,
+            queued: this.pending.length > 0,
+        };
+        this.root.classList.add('mussel-diagram-connecting');
+        this.drawCandidates(this.drag);
+        return true;
+    }
+
+    startReconnect(press) {
+        const link = this.table.links.get(press.hit.id);
+        if (!link?.connectable || !this.options.connectEnabled) {
+            return false;
+        }
+        const side = press.hit.side;
+        const fixed = side === 'source' ? { element: link.target, port: link.targetPort ?? null } : { element: link.source, port: link.sourcePort ?? null };
+        const check = (end) => (side === 'source'
+            ? checkConnection(this.table, this.schema, end, fixed, link.type, link.id)
+            : checkConnection(this.table, this.schema, fixed, end, link.type, link.id));
+        const element = this.element(link.id);
+        this.drag = {
+            kind: 'reconnect',
+            link,
+            side,
+            fixed,
+            linkType: link.type,
+            check,
+            targets: this.connectionTargets(check),
+            target: null,
+            element,
+            saved: new Map(),
+            base: this.table.version,
+            queued: this.pending.length > 0,
+        };
+        this.mark(element, 'data-reconnecting');
+        this.root.classList.add('mussel-diagram-connecting');
+        this.drawCandidates(this.drag);
+        return true;
+    }
+
+    drawCandidates(drag) {
+        const radius = (PORT_RADIUS + 2) / this.view.zoom;
+        const items = drag.targets.map((target) => (target.port
+            ? svg('circle', { class: 'mussel-diagram-candidate', ...this.portCenter(target), r: radius })
+            : svg('rect', { class: 'mussel-diagram-candidate', x: target.box.x, y: target.box.y, width: target.box.w, height: target.box.h })));
+        this.layers.candidates.replaceChildren(...items);
+    }
+
+    portCenter(target) {
+        const position = portPosition(target.box, target.port.side, target.port.ratio, target.port.offset);
+        return { cx: position.x, cy: position.y };
+    }
+
+    findTarget(drag, point) {
+        const radius = this.options.connectionRadius / this.view.zoom;
+        const exact = PORT_RADIUS / this.view.zoom;
+        let best = null;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (const target of drag.targets) {
+            if (!target.port) {
+                continue;
+            }
+            const position = portPosition(target.box, target.port.side, target.port.ratio, target.port.offset);
+            const distance = Math.hypot(position.x - point.x, position.y - point.y);
+            if (distance <= exact) {
+                return target;
+            }
+            if ((distance <= radius) && (distance < bestDistance)) {
+                best = target;
+                bestDistance = distance;
+            }
+        }
+        if (best) {
+            return best;
+        }
+        const wholes = new Map(drag.targets.filter((t) => !t.port).map((t) => [t.box.id, t]));
+        const box = this.hitBoxAt(point, (b) => wholes.has(b.id));
+        return box ? wholes.get(box.id) : null;
+    }
+
+    updateConnect(drag) {
+        const point = drag.world;
+        const target = this.findTarget(drag, point);
+        drag.target = target;
+        this.clearMarks();
+        this.hideReason();
+        const fromEnd = drag.kind === 'connect' ? drag.from : drag.fixed;
+        const fromBox = this.table.boxes.get(fromEnd.element);
+        const fromPort = findPort(fromBox, fromEnd.port);
+        let endAnchor;
+        if (target) {
+            const toward = fromPort ? portPosition(fromBox, fromPort.side, fromPort.ratio, fromPort.offset) : centerOf(fromBox);
+            endAnchor = anchorOf(target.box, target.port, toward);
+            if (target.port) {
+                this.mark(this.element(target.box.id)?.querySelector(`.mussel-diagram-port[data-port="${CSS.escape(target.port.id)}"]`), 'data-candidate');
+            } else {
+                this.mark(this.element(target.box.id), 'data-candidate');
+            }
+        } else {
+            endAnchor = { x: point.x, y: point.y, side: 'left' };
+            const under = this.hitBoxAt(point, (b) => b.id !== fromEnd.element);
+            if (under) {
+                const reason = drag.check({ element: under.id, port: null });
+                if (reason) {
+                    this.mark(this.element(under.id), 'data-not-allowed');
+                    this.showReason(this.reasonText(reason), drag.point, true);
+                }
+            }
+        }
+        const toward = target ? { x: endAnchor.x, y: endAnchor.y } : point;
+        const startAnchor = fromPort ? anchorOf(fromBox, fromPort, toward) : anchorOf(fromBox, null, toward);
+        if (!target) {
+            endAnchor.side = isHorizontal(startAnchor.side) ? (point.x >= startAnchor.x ? 'left' : 'right') : (point.y >= startAnchor.y ? 'top' : 'bottom');
+        }
+        const type = this.schema.linkTypes.get(drag.linkType) ?? DEFAULT_LINK_TYPE;
+        const sourceAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? endAnchor : startAnchor;
+        const targetAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? startAnchor : endAnchor;
+        const points = routeBetween(sourceAnchor, targetAnchor, type.form, type.stub);
+        drag.preview = svg('path', { class: 'mussel-diagram-preview-line', d: toPath(points, type.form, type.sourceCut, type.targetCut) });
+        this.layers.preview.replaceChildren(drag.preview);
+    }
+
+    finishConnect(drag) {
+        this.layers.preview.replaceChildren();
+        const target = drag.target;
+        if (!target) {
+            if (drag.kind === 'connect') {
+                const fromBox = this.table.boxes.get(drag.from.element);
+                const under = this.hitBoxAt(drag.world);
+                if (!under && fromBox) {
+                    this.openPicker(drag.from, { kind: 'point', point: drag.world }, drag.point);
+                }
+            }
+            this.clearMarks();
+            return;
+        }
+        const end = { element: target.box.id, port: target.port?.id ?? null };
+        if ((drag.kind === 'connect') && (end.element === drag.from.element) && (end.port === (drag.from.port ?? null))) {
+            return;
+        }
+        const overlays = drag.preview ? [drag.preview] : [];
+        for (const overlay of overlays) {
+            this.layers.pending.append(overlay);
+        }
+        if (drag.kind === 'connect') {
+            this.commit(drag, { saved: new Map(), previous: new Map(), overlays }, () => this.dotnet.invokeMethodAsync(
+                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.baseOf(drag), this.rejections));
+            return;
+        }
+        const link = drag.link;
+        const saved = new Map();
+        this.save(saved, drag.element, 'data-reconnecting');
+        drag.element?.setAttribute('data-reconnecting', '');
+        const previousLinks = new Map([[link.id, link]]);
+        this.table.links.set(link.id, drag.side === 'source' ? { ...link, source: end.element, sourcePort: end.port } : { ...link, target: end.element, targetPort: end.port });
+        this.table.index();
+        this.commit(drag, { saved, previous: new Map(), previousLinks, overlays, reconnecting: drag.element }, () => this.dotnet.invokeMethodAsync(
+            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, this.baseOf(drag), this.rejections));
+    }
+
+    startBoxSelection(press) {
+        if (!this.options.boxSelectionEnabled) {
+            return false;
+        }
+        this.drag = { kind: 'select', startWorld: press.world, additive: press.shift, base: press.shift ? new Set(this.selection) : new Set() };
+        return true;
+    }
+
+    selectionRect(drag) {
+        const x = Math.min(drag.startWorld.x, drag.world.x);
+        const y = Math.min(drag.startWorld.y, drag.world.y);
+        return { x, y, w: Math.abs(drag.world.x - drag.startWorld.x), h: Math.abs(drag.world.y - drag.startWorld.y) };
+    }
+
+    updateBoxSelection(drag) {
+        const rect = this.selectionRect(drag);
+        this.layers.preview.replaceChildren(svg('rect', { class: 'mussel-diagram-box-selection', x: rect.x, y: rect.y, width: rect.w, height: rect.h }));
+    }
+
+    finishBoxSelection(drag) {
+        this.layers.preview.replaceChildren();
+        const rect = this.selectionRect(drag);
+        const inside = (b) => (b.x >= rect.x) && (b.y >= rect.y) && (b.x + b.w <= rect.x + rect.w) && (b.y + b.h <= rect.y + rect.h);
+        const next = new Set(drag.base);
+        for (const box of this.table.boxes.values()) {
+            if (box.selectable && inside(box)) {
+                next.add(box.id);
+            }
+        }
+        for (const link of this.table.links.values()) {
+            const path = link.selectable ? this.element(link.id)?.querySelector('.mussel-diagram-link-hit') : null;
+            const bounds = path?.getBBox?.();
+            if (bounds && inside({ x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height })) {
+                next.add(link.id);
+            }
+        }
+        this.setSelection([...next]);
+    }
+
+    pickerTypes(from, placement) {
+        const fromBox = this.table.boxes.get(from.element);
+        const linkType = this.linkTypeFor(from);
+        const items = [];
+        for (const type of this.schema.list) {
+            if (type.overlay || ((type.max ?? null) !== null && (this.table.countOfType(type.name) >= type.max))) {
+                continue;
+            }
+            const bounds = this.placementBounds(placement, type);
+            const parent = this.placementParent(placement, type, bounds, fromBox);
+            if (parent === undefined) {
+                continue;
+            }
+            const virtual = {
+                id: '\u0000placed',
+                type: type.name,
+                kind: type.group ? 'group' : 'node',
+                ...bounds,
+                parent,
+                registered: true,
+                connectable: type.connectable,
+                whole: type.whole,
+                ports: type.ports,
+            };
+            this.table.boxes.set(virtual.id, virtual);
+            let end;
+            try {
+                end = [...(type.ports ?? []).map((p) => p.id), ...(type.whole ? [null] : [])]
+                    .find((candidate) => !checkConnection(this.table, this.schema, from, { element: virtual.id, port: candidate }, linkType, null));
+            } finally {
+                this.table.boxes.delete(virtual.id);
+            }
+            if (end !== undefined) {
+                items.push({ type, bounds, parent, end });
+            }
+        }
+        return items;
+    }
+
+    placementBounds(placement, type) {
+        const size = { w: type.w, h: type.h };
+        let bounds;
+        if (placement.kind === 'point') {
+            bounds = { x: placement.point.x - (size.w / 2), y: placement.point.y - (size.h / 2), w: size.w, h: size.h };
+        } else {
+            const along = placement.port ? portPosition(placement.box, placement.port.side, placement.port.ratio, placement.port.offset) : null;
+            bounds = placeBeside(placement.box, placement.side, size, this.options.quickAddSpacing, along ? (isHorizontal(placement.side) ? along.y : along.x) : undefined);
+        }
+        if (this.options.snapToGrid) {
+            bounds.x = gridSnap(bounds.x, this.options.gridSize);
+            bounds.y = gridSnap(bounds.y, this.options.gridSize);
+        }
+        return bounds;
+    }
+
+    placementParent(placement, type, bounds, fromBox) {
+        if ((placement.kind === 'beside') && fromBox) {
+            const parent = fromBox.parent ? this.table.boxes.get(fromBox.parent) : null;
+            if (canNest(this.schema, type.name, parent)) {
+                return parent?.id ?? null;
+            }
+        }
+        const center = centerOf(bounds);
+        const group = this.boxAt(center, (box) => (box.kind === 'group') && canNest(this.schema, type.name, box));
+        if (group) {
+            return group.id;
+        }
+        return canNest(this.schema, type.name, null) ? null : undefined;
+    }
+
+    openPicker(from, placement, screenPoint) {
+        this.closePicker();
+        const items = this.pickerTypes(from, placement);
+        if (items.length === 0) {
+            return;
+        }
+        const element = document.createElement('div');
+        element.className = 'mussel-diagram-picker mussel-diagram-nowheel';
+        const search = document.createElement('input');
+        search.className = 'mussel-diagram-picker-search';
+        search.type = 'text';
+        search.setAttribute('aria-label', 'Search');
+        const list = document.createElement('div');
+        list.className = 'mussel-diagram-picker-list';
+        list.setAttribute('role', 'listbox');
+        element.append(search, list);
+        this.root.append(element);
+        this.picker = { element, search, list, items, shown: items, active: 0, from, placement };
+        const left = Math.min(Math.max(0, screenPoint.x + 8), Math.max(0, this.size.width - 220));
+        const top = Math.min(Math.max(0, screenPoint.y + 8), Math.max(0, this.size.height - 240));
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+        search.addEventListener('input', () => this.filterPicker());
+        search.addEventListener('keydown', (e) => this.onPickerKey(e));
+        list.addEventListener('pointerdown', (e) => {
+            const option = e.target.closest('[data-type]');
+            if (option) {
+                e.preventDefault();
+                this.choosePicker(Number(option.getAttribute('data-index')));
+            }
+        });
+        this.renderPicker();
+        search.focus({ preventScroll: true });
+    }
+
+    filterPicker() {
+        const picker = this.picker;
+        const types = searchTypes(picker.items.map((x) => x.type), picker.search.value);
+        picker.shown = types.map((type) => picker.items.find((x) => x.type === type));
+        picker.active = 0;
+        this.renderPicker();
+    }
+
+    renderPicker() {
+        const picker = this.picker;
+        const options = picker.shown.map((item, index) => {
+            const option = document.createElement('div');
+            option.className = 'mussel-diagram-picker-item';
+            option.setAttribute('role', 'option');
+            option.setAttribute('data-type', item.type.name);
+            option.setAttribute('data-index', String(index));
+            option.setAttribute('aria-selected', index === picker.active ? 'true' : 'false');
+            const icon = svg('svg', { class: 'mussel-diagram-picker-icon', viewBox: '0 0 24 24' });
+            if (item.type.icon) {
+                icon.append(svg('use', { href: `#${item.type.icon}`, width: 24, height: 24 }));
+            } else {
+                icon.append(svg('rect', { x: 3, y: 6, width: 18, height: 12, class: 'mussel-diagram-picker-shape' }));
+            }
+            const label = document.createElement('span');
+            label.textContent = item.type.label;
+            option.append(icon, label);
+            return option;
+        });
+        if (options.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'mussel-diagram-picker-empty';
+            empty.textContent = 'No matches';
+            options.push(empty);
+        }
+        picker.list.replaceChildren(...options);
+        this.drawPickerPreview();
+    }
+
+    drawPickerPreview() {
+        const item = this.picker?.shown[this.picker.active];
+        if (!item) {
+            this.layers.preview.replaceChildren();
+            return;
+        }
+        const from = this.picker.from;
+        const fromBox = this.table.boxes.get(from.element);
+        const type = this.schema.linkTypes.get(this.linkTypeFor(from)) ?? DEFAULT_LINK_TYPE;
+        const virtual = { ...item.bounds, id: '\u0000placed', ports: item.type.ports };
+        const link = { sourcePort: from.port, targetPort: item.end, form: type.form, stub: type.stub };
+        const points = fromBox ? routeLink(link, fromBox, virtual) : [];
+        this.layers.preview.replaceChildren(
+            svg('rect', { class: 'mussel-diagram-place-frame', x: item.bounds.x, y: item.bounds.y, width: item.bounds.w, height: item.bounds.h }),
+            svg('path', { class: 'mussel-diagram-preview-line', d: toPath(points, type.form, type.sourceCut, type.targetCut) }));
+    }
+
+    onPickerKey(event) {
+        const picker = this.picker;
+        if (!picker || event.isComposing) {
+            return;
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const count = picker.shown.length;
+            if (count > 0) {
+                picker.active = (picker.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
+                this.renderPicker();
+            }
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            this.choosePicker(picker.active);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closePicker();
+            this.root.focus({ preventScroll: true });
+        }
+    }
+
+    choosePicker(index) {
+        const picker = this.picker;
+        const item = picker?.shown[index];
+        if (!item || this.waiting) {
+            return;
+        }
+        const from = picker.from;
+        const linkType = this.linkTypeFor(from);
+        this.closePicker();
+        const frame = svg('rect', { class: 'mussel-diagram-place-frame', x: item.bounds.x, y: item.bounds.y, width: item.bounds.w, height: item.bounds.h });
+        this.layers.pending.append(frame);
+        const center = centerOf(item.bounds);
+        const operation = { base: this.table.version, queued: this.pending.length > 0, point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
+        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame] }, () => this.dotnet.invokeMethodAsync(
+            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.baseOf(operation), this.rejections));
+        this.root.focus({ preventScroll: true });
+    }
+
+    closePicker() {
+        if (!this.picker) {
+            return;
+        }
+        this.picker.element.remove();
+        this.picker = null;
+        this.layers.preview.replaceChildren();
+    }
+
+    baseOf(operation) {
+        return operation.queued ? Math.max(operation.base, this.lastVersion) : operation.base;
+    }
+
+    commit(operation, entry, call) {
+        entry.version = null;
+        entry.overlays = entry.overlays ?? [];
+        entry.elements = [...entry.saved.keys()];
         this.pending.push(entry);
         if (!this.options.optimistic) {
             this.waiting = true;
             for (const element of entry.elements) {
                 element.setAttribute('data-pending', '');
             }
+            for (const overlay of entry.overlays) {
+                overlay.setAttribute('data-pending', '');
+            }
         }
-        this.commits = this.commits.then(() => this.sendMove(entry, drag));
+        this.commits = this.commits.then(() => this.send(entry, operation, call));
     }
 
-    async sendMove(entry, drag) {
+    async send(entry, operation, call) {
         if (!this.pending.includes(entry)) {
             return;
         }
         let result = null;
         try {
-            const base = drag.queued ? Math.max(drag.base, this.lastVersion) : drag.base;
-            result = await this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, base, this.rejections);
+            result = await call();
         } catch {
             result = null;
         }
@@ -934,7 +2370,7 @@ class DiagramController {
         }
         this.revertFrom(entry);
         if (result?.reason) {
-            this.showReason(result.reason, drag.point);
+            this.showReason(result.reason, operation.point);
         }
     }
 
@@ -944,48 +2380,49 @@ class DiagramController {
             return;
         }
         const reverted = this.pending.splice(index);
+        let relinked = false;
         for (const item of reverted.reverse()) {
-            for (const [element, saved] of item.saved) {
-                if (saved.value === null) {
-                    element.removeAttribute(saved.attribute);
-                } else {
-                    element.setAttribute(saved.attribute, saved.value);
-                }
-            }
+            restore(item.saved);
             for (const [id, box] of item.previous) {
                 if (this.table.boxes.has(id)) {
                     this.table.boxes.set(id, box);
                 }
             }
+            for (const [id, link] of item.previousLinks ?? []) {
+                if (this.table.links.has(id)) {
+                    this.table.links.set(id, link);
+                    relinked = true;
+                }
+            }
+            for (const overlay of item.overlays) {
+                overlay.remove();
+            }
+            item.reconnecting?.removeAttribute('data-reconnecting');
+        }
+        this.table.index();
+        if (relinked) {
+            this.table.index();
         }
         this.drawSelection();
     }
 
     settlePending() {
         const rendered = Number(this.root.dataset.version);
-        this.pending = this.pending.filter((entry) => (entry.version === null) || (rendered < entry.version));
-    }
-
-    cancelDrag() {
-        const drag = this.drag;
-        if (!drag) {
-            return;
-        }
-        cancelAnimationFrame(this.frameRequest);
-        this.frameRequest = 0;
-        for (const [element, saved] of drag.saved) {
-            if (saved.value === null) {
-                element.removeAttribute(saved.attribute);
-            } else {
-                element.setAttribute(saved.attribute, saved.value);
+        const kept = [];
+        for (const entry of this.pending) {
+            if ((entry.version === null) || (rendered < entry.version)) {
+                kept.push(entry);
+                continue;
             }
+            for (const overlay of entry.overlays) {
+                overlay.remove();
+            }
+            entry.reconnecting?.removeAttribute('data-reconnecting');
         }
-        this.drag = null;
-        this.root.classList.remove('mussel-diagram-dragging');
-        this.drawSelection();
+        this.pending = kept;
     }
 
-    showReason(text, point) {
+    showReason(text, point, sticky) {
         this.hideReason();
         const reason = document.createElement('div');
         reason.className = 'mussel-diagram-reason';
@@ -994,7 +2431,7 @@ class DiagramController {
         reason.style.left = `${at.x}px`;
         reason.style.top = `${at.y}px`;
         this.root.append(reason);
-        this.reason = { element: reason, timer: setTimeout(() => this.hideReason(), REASON_DURATION) };
+        this.reason = { element: reason, timer: sticky ? 0 : setTimeout(() => this.hideReason(), REASON_DURATION) };
     }
 
     hideReason() {
@@ -1012,13 +2449,18 @@ class DiagramController {
     }
 
     onKeyDown(event) {
+        if (this.picker?.element.contains(event.target)) {
+            return;
+        }
         if ((event.code === 'Space') && !event.repeat && this.options.panEnabled) {
             event.preventDefault();
             this.setSpace(true);
             return;
         }
         if (event.key === 'Escape') {
-            if (this.drag) {
+            if (this.picker) {
+                this.closePicker();
+            } else if (this.drag) {
                 this.press = null;
                 this.cancelDrag();
             } else if (this.options.selectionEnabled) {
@@ -1048,6 +2490,8 @@ class DiagramController {
     dispose() {
         clearTimeout(this.settleTimer);
         cancelAnimationFrame(this.frameRequest);
+        this.clearHover();
+        this.closePicker();
         this.hideReason();
         this.versionObserver.disconnect();
         this.resizeObserver.disconnect();
@@ -1060,6 +2504,6 @@ class DiagramController {
     }
 }
 
-export function attach(root, dotnet, options, table) {
-    return new DiagramController(root, dotnet, options, table);
+export function attach(root, dotnet, options, table, schema) {
+    return new DiagramController(root, dotnet, options, table, schema);
 }

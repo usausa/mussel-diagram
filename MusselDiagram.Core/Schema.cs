@@ -19,6 +19,8 @@ public sealed record DiagramSchema
 
     public string? DefaultGroupType { get; init; }
 
+    public IDiagramRouter? Router { get; init; }
+
     public DiagramAppRules Rules { get; init; } = new();
 }
 
@@ -104,6 +106,8 @@ public sealed record DiagramLinkType : DiagramType
     public DiagramMarker SourceMarker { get; init; }
 
     public DiagramMarker TargetMarker { get; init; } = DiagramMarker.Arrow;
+
+    public IDiagramRouter? Router { get; init; }
 
     public bool AllowSelf { get; init; }
 
@@ -213,8 +217,6 @@ public sealed record DiagramPort
 
     public DiagramPortVisibility Visibility { get; init; }
 }
-
-public sealed record DiagramLinkGeometry(ImmutableArray<DiagramPoint> Points, DiagramPoint SourcePoint, DiagramPoint TargetPoint, string Path);
 
 public sealed record DiagramIconSet
 {

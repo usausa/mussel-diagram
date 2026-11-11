@@ -1,10 +1,8 @@
 namespace MusselDiagram.Internal;
 
-using System.Globalization;
-
 internal static class Svg
 {
-    public static string Number(double value) => Math.Round(value, 2).ToString(CultureInfo.InvariantCulture);
+    public static string Number(double value) => LinkRouting.Format(value);
 
     public static string Translate(double x, double y) => $"translate({Number(x)},{Number(y)})";
 

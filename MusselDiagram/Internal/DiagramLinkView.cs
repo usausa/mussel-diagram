@@ -27,7 +27,8 @@ internal sealed class DiagramLinkView : ComponentBase
         renderedContext = Context;
         var link = Link;
         var type = Context.Index.FindLinkType(link.Type);
-        var path = link.Route.Length >= 2 ? LinkRouting.ToPath(link.Route) : string.Empty;
+        var form = type?.Form ?? DiagramLineForm.Orthogonal;
+        var (sourceCut, targetCut) = LinkRouting.Cuts(type);
 
         builder.OpenElement(0, "g");
         builder.AddAttribute(1, "class", type is null ? "mussel-diagram-link mussel-diagram-unregistered" : "mussel-diagram-link");
@@ -40,12 +41,12 @@ internal sealed class DiagramLinkView : ComponentBase
 
         builder.OpenElement(10, "path");
         builder.AddAttribute(11, "class", "mussel-diagram-link-hit");
-        builder.AddAttribute(12, "d", path);
+        builder.AddAttribute(12, "d", LinkRouting.ToPath(link.Route, form, 0, 0));
         builder.CloseElement();
 
         builder.OpenElement(20, "path");
         builder.AddAttribute(21, "class", "mussel-diagram-link-line");
-        builder.AddAttribute(22, "d", path);
+        builder.AddAttribute(22, "d", LinkRouting.ToPath(link.Route, form, sourceCut, targetCut));
         var start = type is null ? null : Context.FindMarkerId(type.Name, type.SourceMarker);
         var end = type is null ? Context.DefaultMarkerId : Context.FindMarkerId(type.Name, type.TargetMarker);
         if (start is not null)

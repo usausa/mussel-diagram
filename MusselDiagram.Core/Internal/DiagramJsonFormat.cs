@@ -69,8 +69,8 @@ internal static class DiagramJsonFormat
         }
     }
 
-    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version) =>
-        new Reader(index).Read(document, version);
+    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version, RouteBudget? budget = null) =>
+        new Reader(index).Read(document, version, budget);
 
     private static DiagramJsonDocument Check(DiagramJsonDocument? document)
     {
@@ -182,7 +182,7 @@ internal static class DiagramJsonFormat
 
         private readonly HashSet<string> seen = new(StringComparer.Ordinal);
 
-        public DiagramLoadResult Read(DiagramJsonDocument document, long version)
+        public DiagramLoadResult Read(DiagramJsonDocument document, long version, RouteBudget? budget)
         {
             var boxes = new List<DiagramBox>();
             var links = new List<DiagramLink>();
@@ -223,7 +223,7 @@ internal static class DiagramJsonFormat
             FixParents(boxes, byId);
             FixMembers(boxes, byId);
 
-            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true };
+            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, Budget = budget };
             foreach (var group in ParentsFirst(boxes, byId))
             {
                 editor.Add(group);
@@ -264,7 +264,7 @@ internal static class DiagramJsonFormat
             }
 
             editor.Complete();
-            return new DiagramLoadResult(editor.Build(version), issues.ToImmutable());
+            return new DiagramLoadResult(editor.Build(version), issues.ToImmutable()) { PendingRoutes = editor.PendingRoutes };
         }
 
         private static IEnumerable<DiagramGroup> ParentsFirst(List<DiagramBox> boxes, Dictionary<string, DiagramBox> byId)

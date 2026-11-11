@@ -340,7 +340,7 @@ From back to front:
 | Interaction | Selection frame, handles, guides, preview lines, the box selection frame, connection candidates |
 
 - Only the interaction layer is drawn in a separate SVG laid over the diagram SVG
-- Icons, end markers and the grid pattern are placed once in `<defs>` and referenced with `<use>`
+- Icons and end markers are placed once in `<defs>` and referenced with `<use>`. The grid is one pattern that fills the visible area
 - The text editor is HTML over the SVG
 
 ### Panning and zooming
@@ -638,15 +638,17 @@ The link type declares the form.
 ### Orthogonal routes
 
 - A route leaves each end straight out for the stub length of the link type (default 20) before it turns
-- It avoids the nodes other than the two end elements, as rectangles with a margin (default 10). Groups are not avoided, and routes may cross group frames
+- It avoids the nodes as rectangles with a margin (default 10). The two end elements are avoided too, beyond the stubs, with half the stub length as the margin when that is smaller. Groups are not avoided, and routes may cross group frames
 - It takes the route with the lowest length plus a penalty per bend. The same layout always gives the same route
 - Points on one straight line are removed
-- When no route avoids the nodes, an orthogonal route that does not avoid them is used
+- When no route avoids the nodes (for example, the end of a stub is inside another node), the simple orthogonal route that does not avoid them is used
 
 ### When routes are computed again
 
-- When an element is added, deleted, moved or resized, the links attached to it, and the links whose routes cross its rectangle before or after, are computed again. The routes of the other links do not change
-- The new routes are in the same change as the operation
+- When an element is added, deleted, moved or resized, the links attached to it, and the links whose routes pass within the margin of its rectangle before or after, are computed again. The routes of the other links do not change
+- The new routes are in the same change as the operation, for up to 20 ms of computing per change. Beyond that, a link whose simple route avoids the nodes gets it at once, and the others get a provisional simple route and are computed afterwards, 4 ms at a time with the browser drawing in between. Loading works the same way
+- The later results join the change without a new undo step. They are written together when all are done, or when the oldest has waited a second. A result that crosses a node added or moved in the meantime is computed again, and so are such links after undoing a step that moved nodes
+- Computing afterwards needs the browser (WebAssembly) or a `SynchronizationContext` (Blazor Server). Elsewhere, such as in a console or on a server without a view, every route is computed in the change
 - While dragging, JS draws a simple route that does not avoid nodes (the same form, with 1 or 2 bends), and the route of C# replaces it after the commit
 - Computed routes are saved, and loading computes again only the links whose ends no longer match (Saving and export)
 
@@ -654,6 +656,7 @@ The link type declares the form.
 
 - The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid and the link type, and returns a list of points or the reason it could not route
 - With an asynchronous router, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
+- The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo are asked for again
 - A link knows whether its route is provisional or a result of the router, or why it could not be made
 - The app can read the points of a route and the drawn geometry (end positions, marker positions and directions, the path)
 

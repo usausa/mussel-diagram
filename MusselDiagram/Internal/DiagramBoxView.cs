@@ -99,6 +99,10 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.AddAttribute(63, "cx", Svg.Number(position.X));
             builder.AddAttribute(64, "cy", Svg.Number(position.Y));
             builder.AddAttribute(65, "r", "4");
+            if (port.Definition.Visibility == DiagramPortVisibility.WhileConnecting)
+            {
+                builder.AddAttribute(66, "data-hidden", string.Empty);
+            }
             builder.CloseElement();
         }
 

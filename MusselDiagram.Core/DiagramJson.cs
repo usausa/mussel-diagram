@@ -4,7 +4,10 @@ using System.Collections.Immutable;
 
 using MusselDiagram.Internal;
 
-public sealed record DiagramLoadResult(DiagramSnapshot Snapshot, ImmutableArray<DiagramIssue> Issues);
+public sealed record DiagramLoadResult(DiagramSnapshot Snapshot, ImmutableArray<DiagramIssue> Issues)
+{
+    internal IReadOnlyList<PendingRoute> PendingRoutes { get; init; } = [];
+}
 
 public static class DiagramJson
 {

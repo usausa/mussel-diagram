@@ -11,48 +11,69 @@ internal sealed class SnapshotEditor
 
     private readonly SchemaIndex index;
 
+    private readonly DiagramSnapshot source;
+
     private readonly ImmutableDictionary<string, DiagramElement>.Builder elements;
 
-    private readonly List<DiagramNode> nodes;
+    private readonly ElementList<DiagramNode> nodes;
 
-    private readonly List<DiagramGroup> groups;
+    private readonly ElementList<DiagramGroup> groups;
 
-    private readonly List<DiagramLink> links;
+    private readonly ElementList<DiagramLink> links;
 
-    private readonly List<DiagramSharedItem> sharedItems;
+    private readonly ElementList<DiagramSharedItem> sharedItems;
 
     private readonly HashSet<string> touched = new(StringComparer.Ordinal);
 
-    private Dictionary<string, int>? nodePositions;
+    private readonly HashSet<string> rerouted = new(StringComparer.Ordinal);
 
-    private Dictionary<string, int>? groupPositions;
+    private readonly List<DiagramRect> dirty = [];
 
-    private Dictionary<string, int>? linkPositions;
+    private DiagramRect? dirtyBounds;
 
-    private Dictionary<string, int>? sharedItemPositions;
+    private readonly List<PendingRoute> pendingRoutes = [];
+
+    private readonly HashSet<string> deferred = new(StringComparer.Ordinal);
+
+    private ObstacleIndex? obstacles;
+
+    private bool nodesChanged;
 
     private bool reorder;
 
     public SnapshotEditor(DiagramSnapshot source, SchemaIndex index)
     {
+        this.source = source;
         this.index = index;
         elements = source.Elements.ToBuilder();
-        nodes = [.. source.Nodes];
-        groups = [.. source.Groups];
-        links = [.. source.Links];
-        sharedItems = [.. source.SharedItems];
+        nodes = new ElementList<DiagramNode>(source.Nodes);
+        groups = new ElementList<DiagramGroup>(source.Groups);
+        links = new ElementList<DiagramLink>(source.Links);
+        sharedItems = new ElementList<DiagramSharedItem>(source.SharedItems);
     }
 
     public bool SkipKindCheck { get; init; }
 
     public bool SkipCycleCheck { get; init; }
 
+    public bool SkipRoutes { get; init; }
+
+    public bool SkipAppRouter { get; init; }
+
+    public RouteBudget? Budget { get; init; }
+
+    public IReadOnlyCollection<string> DeferredLinks => deferred;
+
     public ChangeSet Changes { get; } = new();
+
+    public IReadOnlyList<PendingRoute> PendingRoutes => pendingRoutes;
 
     public DiagramElement? Find(string id) => elements.GetValueOrDefault(id);
 
+    private ObstacleIndex Obstacles => obstacles ??= nodesChanged ? new ObstacleIndex(nodes.Items) : source.Obstacles;
+
     public DiagramSnapshot Build(long version) =>
-        new(version, elements.ToImmutable(), [.. nodes], [.. groups], [.. links], [.. sharedItems]);
+        new(version, elements.ToImmutable(), nodes.ToImmutable(), groups.ToImmutable(), links.ToImmutable(), sharedItems.ToImmutable(), nodesChanged ? obstacles : source.CachedObstacles);
 
     public void Complete()
     {
@@ -62,11 +83,141 @@ internal sealed class SnapshotEditor
         }
 
         ResizeGroups();
+        if (!SkipRoutes)
+        {
+            RerouteLinks();
+        }
+
         touched.Clear();
+        rerouted.Clear();
+        dirty.Clear();
         reorder = false;
     }
 
-    public void Add(DiagramElement element)
+    public void Add(DiagramElement element) => Add(element, true);
+
+    public void AddWithRoute(DiagramLink link)
+    {
+        if ((link.Route.Length >= 2) &&
+            (elements.GetValueOrDefault(link.Source.ElementId) is DiagramBox sourceBox) &&
+            (elements.GetValueOrDefault(link.Target.ElementId) is DiagramBox targetBox))
+        {
+            var (start, end) = LinkRouting.Anchors(sourceBox.Bounds, index.FindPort(sourceBox, link.Source.PortId), targetBox.Bounds, index.FindPort(targetBox, link.Target.PortId));
+            if (Near(start.Position, link.Route[0]) && Near(end.Position, link.Route[^1]))
+            {
+                Add(link with { RouteState = DiagramRouteState.Routed, RouteError = null }, false);
+                return;
+            }
+        }
+
+        Add(link, true);
+    }
+
+    public void Resize(string id, DiagramRect bounds)
+    {
+        if (elements.GetValueOrDefault(id) is not DiagramBox box)
+        {
+            throw new DiagramException($"The element '{id}' is not a node or a group.");
+        }
+
+        if ((box.Bounds == bounds) || (box is DiagramGroup { Kind: DiagramGroupKind.Overlay }) || (index.FindBoxType(box) is DiagramGroupType { Sizing: DiagramGroupSizing.Content }))
+        {
+            return;
+        }
+
+        Replace(box with { Bounds = bounds });
+    }
+
+    public void Reconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end)
+    {
+        if (elements.GetValueOrDefault(linkId) is not DiagramLink link)
+        {
+            throw new DiagramException($"The element '{linkId}' is not a link.");
+        }
+
+        Replace(side == DiagramLinkEndSide.Source ? link with { Source = end } : link with { Target = end });
+    }
+
+    public List<string> RouteDeferred(IEnumerable<string> ids)
+    {
+        var taken = new List<string>();
+        foreach (var id in ids)
+        {
+            if ((taken.Count > 0) && (Budget is { Exceeded: true }))
+            {
+                break;
+            }
+
+            taken.Add(id);
+            if (elements.GetValueOrDefault(id) is DiagramLink { RouteState: DiagramRouteState.Provisional } link)
+            {
+                Reroute(link, true);
+            }
+        }
+
+        return taken;
+    }
+
+    public void RequestRoutes(IEnumerable<string> ids)
+    {
+        foreach (var id in ids)
+        {
+            if (elements.GetValueOrDefault(id) is DiagramLink { RouteState: DiagramRouteState.Provisional } link)
+            {
+                Reroute(link, false);
+            }
+        }
+    }
+
+    public void ApplyRoutes(IEnumerable<(DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)> results)
+    {
+        foreach (var (original, routed, used) in results)
+        {
+            if (!ReferenceEquals(elements.GetValueOrDefault(original.Id), original))
+            {
+                continue;
+            }
+
+            if (!ReferenceEquals(used, Obstacles) && !Avoids(routed))
+            {
+                deferred.Add(original.Id);
+                continue;
+            }
+
+            Put(routed);
+            Changes.MarkUpdated(routed.Id, DiagramChangeParts.Route);
+        }
+    }
+
+    private bool Avoids(DiagramLink link)
+    {
+        var sourceBox = (DiagramBox)elements[link.Source.ElementId];
+        var targetBox = (DiagramBox)elements[link.Target.ElementId];
+        var margin = index.FindLinkType(link.Type)?.ObstacleMargin ?? LinkRouting.DefaultObstacleMargin;
+        return OrthogonalRouter.Avoids(link.Route, Obstacles, sourceBox.Id, targetBox.Id, margin, sourceBox.Bounds, targetBox.Bounds);
+    }
+
+    public void CompleteRoute(PendingRoute route, Task<DiagramRouteResult> task)
+    {
+        if (elements.GetValueOrDefault(route.LinkId) is not DiagramLink link)
+        {
+            return;
+        }
+
+        var current = Prepare(link);
+        if ((current.Request is not { } request) || !SameRequest(request, route.Request))
+        {
+            Put(Track(RouteOf(link)));
+            Changes.MarkUpdated(link.Id, DiagramChangeParts.Route);
+            return;
+        }
+
+        var result = task.IsCompletedSuccessfully ? task.Result : new DiagramRouteResult { Error = task.Exception?.GetBaseException().Message ?? "The route was canceled." };
+        Put(Routed(link, result, current.Simple));
+        Changes.MarkUpdated(link.Id, DiagramChangeParts.Route);
+    }
+
+    private void Add(DiagramElement element, bool route)
     {
         if (string.IsNullOrEmpty(element.Id))
         {
@@ -84,46 +235,33 @@ internal sealed class SnapshotEditor
             case DiagramGroup group:
                 ValidateBox(group);
                 elements[group.Id] = group;
-                Append(groups, groupPositions, group);
+                groups.Add(group);
                 reorder |= group.ParentId is not null;
                 touched.Add(group.Id);
                 break;
             case DiagramNode node:
                 ValidateBox(node);
                 elements[node.Id] = node;
-                Append(nodes, nodePositions, node);
+                nodes.Add(node);
+                NodesChanged();
                 touched.Add(node.Id);
+                dirty.Add(node.Bounds);
                 break;
             case DiagramLink link:
                 ValidateLink(link);
-                var routed = RouteOf(link);
+                var routed = route ? Track(RouteOf(link)) : link;
                 elements[routed.Id] = routed;
-                Append(links, linkPositions, routed);
+                links.Add(routed);
                 break;
             case DiagramSharedItem item:
                 elements[item.Id] = item;
-                Append(sharedItems, sharedItemPositions, item);
+                sharedItems.Add(item);
                 break;
             default:
                 throw new DiagramException($"The element '{element.Id}' is not supported.");
         }
 
         Changes.MarkAdded(element.Id);
-    }
-
-    public void AddWithRoute(DiagramLink link)
-    {
-        Add(link);
-        if (link.Route.Length < 2)
-        {
-            return;
-        }
-
-        var routed = (DiagramLink)elements[link.Id];
-        if (Near(routed.Route[0], link.Route[0]) && Near(routed.Route[^1], link.Route[^1]))
-        {
-            Put(routed with { Route = link.Route });
-        }
     }
 
     public void Delete(IEnumerable<string> ids)
@@ -191,15 +329,21 @@ internal sealed class SnapshotEditor
                 }
 
                 reorder |= (box is DiagramGroup) && ((boxParts & DiagramChangeParts.Parent) != 0);
+                if ((box is DiagramNode) && ((boxParts & (DiagramChangeParts.Position | DiagramChangeParts.Size)) != 0))
+                {
+                    dirty.Add(before.Bounds);
+                    dirty.Add(box.Bounds);
+                }
+
                 RemoveLinksToLostPorts(before, box);
-                Reroute([box.Id]);
+                rerouted.Add(box.Id);
                 break;
             case DiagramLink link:
                 ValidateLink(link);
                 var old = (DiagramLink)current;
                 var linkParts = LinkParts(old, link);
                 var reroute = ((linkParts & DiagramChangeParts.Ends) != 0) || !string.Equals(old.Type, link.Type, StringComparison.Ordinal);
-                Put(reroute ? RouteOf(link) : link);
+                Put(reroute ? Track(RouteOf(link)) : link);
                 Changes.MarkUpdated(link.Id, reroute ? linkParts | DiagramChangeParts.Route : linkParts);
                 break;
             case DiagramSharedItem item:
@@ -243,12 +387,18 @@ internal sealed class SnapshotEditor
         foreach (var id in moving)
         {
             var box = (DiagramBox)elements[id];
-            Put(box with { Bounds = box.Bounds.Offset(offset) });
+            var moved = box with { Bounds = box.Bounds.Offset(offset) };
+            Put(moved);
             Changes.MarkUpdated(id, DiagramChangeParts.Position);
             touched.Add(id);
+            if (box is DiagramNode)
+            {
+                dirty.Add(box.Bounds);
+                dirty.Add(moved.Bounds);
+            }
         }
 
-        Reroute(moving);
+        rerouted.UnionWith(moving);
 
         void Collect(string id)
         {
@@ -424,28 +574,6 @@ internal sealed class SnapshotEditor
 
     private static bool Near(double x, double y) => Math.Abs(x - y) <= Tolerance;
 
-    private static void Append<T>(List<T> list, Dictionary<string, int>? positions, T element)
-        where T : DiagramElement
-    {
-        positions?.Add(element.Id, list.Count);
-        list.Add(element);
-    }
-
-    private static void Set<T>(List<T> list, ref Dictionary<string, int>? positions, T element)
-        where T : DiagramElement
-    {
-        if (positions is null)
-        {
-            positions = new Dictionary<string, int>(list.Count, StringComparer.Ordinal);
-            for (var i = 0; i < list.Count; i++)
-            {
-                positions[list[i].Id] = i;
-            }
-        }
-
-        list[positions[element.Id]] = element;
-    }
-
     private static bool Near(DiagramPoint x, DiagramPoint y) => Near(x.X, y.X) && Near(x.Y, y.Y);
 
     private static bool Near(DiagramRect x, DiagramRect y) =>
@@ -453,7 +581,7 @@ internal sealed class SnapshotEditor
 
     private void Remove(HashSet<string> targets)
     {
-        foreach (var group in groups.ToArray())
+        foreach (var group in groups.Items.ToArray())
         {
             if ((group.Kind != DiagramGroupKind.Overlay) || targets.Contains(group.Id) || !group.MemberIds.Any(targets.Contains))
             {
@@ -473,7 +601,7 @@ internal sealed class SnapshotEditor
             }
         }
 
-        foreach (var link in links)
+        foreach (var link in links.Items)
         {
             if (targets.Contains(link.Source.ElementId) || targets.Contains(link.Target.ElementId))
             {
@@ -483,24 +611,31 @@ internal sealed class SnapshotEditor
 
         foreach (var id in targets)
         {
-            if ((elements.GetValueOrDefault(id) is DiagramBox { ParentId: { } parentId }) && !targets.Contains(parentId))
+            var removed = elements.GetValueOrDefault(id);
+            if (removed is DiagramNode node)
+            {
+                dirty.Add(node.Bounds);
+            }
+
+            if ((removed is DiagramBox { ParentId: { } parentId }) && !targets.Contains(parentId))
             {
                 touched.Add(parentId);
             }
         }
 
-        nodes.RemoveAll(x => targets.Contains(x.Id));
+        if (nodes.RemoveAll(x => targets.Contains(x.Id)) > 0)
+        {
+            NodesChanged();
+        }
+
         groups.RemoveAll(x => targets.Contains(x.Id));
         links.RemoveAll(x => targets.Contains(x.Id));
         sharedItems.RemoveAll(x => targets.Contains(x.Id));
-        nodePositions = null;
-        groupPositions = null;
-        linkPositions = null;
-        sharedItemPositions = null;
         foreach (var id in targets)
         {
             elements.Remove(id);
             touched.Remove(id);
+            deferred.Remove(id);
             Changes.MarkDeleted(id);
         }
     }
@@ -527,7 +662,7 @@ internal sealed class SnapshotEditor
         }
 
         var targets = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var link in links)
+        foreach (var link in links.Items)
         {
             if (LosesEnd(link.Source) || LosesEnd(link.Target))
             {
@@ -655,32 +790,193 @@ internal sealed class SnapshotEditor
         }
     }
 
-    private DiagramLink RouteOf(DiagramLink link)
+    private static DiagramLink Routed(DiagramLink link, DiagramRouteResult result, ImmutableArray<DiagramPoint> simple) =>
+        (result.Error is null) && (result.Points.Length >= 2)
+            ? link with { Route = result.Points, RouteState = DiagramRouteState.Routed, RouteError = null }
+            : link with { Route = simple, RouteState = DiagramRouteState.Failed, RouteError = result.Error ?? "The router returned no route." };
+
+    private static bool SameRequest(DiagramRouteRequest x, DiagramRouteRequest y) =>
+        (x.Source == y.Source) && (x.Target == y.Target) && ReferenceEquals(x.LinkType, y.LinkType) && x.Obstacles.SequenceEqual(y.Obstacles);
+
+    private DiagramLink Track((DiagramLink Link, PendingRoute? Pending) routed)
     {
-        var source = (DiagramBox)elements[link.Source.ElementId];
-        var target = (DiagramBox)elements[link.Target.ElementId];
-        var route = LinkRouting.Route(source, index.FindPort(source, link.Source.PortId), target, index.FindPort(target, link.Target.PortId), index.FindLinkType(link.Type));
-        return link with { Route = route, RouteState = DiagramRouteState.Routed, RouteError = null };
+        if (routed.Pending is { } pending)
+        {
+            pendingRoutes.Add(pending);
+        }
+
+        return routed.Link;
     }
 
-    private void Reroute(IReadOnlyCollection<string> ids)
+    private (LinkAnchor Start, LinkAnchor End, DiagramBox Source, DiagramBox Target, DiagramLinkType? Type, IDiagramRouter? Router, ImmutableArray<DiagramPoint> Simple, DiagramRouteRequest? Request) Prepare(DiagramLink link)
     {
-        foreach (var link in links.ToArray())
+        var sourceBox = (DiagramBox)elements[link.Source.ElementId];
+        var targetBox = (DiagramBox)elements[link.Target.ElementId];
+        var type = index.FindLinkType(link.Type);
+        var (start, end) = LinkRouting.Anchors(sourceBox.Bounds, index.FindPort(sourceBox, link.Source.PortId), targetBox.Bounds, index.FindPort(targetBox, link.Target.PortId));
+        var router = type?.Router ?? index.Schema.Router;
+        DiagramRouteRequest? request = null;
+        if ((router is not null) && !SkipAppRouter)
         {
-            if (!ids.Contains(link.Source.ElementId) && !ids.Contains(link.Target.ElementId))
+            var obstacleList = new List<DiagramRect>();
+            Obstacles.All(sourceBox.Id, targetBox.Id, obstacleList);
+            request = new DiagramRouteRequest
             {
-                continue;
-            }
-
-            var routed = RouteOf(link);
-            if ((routed.RouteState == link.RouteState) && routed.Route.SequenceEqual(link.Route))
-            {
-                continue;
-            }
-
-            Put(routed);
-            Changes.MarkUpdated(link.Id, DiagramChangeParts.Route);
+                Source = new DiagramRouteEnd { Position = start.Position, Direction = start.Side },
+                Target = new DiagramRouteEnd { Position = end.Position, Direction = end.Side },
+                Obstacles = [.. obstacleList],
+                LinkType = type
+            };
         }
+
+        return (start, end, sourceBox, targetBox, type, router, LinkRouting.Simple(start, end, type), request);
+    }
+
+    private (DiagramLink Link, PendingRoute? Pending) RouteOf(DiagramLink link, bool force = false)
+    {
+        var prepared = Prepare(link);
+        if (prepared.Router is not { } router)
+        {
+            var type = prepared.Type;
+            if (!force && (Budget is { Exceeded: true }) && ((type?.Form ?? DiagramLineForm.Orthogonal) == DiagramLineForm.Orthogonal))
+            {
+                var clear = OrthogonalRouter.Clear(
+                    prepared.Start,
+                    prepared.End,
+                    type?.StubLength ?? LinkRouting.DefaultStubLength,
+                    type?.ObstacleMargin ?? LinkRouting.DefaultObstacleMargin,
+                    Obstacles,
+                    prepared.Source.Id,
+                    prepared.Target.Id,
+                    prepared.Source.Bounds,
+                    prepared.Target.Bounds);
+                if (clear is null)
+                {
+                    deferred.Add(link.Id);
+                    return (link with { Route = prepared.Simple, RouteState = DiagramRouteState.Provisional, RouteError = null }, null);
+                }
+
+                deferred.Remove(link.Id);
+                return (link with { Route = clear.Value, RouteState = DiagramRouteState.Routed, RouteError = null }, null);
+            }
+
+            deferred.Remove(link.Id);
+            var route = LinkRouting.Route(prepared.Start, prepared.End, type, Obstacles, prepared.Source, prepared.Target);
+            return (link with { Route = route, RouteState = DiagramRouteState.Routed, RouteError = null }, null);
+        }
+
+        var provisional = link with { Route = prepared.Simple, RouteState = DiagramRouteState.Provisional, RouteError = null };
+        if (prepared.Request is not { } request)
+        {
+            return (provisional, null);
+        }
+
+        CancellationTokenSource? cancellation = null;
+        try
+        {
+            cancellation = new CancellationTokenSource();
+            var task = router.RouteAsync(request, cancellation.Token);
+            if (task.IsCompleted)
+            {
+                return (Routed(link, task.GetAwaiter().GetResult(), prepared.Simple), null);
+            }
+
+            var pending = new PendingRoute(link.Id, request, task.AsTask(), cancellation);
+            cancellation = null;
+            return (provisional, pending);
+        }
+        finally
+        {
+            cancellation?.Dispose();
+        }
+    }
+
+    private void RerouteLinks()
+    {
+        if ((rerouted.Count == 0) && (dirty.Count == 0))
+        {
+            return;
+        }
+
+        dirtyBounds = null;
+        foreach (var rect in dirty)
+        {
+            dirtyBounds = dirtyBounds is { } bounds ? Union([bounds, rect]) : rect;
+        }
+
+        foreach (var link in links.Items.ToArray())
+        {
+            if (!rerouted.Contains(link.Source.ElementId) && !rerouted.Contains(link.Target.ElementId) && !CrossesDirty(link))
+            {
+                continue;
+            }
+
+            Reroute(link, false);
+        }
+    }
+
+    private void Reroute(DiagramLink link, bool force)
+    {
+        var routed = Track(RouteOf(link, force));
+        if ((routed.RouteState == link.RouteState) && routed.Route.SequenceEqual(link.Route))
+        {
+            return;
+        }
+
+        Put(routed);
+        Changes.MarkUpdated(link.Id, DiagramChangeParts.Route);
+    }
+
+    private static bool OverlapsRoute(ImmutableArray<DiagramPoint> route, DiagramRect area)
+    {
+        if (route.IsEmpty)
+        {
+            return false;
+        }
+
+        var left = double.PositiveInfinity;
+        var top = double.PositiveInfinity;
+        var right = double.NegativeInfinity;
+        var bottom = double.NegativeInfinity;
+        foreach (var point in route)
+        {
+            left = Math.Min(left, point.X);
+            top = Math.Min(top, point.Y);
+            right = Math.Max(right, point.X);
+            bottom = Math.Max(bottom, point.Y);
+        }
+
+        return (right >= area.X) && (left <= area.Right) && (bottom >= area.Y) && (top <= area.Bottom);
+    }
+
+    private void NodesChanged()
+    {
+        nodesChanged = true;
+        obstacles = null;
+    }
+
+    private bool CrossesDirty(DiagramLink link)
+    {
+        if (dirty.Count == 0)
+        {
+            return false;
+        }
+
+        var margin = (index.FindLinkType(link.Type)?.ObstacleMargin ?? LinkRouting.DefaultObstacleMargin) + 1;
+        if ((dirtyBounds is not { } bounds) || !OverlapsRoute(link.Route, new DiagramRect(bounds.X - margin, bounds.Y - margin, bounds.Width + (margin * 2), bounds.Height + (margin * 2))))
+        {
+            return false;
+        }
+
+        foreach (var rect in dirty)
+        {
+            if (OrthogonalRouter.Crosses(link.Route, new DiagramRect(rect.X - margin, rect.Y - margin, rect.Width + (margin * 2), rect.Height + (margin * 2))))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ResizeGroups()
@@ -733,14 +1029,14 @@ internal sealed class SnapshotEditor
                     bounds = Contains(group.Bounds, needed) ? group.Bounds : Union([group.Bounds, needed]);
                 }
 
-                if (Resize(group, bounds))
+                if (FitGroup(group, bounds))
                 {
                     resized.Add(id);
                 }
             }
         }
 
-        foreach (var group in groups.ToArray())
+        foreach (var group in groups.Items.ToArray())
         {
             if (group.Kind != DiagramGroupKind.Overlay)
             {
@@ -749,16 +1045,13 @@ internal sealed class SnapshotEditor
 
             var members = group.MemberIds.Select(elements.GetValueOrDefault).OfType<DiagramBox>().Select(static x => x.Bounds).ToList();
             var padding = (index.FindBoxType(group) as DiagramGroupType)?.Padding ?? DefaultPadding;
-            if ((members.Count > 0) && Resize(group, Expand(Union(members), padding)))
+            if ((members.Count > 0) && FitGroup(group, Expand(Union(members), padding)))
             {
                 resized.Add(group.Id);
             }
         }
 
-        if (resized.Count > 0)
-        {
-            Reroute(resized);
-        }
+        rerouted.UnionWith(resized);
 
         int Depth(string id)
         {
@@ -787,7 +1080,7 @@ internal sealed class SnapshotEditor
         }
     }
 
-    private bool Resize(DiagramGroup group, DiagramRect bounds)
+    private bool FitGroup(DiagramGroup group, DiagramRect bounds)
     {
         if (Near(bounds, group.Bounds))
         {
@@ -802,7 +1095,7 @@ internal sealed class SnapshotEditor
 
     private void ReorderGroups()
     {
-        var tree = groups.Where(static x => x.Kind == DiagramGroupKind.Tree).ToList();
+        var tree = groups.Items.Where(static x => x.Kind == DiagramGroupKind.Tree).ToList();
         var ids = tree.Select(static x => x.Id).ToHashSet(StringComparer.Ordinal);
         var childGroups = new Dictionary<string, List<DiagramGroup>>(StringComparer.Ordinal);
         foreach (var group in tree)
@@ -845,7 +1138,7 @@ internal sealed class SnapshotEditor
         }
 
         ordered.AddRange(tree.Where(x => !placed.Contains(x.Id)));
-        ordered.AddRange(groups.Where(static x => x.Kind == DiagramGroupKind.Overlay));
+        ordered.AddRange(groups.Items.Where(static x => x.Kind == DiagramGroupKind.Overlay));
         for (var i = 0; i < ordered.Count; i++)
         {
             if (!ReferenceEquals(ordered[i], groups[i]))
@@ -854,15 +1147,13 @@ internal sealed class SnapshotEditor
             }
         }
 
-        groups.Clear();
-        groups.AddRange(ordered);
-        groupPositions = null;
+        groups.Reset(ordered);
     }
 
     private Dictionary<string, List<string>> ChildrenMap()
     {
         var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var box in groups.Cast<DiagramBox>().Concat(nodes))
+        foreach (var box in groups.Items.Cast<DiagramBox>().Concat(nodes.Items))
         {
             if (box.ParentId is null)
             {
@@ -887,17 +1178,77 @@ internal sealed class SnapshotEditor
         switch (element)
         {
             case DiagramNode node:
-                Set(nodes, ref nodePositions, node);
+                nodes.Set(node);
+                NodesChanged();
                 break;
             case DiagramGroup group:
-                Set(groups, ref groupPositions, group);
+                groups.Set(group);
                 break;
             case DiagramLink link:
-                Set(links, ref linkPositions, link);
+                links.Set(link);
                 break;
             case DiagramSharedItem item:
-                Set(sharedItems, ref sharedItemPositions, item);
+                sharedItems.Set(item);
                 break;
         }
     }
+
+    private sealed class ElementList<T>(ImmutableArray<T> source)
+        where T : DiagramElement
+    {
+        private List<T>? items;
+
+        private Dictionary<string, int>? positions;
+
+        public IReadOnlyList<T> Items => items ?? (IReadOnlyList<T>)source;
+
+        public int Count => items?.Count ?? source.Length;
+
+        public T this[int index] => items is null ? source[index] : items[index];
+
+        public void Add(T element)
+        {
+            positions?.Add(element.Id, Count);
+            Edit().Add(element);
+        }
+
+        public void Set(T element)
+        {
+            if (positions is null)
+            {
+                positions = new Dictionary<string, int>(Count, StringComparer.Ordinal);
+                for (var i = 0; i < Count; i++)
+                {
+                    positions[this[i].Id] = i;
+                }
+            }
+
+            Edit()[positions[element.Id]] = element;
+        }
+
+        public int RemoveAll(Predicate<T> match)
+        {
+            if (!Items.Any(x => match(x)))
+            {
+                return 0;
+            }
+
+            positions = null;
+            return Edit().RemoveAll(match);
+        }
+
+        public void Reset(IEnumerable<T> ordered)
+        {
+            var list = Edit();
+            list.Clear();
+            list.AddRange(ordered);
+            positions = null;
+        }
+
+        public ImmutableArray<T> ToImmutable() => items is null ? source : [.. items];
+
+        private List<T> Edit() => items ??= [.. source];
+    }
 }
+
+internal sealed record PendingRoute(string LinkId, DiagramRouteRequest Request, Task<DiagramRouteResult> Task, CancellationTokenSource Cancellation);

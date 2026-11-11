@@ -12,6 +12,11 @@
     --mussel-diagram-selection-color: #1a73e8;
     --mussel-diagram-handle-fill: #ffffff;
     --mussel-diagram-guide-color: #e8457a;
+    --mussel-diagram-candidate-color: #1a73e8;
+    --mussel-diagram-drop-target-color: #1f883d;
+    --mussel-diagram-not-allowed-color: var(--mussel-critical, #cf222e);
+    --mussel-diagram-grid-color: #d8dee4;
+    --mussel-diagram-grid-major-color: #afb8c1;
     --mussel-diagram-pending-opacity: 0.6;
     --mussel-diagram-font: 12px var(--mussel-font-family, "Segoe UI", system-ui, sans-serif);
 }
@@ -28,6 +33,11 @@
     --mussel-diagram-port-stroke: #6ea8fe;
     --mussel-diagram-selection-color: #6ea8fe;
     --mussel-diagram-handle-fill: #1f1f1d;
+    --mussel-diagram-candidate-color: #6ea8fe;
+    --mussel-diagram-drop-target-color: #56d364;
+    --mussel-diagram-not-allowed-color: var(--mussel-critical, #f85149);
+    --mussel-diagram-grid-color: #34332f;
+    --mussel-diagram-grid-major-color: #4d4b45;
 }
 
 .mussel-diagram {
@@ -94,10 +104,23 @@
 }
 
 .mussel-diagram-port {
-    display: none;
     fill: var(--mussel-diagram-port-fill);
     stroke: var(--mussel-diagram-port-stroke);
     stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    pointer-events: visible;
+}
+
+.mussel-diagram-port[data-hidden] {
+    display: none;
+}
+
+.mussel-diagram-connecting .mussel-diagram-port[data-hidden] {
+    display: inline;
+}
+
+.mussel-diagram-port[data-candidate] {
+    fill: var(--mussel-diagram-candidate-color);
 }
 
 .mussel-diagram-link-hit {
@@ -143,6 +166,173 @@
 .mussel-diagram-dragging,
 .mussel-diagram-dragging * {
     cursor: move;
+}
+
+.mussel-diagram-port,
+.mussel-diagram-handle.mussel-diagram-end-handle,
+.mussel-diagram-arrow,
+.mussel-diagram-connecting,
+.mussel-diagram-connecting * {
+    cursor: crosshair;
+}
+
+.mussel-diagram-handle {
+    fill: var(--mussel-diagram-handle-fill);
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+    pointer-events: all;
+}
+
+.mussel-diagram-handle-n,
+.mussel-diagram-handle-s {
+    cursor: ns-resize;
+}
+
+.mussel-diagram-handle-e,
+.mussel-diagram-handle-w {
+    cursor: ew-resize;
+}
+
+.mussel-diagram-handle-nw,
+.mussel-diagram-handle-se {
+    cursor: nwse-resize;
+}
+
+.mussel-diagram-handle-ne,
+.mussel-diagram-handle-sw {
+    cursor: nesw-resize;
+}
+
+.mussel-diagram-arrow {
+    fill: var(--mussel-diagram-selection-color);
+    opacity: 0.8;
+    pointer-events: all;
+}
+
+.mussel-diagram-guide {
+    stroke: var(--mussel-diagram-guide-color);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-candidate {
+    fill: none;
+    stroke: var(--mussel-diagram-candidate-color);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-preview-line {
+    fill: none;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-resize-frame,
+.mussel-diagram-place-frame {
+    fill: none;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-box-selection {
+    fill: var(--mussel-diagram-selection-color);
+    fill-opacity: 0.08;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+[data-candidate] > .mussel-diagram-shape {
+    stroke: var(--mussel-diagram-candidate-color);
+}
+
+[data-drop-target] > .mussel-diagram-shape {
+    stroke: var(--mussel-diagram-drop-target-color);
+    stroke-width: 2.5;
+}
+
+[data-not-allowed] > .mussel-diagram-shape {
+    stroke: var(--mussel-diagram-not-allowed-color);
+}
+
+[data-reconnecting] {
+    visibility: hidden;
+}
+
+.mussel-diagram-grid-fill {
+    pointer-events: none;
+}
+
+.mussel-diagram-grid-minor {
+    fill: var(--mussel-diagram-grid-color);
+    stroke: var(--mussel-diagram-grid-color);
+}
+
+.mussel-diagram-grid-major {
+    fill: var(--mussel-diagram-grid-major-color);
+    stroke: var(--mussel-diagram-grid-major-color);
+}
+
+.mussel-diagram-picker {
+    position: absolute;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    width: 220px;
+    max-height: 240px;
+    border: 1px solid var(--mussel-tooltip-border, #d0d7de);
+    background-color: var(--mussel-tooltip-background, #ffffff);
+    color: var(--mussel-tooltip-text, #1f2328);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mussel-diagram-picker-search {
+    margin: 6px;
+    padding: 4px 6px;
+    border: 1px solid var(--mussel-tooltip-border, #d0d7de);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+}
+
+.mussel-diagram-picker-list {
+    overflow-y: auto;
+}
+
+.mussel-diagram-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.mussel-diagram-picker-item[aria-selected="true"] {
+    background-color: rgba(26, 115, 232, 0.14);
+}
+
+.mussel-diagram-picker-icon {
+    flex: none;
+    width: 20px;
+    height: 20px;
+}
+
+.mussel-diagram-picker-shape {
+    fill: var(--mussel-diagram-node-fill);
+    stroke: var(--mussel-diagram-node-stroke);
+}
+
+.mussel-diagram-picker-empty {
+    padding: 6px 8px;
+    color: var(--mussel-muted-text, #6e7781);
 }
 
 .mussel-diagram-selection {

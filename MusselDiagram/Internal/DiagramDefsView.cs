@@ -24,7 +24,7 @@ internal sealed class DiagramDefsView : ComponentBase
             builder.AddAttribute(2, "id", marker.Id);
             builder.AddAttribute(3, "class", marker.Kind == DiagramMarker.OpenArrow ? "mussel-diagram-marker mussel-diagram-marker-open" : "mussel-diagram-marker");
             builder.AddAttribute(4, "viewBox", "0 0 10 10");
-            builder.AddAttribute(5, "refX", "10");
+            builder.AddAttribute(5, "refX", "0");
             builder.AddAttribute(6, "refY", "5");
             builder.AddAttribute(7, "markerWidth", "10");
             builder.AddAttribute(8, "markerHeight", "10");

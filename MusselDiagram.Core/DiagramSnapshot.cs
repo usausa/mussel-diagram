@@ -12,8 +12,10 @@ public sealed class DiagramSnapshot
         ImmutableArray<DiagramNode> nodes,
         ImmutableArray<DiagramGroup> groups,
         ImmutableArray<DiagramLink> links,
-        ImmutableArray<DiagramSharedItem> sharedItems)
+        ImmutableArray<DiagramSharedItem> sharedItems,
+        ObstacleIndex? obstacles = null)
     {
+        CachedObstacles = obstacles;
         Version = version;
         Elements = elements;
         Nodes = nodes;
@@ -41,6 +43,10 @@ public sealed class DiagramSnapshot
     internal static DiagramSnapshot Empty { get; } = new(0, ImmutableDictionary.Create<string, DiagramElement>(StringComparer.Ordinal), [], [], [], []);
 
     internal ImmutableDictionary<string, DiagramElement> Elements { get; }
+
+    internal ObstacleIndex Obstacles => CachedObstacles ??= new ObstacleIndex(Nodes);
+
+    internal ObstacleIndex? CachedObstacles { get; private set; }
 
     private Lookup Index => field ??= new Lookup(this);
 
@@ -151,7 +157,7 @@ public sealed class DiagramSnapshot
 
     public ImmutableArray<DiagramIssue> Validate(DiagramSchema schema) => DiagramValidator.Validate(this, SchemaIndex.For(schema));
 
-    internal DiagramSnapshot WithVersion(long version) => new(version, Elements, Nodes, Groups, Links, SharedItems);
+    internal DiagramSnapshot WithVersion(long version) => new(version, Elements, Nodes, Groups, Links, SharedItems, CachedObstacles);
 
     private IEnumerable<DiagramElement> AllElements() =>
         Groups.Cast<DiagramElement>().Concat(Nodes).Concat(Links).Concat(SharedItems);

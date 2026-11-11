@@ -66,7 +66,9 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         var path = await line.GetAttributeAsync("d") ?? string.Empty;
         var version = await opened.View.GetAttributeAsync("data-version") ?? string.Empty;
 
+        await opened.Page.Keyboard.DownAsync("Alt");
         await DragAsync(opened.Page, node.Locator("use"), 60, 40);
+        await opened.Page.Keyboard.UpAsync("Alt");
 
         await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version);
         await Expect(node).ToHaveAttributeAsync("transform", "translate(290,190)");

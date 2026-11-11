@@ -54,7 +54,7 @@ public sealed class GeometryTests
             [new DiagramPoint(100, 25), new DiagramPoint(200, 25), new DiagramPoint(200, 125), new DiagramPoint(300, 125)],
             ((DiagramLink)diagram.Find("ab")!).Route);
         Assert.Equal(
-            [new DiagramPoint(100, 25), new DiagramPoint(325, 25), new DiagramPoint(325, 400)],
+            [new DiagramPoint(100, 25), new DiagramPoint(290, 25), new DiagramPoint(290, 380), new DiagramPoint(325, 380), new DiagramPoint(325, 400)],
             ((DiagramLink)diagram.Find("ac")!).Route);
     }
 
@@ -106,7 +106,9 @@ public sealed class GeometryTests
         Assert.Equal([new DiagramPoint(100, 25), new DiagramPoint(300, 125)], geometry.Points);
         Assert.Equal(new DiagramPoint(100, 25), geometry.SourcePoint);
         Assert.Equal(new DiagramPoint(300, 125), geometry.TargetPoint);
-        Assert.Equal("M100,25L300,125", geometry.Path);
+        Assert.Equal("M100,25L291.06,120.53", geometry.Path);
+        Assert.Equal(26.57, geometry.TargetAngle);
+        Assert.Equal(-153.43, geometry.SourceAngle);
         Assert.Null(diagram.GetLinkGeometry("a"));
     }
 }
