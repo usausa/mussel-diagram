@@ -1,9 +1,16 @@
 <Solution>
   <Folder Name="/Example/">
+    <Project Path="Example.Client/Example.Client.csproj" />
+    <Project Path="Example/Example.csproj" DefaultStartup="true" />
   </Folder>
   <Folder Name="/Library/">
+    <Project Path="MusselDiagram.Core/MusselDiagram.Core.csproj" />
+    <Project Path="MusselDiagram/MusselDiagram.csproj" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="MusselDiagram.Core.Tests/MusselDiagram.Core.Tests.csproj" />
+    <Project Path="MusselDiagram.E2ETests/MusselDiagram.E2ETests.csproj" />
+    <Project Path="MusselDiagram.Tests/MusselDiagram.Tests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />

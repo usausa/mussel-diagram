@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MusselDiagram</RootNamespace>
+    <IsTrimmable>true</IsTrimmable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <CodeAnalysisRuleSet>..\Analyzers.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>MusselDiagram.Core</PackageId>
+    <Title>MusselDiagram.Core</Title>
+    <Description>Model, rules, validation, routing, undo and JSON of MusselDiagram, without UI</Description>
+    <PackageTags>diagram graph model rules validation</PackageTags>
+  </PropertyGroup>
+
+</Project>

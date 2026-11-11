@@ -1,0 +1,60 @@
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+.layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.layout-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    background-color: #1a73e8;
+    color: #ffffff;
+}
+
+.layout-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.layout-spacer {
+    flex: 1 1 auto;
+}
+
+.mode-switch,
+.page-switch {
+    display: flex;
+    gap: 4px;
+}
+
+.mode-switch .mode,
+.page-switch .page {
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.mode-switch .mode.active,
+.page-switch .page.active {
+    background-color: #ffffff;
+    color: #1a73e8;
+}
+
+.layout-body {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.diagram-page {
+    height: 100%;
+}

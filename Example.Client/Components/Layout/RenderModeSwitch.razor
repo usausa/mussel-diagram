@@ -1,0 +1,20 @@
+@inject NavigationManager Navigation
+
+<div class="mode-switch" role="group" aria-label="Render mode">
+    <a class="@ClassOf("server")" href="@Link("server")" data-enhance-nav="false">Server</a>
+    <a class="@ClassOf("wasm")" href="@Link("wasm")" data-enhance-nav="false">WebAssembly</a>
+    <a class="@ClassOf("auto")" href="@Link("auto")" data-enhance-nav="false">Auto</a>
+</div>
+
+@code {
+    private string Mode => AssignedRenderMode switch
+    {
+        InteractiveAutoRenderMode => "auto",
+        InteractiveWebAssemblyRenderMode => "wasm",
+        _ => "server"
+    };
+
+    private string ClassOf(string mode) => mode == Mode ? "mode active" : "mode";
+
+    private string Link(string mode) => $"render-mode/{mode}?redirect={Uri.EscapeDataString($"/{Navigation.ToBaseRelativePath(Navigation.Uri)}")}";
+}
