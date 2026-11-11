@@ -1,9 +1,33 @@
 :where(.mussel-diagram) {
     --mussel-diagram-background: #ffffff;
+    --mussel-diagram-text-color: var(--mussel-primary-text, #1f2328);
+    --mussel-diagram-node-fill: #ffffff;
+    --mussel-diagram-node-stroke: #57606a;
+    --mussel-diagram-group-fill: none;
+    --mussel-diagram-group-stroke: #8c959f;
+    --mussel-diagram-link-color: #57606a;
+    --mussel-diagram-link-width: 1.5;
+    --mussel-diagram-port-fill: #ffffff;
+    --mussel-diagram-port-stroke: #1a73e8;
+    --mussel-diagram-selection-color: #1a73e8;
+    --mussel-diagram-handle-fill: #ffffff;
+    --mussel-diagram-guide-color: #e8457a;
+    --mussel-diagram-pending-opacity: 0.6;
+    --mussel-diagram-font: 12px var(--mussel-font-family, "Segoe UI", system-ui, sans-serif);
 }
 
-:where(.mussel-dark .mussel-diagram, .mussel-diagram.mussel-dark) {
+:where(.mussel-dark) :where(.mussel-diagram),
+:where(.mussel-diagram.mussel-dark) {
     --mussel-diagram-background: #1f1f1d;
+    --mussel-diagram-text-color: var(--mussel-primary-text, #f0efec);
+    --mussel-diagram-node-fill: #262624;
+    --mussel-diagram-node-stroke: #a8a69f;
+    --mussel-diagram-group-stroke: #6e6c66;
+    --mussel-diagram-link-color: #a8a69f;
+    --mussel-diagram-port-fill: #262624;
+    --mussel-diagram-port-stroke: #6ea8fe;
+    --mussel-diagram-selection-color: #6ea8fe;
+    --mussel-diagram-handle-fill: #1f1f1d;
 }
 
 .mussel-diagram {
@@ -12,7 +36,10 @@
     width: 100%;
     height: 100%;
     background-color: var(--mussel-diagram-background);
+    font: var(--mussel-diagram-font);
     touch-action: none;
+    user-select: none;
+    outline: none;
 }
 
 .mussel-diagram-stage {
@@ -33,4 +60,123 @@
 
 .mussel-diagram-overlay {
     pointer-events: none;
+}
+
+.mussel-diagram-shape {
+    fill: var(--mussel-diagram-shape-fill, var(--mussel-diagram-node-fill));
+    stroke: var(--mussel-diagram-shape-stroke, var(--mussel-diagram-node-stroke));
+    stroke-width: var(--mussel-diagram-shape-stroke-width, 1.5);
+    stroke-dasharray: var(--mussel-diagram-shape-dash, none);
+}
+
+.mussel-diagram-node > .mussel-diagram-shape {
+    pointer-events: visible;
+}
+
+.mussel-diagram-shape-path {
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-group > .mussel-diagram-shape {
+    fill: var(--mussel-diagram-shape-fill, var(--mussel-diagram-group-fill));
+    stroke: var(--mussel-diagram-shape-stroke, var(--mussel-diagram-group-stroke));
+    pointer-events: visibleStroke;
+}
+
+.mussel-diagram-unregistered > .mussel-diagram-shape {
+    fill: none;
+    stroke: var(--mussel-diagram-node-stroke);
+    stroke-dasharray: 4 3;
+}
+
+.mussel-diagram-label {
+    fill: var(--mussel-diagram-text-color);
+}
+
+.mussel-diagram-port {
+    display: none;
+    fill: var(--mussel-diagram-port-fill);
+    stroke: var(--mussel-diagram-port-stroke);
+    stroke-width: 1.5;
+}
+
+.mussel-diagram-link-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 10;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-link-line {
+    fill: none;
+    stroke: var(--mussel-diagram-link-stroke, var(--mussel-diagram-link-color));
+    stroke-width: var(--mussel-diagram-link-stroke-width, var(--mussel-diagram-link-width));
+    stroke-dasharray: var(--mussel-diagram-link-dash, none);
+    pointer-events: none;
+}
+
+.mussel-diagram-marker > * {
+    fill: var(--mussel-diagram-marker-color, var(--mussel-diagram-link-color));
+    stroke: none;
+}
+
+.mussel-diagram-marker-open > * {
+    fill: none;
+    stroke: var(--mussel-diagram-marker-color, var(--mussel-diagram-link-color));
+    stroke-width: 1.5;
+}
+
+.mussel-diagram-space,
+.mussel-diagram-space * {
+    cursor: grab;
+}
+
+.mussel-diagram-panning,
+.mussel-diagram-panning * {
+    cursor: grabbing;
+}
+
+.mussel-diagram-node,
+.mussel-diagram-group > .mussel-diagram-shape,
+.mussel-diagram-group > .mussel-diagram-label,
+.mussel-diagram-group > .mussel-diagram-icon,
+.mussel-diagram-dragging,
+.mussel-diagram-dragging * {
+    cursor: move;
+}
+
+.mussel-diagram-selection {
+    fill: none;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+}
+
+.mussel-diagram-drag-frame {
+    fill: none;
+    stroke: var(--mussel-diagram-selection-color);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+[data-selected] > .mussel-diagram-link-line {
+    stroke: var(--mussel-diagram-selection-color);
+}
+
+[data-pending] {
+    opacity: var(--mussel-diagram-pending-opacity);
+}
+
+.mussel-diagram-reason {
+    position: absolute;
+    z-index: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--mussel-tooltip-border, #d0d7de);
+    background-color: var(--mussel-tooltip-background, #ffffff);
+    color: var(--mussel-tooltip-text, #1f2328);
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(-50%, 16px);
 }

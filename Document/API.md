@@ -166,7 +166,7 @@ An immutable state of the diagram, readable from any thread.
 | `GetPredecessors(id)`, `GetSuccessors(id)` | The elements one link before and after |
 | `GetUpstream(id)`, `GetDownstream(id)` | The elements reached against and along the links |
 | `GetCycles()`, `GetUnreachable(startIds)` | The elements in cycles, and the elements not reachable from the given ones |
-| `GetParent(id)`, `GetChildren(id)`, `GetAncestors(id)`, `GetDescendants(id)`, `GetTopLevel()` | The tree |
+| `GetParent(id)`, `GetChildren(id)`, `GetAncestors(id)`, `GetDescendants(id)`, `TopLevel` | The tree |
 | `GetMembers(groupId)`, `GetOverlayGroups(id)` | Overlay groups |
 | `GetReferrers(sharedItemId)`, `GetUnusedSharedItems()` | Shared items and the elements that refer to them |
 | `Validate(schema)` | The whole-diagram check |
@@ -177,10 +177,12 @@ All elements are records, and an ID is created when none is given.
 
 | Type | Members |
 |---|---|
-| `DiagramNode` | `Id`, `Type`, `Bounds` (`DiagramRect`), `ParentId`, `Label`, `Texts`, `Icon`, `Data`, `Locked`, `Permissions` |
-| `DiagramGroup` | The members of a node, and `Kind` (`DiagramGroupKind`: `Tree` or `Overlay`) and `MemberIds`. Overlay groups have no `Bounds` or `ParentId` of their own |
-| `DiagramLink` | `Id`, `Type`, `Source`, `Target` (`DiagramLinkEnd` with `ElementId` and `PortId`), `Route` (`DiagramPoint` list), `RouteState` (`DiagramRouteState`: `Provisional`, `Routed` or `Failed`), `RouteError`, `Data`, `Locked`, `Permissions` |
-| `DiagramSharedItem` | `Id`, `Type`, `Label`, `Data` |
+| `DiagramElement` | The abstract base of the elements: `Id`, `Type`, `Data` |
+| `DiagramBox` | The abstract base of nodes and groups: `Bounds` (`DiagramRect`), `ParentId`, `Label`, `Texts`, `Icon`, `Locked`, `Permissions` |
+| `DiagramNode` | A `DiagramBox` |
+| `DiagramGroup` | A `DiagramBox` with `Kind` (`DiagramGroupKind`: `Tree` or `Overlay`) and `MemberIds`. Overlay groups have no `Bounds` or `ParentId` of their own; their `Bounds` is computed |
+| `DiagramLink` | A `DiagramElement` with `Source`, `Target` (`DiagramLinkEnd` with `ElementId` and `PortId`), `Route` (`DiagramPoint` list), `RouteState` (`DiagramRouteState`: `Provisional`, `Routed` or `Failed`), `RouteError`, `Locked`, `Permissions` |
+| `DiagramSharedItem` | A `DiagramElement` with `Label` |
 | `DiagramPort` | Computed: `Id`, `Direction` (`DiagramPortDirection`: `In`, `Out` or `Both`), `Kind`, `Side` (`DiagramSide`), `Position`, `Label`, `Visibility` |
 
 `Texts` is an `ImmutableDictionary<string, string>` by slot name. `Icon` is `prefix:ID` of an imported icon or an image URL. `Data` is the registered data type, a `JsonElement`, or `null`.  
@@ -205,11 +207,12 @@ An immutable record. The declarative parts can also be read with `DiagramSchemaJ
 
 | Type | Members |
 |---|---|
-| All types | `Name`, `DisplayName`, `Category`, `SearchWords`, `DataType` (`JsonTypeInfo?`), `DefaultData`, `GetReferences` (the shared item IDs in the data), `Permissions` (all by default) |
-| `DiagramNodeType` | `Look`, `Size`, `MinSize`, `Slots`, `Ports`, `GetPorts` (ports from the data), `ConnectsAsWhole`, `InPalette`, `CreateContent`, `AllowedParents`, `TopLevel`, `StayInParent`, `MaxCount`, `Required`, `Undeletable`, `Start`, `GetTooltip` |
-| `DiagramGroupType` | The members of a node type, and `Kind`, `Sizing` (`DiagramGroupSizing`: `Manual` or `Content`), `Padding`, `Header`, `AllowedChildren`, `AllowedMembers` and `FillHitTest` |
-| `DiagramLinkType` | `Look`, `Form` (`DiagramLineForm`: `Orthogonal`, `Straight` or `Curved`), `StubLength` (20), `ObstacleMargin` (10), `SourceMarker`, `TargetMarker` (`DiagramMarker`: `None`, `Arrow`, `OpenArrow`, `Circle` or `Diamond`), `Router`, `AllowSelf`, `AllowDuplicate` (`false`), `AllowCrossParent`, `AllowCycles` (`true`), `GetTooltip` |
-| `DiagramSharedItemType` | The members of all types, and `MaxCount`, `Required` and `Undeletable` |
+| `DiagramType` | The abstract base of the types: `Name`, `DisplayName`, `Category`, `SearchWords`, `DataType` (`JsonTypeInfo?`), `DefaultData`, `GetReferences` (the shared item IDs in the data), `Permissions` (all by default) |
+| `DiagramBoxType` | The abstract base of node and group types: `Look`, `Size`, `MinSize`, `Slots`, `Ports`, `GetPorts` (ports from the data), `ConnectsAsWhole`, `InPalette`, `CreateContent`, `AllowedParents`, `TopLevel`, `StayInParent`, `MaxCount`, `Required`, `Undeletable`, `Start`, `GetTooltip` |
+| `DiagramNodeType` | A `DiagramBoxType` |
+| `DiagramGroupType` | A `DiagramBoxType` with `Kind`, `Sizing` (`DiagramGroupSizing`: `Manual` or `Content`), `Padding`, `Header`, `AllowedChildren`, `AllowedMembers` and `FillHitTest` |
+| `DiagramLinkType` | A `DiagramType` with `Look`, `Form` (`DiagramLineForm`: `Orthogonal`, `Straight` or `Curved`), `StubLength` (20), `ObstacleMargin` (10), `SourceMarker`, `TargetMarker` (`DiagramMarker`: `None`, `Arrow`, `OpenArrow`, `Circle` or `Diamond`), `Router`, `AllowSelf`, `AllowDuplicate` (`false`), `AllowCrossParent`, `AllowCycles` (`true`), `GetTooltip` |
+| `DiagramSharedItemType` | A `DiagramType` with `MaxCount`, `Required` and `Undeletable` |
 
 `CreateContent` receives `DiagramCreateContext` (`Snapshot`, `Type` and the `Value` of a drag source) and returns `DiagramContent` (`Label`, `Texts` and `Data`). `GetTooltip` receives the element and returns text or `null`.  
 

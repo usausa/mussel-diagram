@@ -1,6 +1,15 @@
-<div @ref="root" @attributes="AdditionalAttributes" class="@RootClass">
+<div @ref="root" @attributes="AdditionalAttributes" class="@RootClass" tabindex="0" data-version="@Snapshot.Version">
     <div class="mussel-diagram-stage">
-        <svg class="mussel-diagram-canvas"></svg>
-        <svg class="mussel-diagram-overlay"></svg>
+        <svg class="mussel-diagram-canvas">
+            @Defs
+            <g class="mussel-diagram-viewport">
+                <g class="mussel-diagram-groups">@Groups</g>
+                <g class="mussel-diagram-links">@Links</g>
+                <g class="mussel-diagram-nodes">@Nodes</g>
+            </g>
+        </svg>
+        <svg class="mussel-diagram-overlay">
+            <g class="mussel-diagram-viewport"></g>
+        </svg>
     </div>
 </div>
