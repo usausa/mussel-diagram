@@ -1,4 +1,5 @@
 using Example;
+using Example.Client.Models;
 using Example.Components;
 
 using Microsoft.AspNetCore.Localization;
@@ -12,6 +13,8 @@ builder.Services
     .AddInteractiveServerComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment())
     .AddInteractiveWebAssemblyComponents();
 builder.Services.AddMudServices();
+builder.Services.AddSingleton<FileAwsIconPackage>();
+builder.Services.AddSingleton<IAwsIconPackage>(static services => services.GetRequiredService<FileAwsIconPackage>());
 
 var app = builder.Build();
 
@@ -37,6 +40,9 @@ app.MapGet("/render-mode/{mode}", static (string mode, string? redirect, HttpCon
         new CookieOptions { Path = "/", IsEssential = true, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromDays(365) });
     return Results.LocalRedirect(String.IsNullOrEmpty(redirect) || !redirect.StartsWith('/') || redirect.StartsWith("//", StringComparison.Ordinal) ? "/" : redirect);
 });
+app.MapGet("/aws-icons", static async (FileAwsIconPackage package, CancellationToken cancellationToken) => Results.Json(await package.ListAsync(cancellationToken)));
+app.MapGet("/aws-icons/{**path}", static (string path, FileAwsIconPackage package) =>
+    package.FindFile(path) is { } file ? Results.File(file, "image/svg+xml", lastModified: File.GetLastWriteTimeUtc(file)) : Results.NotFound());
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()

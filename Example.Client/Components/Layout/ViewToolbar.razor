@@ -1,0 +1,15 @@
+<div class="view-toolbar" role="toolbar" aria-label="描画面の操作">
+    <MudIconButton Icon="@Icons.Material.Filled.NearMe" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.BoxSelect)" aria-label="範囲選択" aria-pressed="@PressedOf(DiagramBackgroundDragMode.BoxSelect)" title="範囲選択" data-tool="box-select" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.BoxSelect))" />
+    <MudIconButton Icon="@Icons.Material.Filled.PanTool" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.Pan)" aria-label="手のひら" aria-pressed="@PressedOf(DiagramBackgroundDragMode.Pan)" title="手のひら" data-tool="pan" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.Pan))" />
+    <MudIconButton Icon="@Icons.Material.Filled.DoNotTouch" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.None)" aria-label="何もしない" aria-pressed="@PressedOf(DiagramBackgroundDragMode.None)" title="何もしない" data-tool="none" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.None))" />
+    <span class="view-toolbar-separator"></span>
+    <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Disabled="@(View is null)" aria-label="縮小" title="縮小" data-action="zoom-out" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomOut))" />
+    <MudMenu Label="@ZoomText" EndIcon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Dense="true" Disabled="@(View is null)" AriaLabel="倍率" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" data-action="zoom-menu">
+        @foreach (var level in Levels)
+        {
+            <MudMenuItem Label="@Percent(level)" OnClick="@(() => SetZoomAsync(level))" />
+        }
+    </MudMenu>
+    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Disabled="@(View is null)" aria-label="拡大" title="拡大" data-action="zoom-in" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomIn))" />
+    <MudIconButton Icon="@Icons.Material.Filled.FitScreen" Size="Size.Small" Disabled="@(View is null)" aria-label="全体表示" title="全体表示" data-action="zoom-fit" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToFit))" />
+</div>

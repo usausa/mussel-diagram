@@ -56,6 +56,9 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     public DiagramWheelMode WheelMode { get; set; }
 
     [Parameter]
+    public DiagramBackgroundDragMode BackgroundDragMode { get; set; }
+
+    [Parameter]
     public double MinZoom { get; set; } = 0.05;
 
     [Parameter]
@@ -91,6 +94,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     {
         builder.OpenComponent<DiagramDefsView>(0);
         builder.AddComponentParameter(1, nameof(DiagramDefsView.Context), RenderContext);
+        builder.AddComponentParameter(2, nameof(DiagramDefsView.Icons), Symbols);
         builder.CloseComponent();
     };
 
@@ -167,6 +171,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     {
         disposed = true;
         Subscribe(null);
+        symbols?.Dispose();
         await ReleaseAsync().ConfigureAwait(true);
         self?.Dispose();
         self = null;
@@ -202,6 +207,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         Subscribe(Diagram);
         RefreshContext();
         RefreshOverlays();
+        WantIcons(null);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -233,6 +239,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                     await view(controller).ConfigureAwait(true);
                 }
 
+                await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
                 return;
             }
 
@@ -405,6 +412,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         _ = InvokeAsync(() =>
         {
             RefreshContext();
+            WantIcons(null);
             StateHasChanged();
         });
 
@@ -427,6 +435,12 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         MinZoom = MinZoom,
         MaxZoom = MaxZoom,
         WheelMode = WheelMode == DiagramWheelMode.Zoom ? "zoom" : "pan",
+        BackgroundDrag = BackgroundDragMode switch
+        {
+            DiagramBackgroundDragMode.Pan => "pan",
+            DiagramBackgroundDragMode.None => "none",
+            _ => "boxSelect"
+        },
         PanEnabled = PanEnabled,
         ZoomEnabled = ZoomEnabled,
         SelectionEnabled = SelectionEnabled,

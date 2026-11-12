@@ -298,7 +298,9 @@ public sealed record DiagramIcon
 {
     public required string Id { get; init; }
 
-    public required string Body { get; init; }
+    public string Body { get; init; } = string.Empty;
+
+    public Func<CancellationToken, Task<string?>>? Load { get; init; }
 
     public double Width { get; init; } = 24;
 

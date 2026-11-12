@@ -14,6 +14,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `CommitMode` | `DiagramCommitMode` | `Optimistic` | `Optimistic` shows the result without waiting for C#; `Wait` waits for the answer |
 | `LinkType` | `string?` | `null` | The type of links drawn from ports that declare none; `null` uses `DefaultLinkType` of the schema, then the first link type |
 | `WheelMode` | `DiagramWheelMode` | `Pan` | What the plain wheel does: `Pan` or `Zoom` |
+| `BackgroundDragMode` | `DiagramBackgroundDragMode` | `BoxSelect` | What a left drag on the background does with a mouse or a pen: `BoxSelect`, `Pan` or `None`. Touch keeps its gestures |
 | `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
 | `GridVisible` | `bool` | `false` | Shows the grid |
 | `GridStyle` | `DiagramGridStyle` | `Dots` | `Dots` or `Lines` |
@@ -373,6 +374,7 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 | Class or attribute | Use |
 |---|---|
 | `mussel-diagram`, `mussel-diagram-palette` | The roots of the view and the palette |
+| `data-attached` | Set on the root of the view when JS is attached and the first view calls are applied. The content is hidden until then |
 | `mussel-diagram-node`, `mussel-diagram-group`, `mussel-diagram-link`, `mussel-diagram-port`, and `data-type` | Elements and their type names |
 | `data-template` | Nodes drawn by a template |
 | `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending` | Built-in states that the view sets while editing; hover is `:hover` |

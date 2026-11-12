@@ -77,6 +77,10 @@
     outline: none;
 }
 
+.mussel-diagram:not([data-attached]) > * {
+    visibility: hidden;
+}
+
 .mussel-diagram-stage {
     position: absolute;
     inset: 0;
@@ -283,6 +287,10 @@
 
 :where(.mussel-diagram-handle-ne, .mussel-diagram-handle-sw) {
     cursor: nesw-resize;
+}
+
+:where(.mussel-diagram-pan-drag) {
+    cursor: grab;
 }
 
 .mussel-diagram-space,

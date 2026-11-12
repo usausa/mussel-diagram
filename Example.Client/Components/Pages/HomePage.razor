@@ -10,7 +10,10 @@
             <MusselDiagramDragSource View="view" Type="server" Value="Imported server" class="diagram-source">Imported server</MusselDiagramDragSource>
         }
     </aside>
-    <MusselDiagramView @ref="view" Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
-        <TaskTemplate />
-    </MusselDiagramView>
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
+            <TaskTemplate />
+        </MusselDiagramView>
+    </div>
 </div>

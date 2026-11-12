@@ -1,10 +1,9 @@
 namespace MusselDiagram.E2ETests;
 
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
+using System.Text.RegularExpressions;
 
-public sealed class AppFixture : IAsyncLifetime
+public sealed partial class AppFixture : IAsyncLifetime
 {
 #if DEBUG
     private const string Configuration = "Debug";
@@ -19,6 +18,10 @@ public sealed class AppFixture : IAsyncLifetime
     private static readonly HttpClient Client = new();
 
     private readonly List<string> output = [];
+
+    private readonly string iconFolder = Directory.CreateTempSubdirectory("mussel-diagram-icons-").FullName;
+
+    private readonly TaskCompletionSource<string> listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private Process? app;
 
@@ -48,10 +51,8 @@ public sealed class AppFixture : IAsyncLifetime
             return;
         }
 
-        var port = FreePort();
-        BaseAddress = string.Create(CultureInfo.InvariantCulture, $"http://127.0.0.1:{port}/");
-        app = StartApp(port);
-        await WaitForAppAsync(app).ConfigureAwait(false);
+        app = StartApp();
+        BaseAddress = await WaitForAppAsync(app).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -72,6 +73,31 @@ public sealed class AppFixture : IAsyncLifetime
 
             app.Dispose();
         }
+
+        Directory.Delete(iconFolder, true);
+    }
+
+    public void ProvideAwsIcons(IEnumerable<(string Path, string Text)> files)
+    {
+        foreach (var (path, text) in files)
+        {
+            var file = Path.Combine(iconFolder, path);
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file, text);
+        }
+    }
+
+    public void RemoveAwsIcons()
+    {
+        foreach (var directory in Directory.EnumerateDirectories(iconFolder))
+        {
+            Directory.Delete(directory, true);
+        }
+
+        foreach (var file in Directory.EnumerateFiles(iconFolder))
+        {
+            File.Delete(file);
+        }
     }
 
     public async Task<DiagramPage> OpenAsync(string path, string mode, bool touch = false)
@@ -89,13 +115,6 @@ public sealed class AppFixture : IAsyncLifetime
         return page;
     }
 
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
-
     private static string FindSolutionDirectory()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -107,7 +126,10 @@ public sealed class AppFixture : IAsyncLifetime
         return directory?.FullName ?? throw new InvalidOperationException("MusselDiagram.slnx was not found.");
     }
 
-    private Process StartApp(int port)
+    [GeneratedRegex("Now listening on: (?<address>http://[^ ]+)")]
+    private static partial Regex ListeningPattern();
+
+    private Process StartApp()
     {
         var published = Environment.GetEnvironmentVariable("MUSSELDIAGRAM_E2E_PUBLISH_DIRECTORY");
         var project = Path.Combine(FindSolutionDirectory(), "Example");
@@ -120,8 +142,9 @@ public sealed class AppFixture : IAsyncLifetime
         };
         startInfo.ArgumentList.Add(published is null ? Path.Combine(project, "bin", Configuration, "net10.0", "Example.dll") : Path.Combine(published, "Example.dll"));
         startInfo.ArgumentList.Add("--urls");
-        startInfo.ArgumentList.Add(string.Create(CultureInfo.InvariantCulture, $"http://127.0.0.1:{port}"));
+        startInfo.ArgumentList.Add("http://127.0.0.1:0");
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = published is null ? "Development" : "Production";
+        startInfo.Environment["AwsIconFolder"] = iconFolder;
 
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("The app could not be started.");
         process.OutputDataReceived += (_, e) => Keep(e.Data);
@@ -131,7 +154,7 @@ public sealed class AppFixture : IAsyncLifetime
         return process;
     }
 
-    private async Task WaitForAppAsync(Process process)
+    private async Task<string> WaitForAppAsync(Process process)
     {
         var watch = Stopwatch.StartNew();
         while (true)
@@ -141,16 +164,20 @@ public sealed class AppFixture : IAsyncLifetime
                 throw new InvalidOperationException($"The app has exited:{Environment.NewLine}{Log()}");
             }
 
-            try
+            if (listening.Task.IsCompleted)
             {
-                using var response = await Client.GetAsync(new Uri(BaseAddress)).ConfigureAwait(false);
-                if (response.IsSuccessStatusCode)
+                var address = await listening.Task.ConfigureAwait(false) + "/";
+                try
                 {
-                    return;
+                    using var response = await Client.GetAsync(new Uri(address)).ConfigureAwait(false);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return address;
+                    }
                 }
-            }
-            catch (HttpRequestException)
-            {
+                catch (HttpRequestException)
+                {
+                }
             }
 
             if (watch.Elapsed > StartTimeout)
@@ -167,6 +194,11 @@ public sealed class AppFixture : IAsyncLifetime
         if (line is null)
         {
             return;
+        }
+
+        if (ListeningPattern().Match(line) is { Success: true } match)
+        {
+            listening.TrySetResult(match.Groups["address"].Value);
         }
 
         lock (output)

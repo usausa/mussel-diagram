@@ -1,0 +1,38 @@
+@page "/monitor"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" ReadOnly="true" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Overlays="overlays" BadgeKinds="MonitorDiagrams.BadgeKinds" SelectionChanged="OnSelectionChanged" class="example-monitor" />
+    </div>
+    <aside class="diagram-panel" data-panel="devices">
+        @if (Selected is { } device && simulation.ReadingOf(device.Id) is { } reading && MonitorDiagrams.Metrics.TryGetValue(device.Type, out var metric))
+        {
+            <div class="monitor-detail" data-device="@device.Id">
+                <div class="monitor-title">@device.Label</div>
+                <dl class="monitor-values">
+                    <dt>種類</dt>
+                    <dd>@TypeName(device)</dd>
+                    <dt>アドレス</dt>
+                    <dd>@((device.Data as DeviceData)?.Address)</dd>
+                    <dt>状態</dt>
+                    <dd class="monitor-state" data-state="@reading.State">@StateText(reading.State)</dd>
+                    <dt>@metric.Name</dt>
+                    <dd data-value>@MonitorSimulation.Format(reading.Value, metric)</dd>
+                    <dt>履歴</dt>
+                    <dd>@string.Join(" / ", reading.History.Select(static x => x.ToString("0", CultureInfo.InvariantCulture)))</dd>
+                </dl>
+            </div>
+        }
+        <ul class="monitor-list">
+            @foreach (var node in Devices)
+            {
+                <li>
+                    <button type="button" class="monitor-item" data-device="@node.Id" data-state="@(simulation.ReadingOf(node.Id)?.State)" @onclick="() => FocusAsync(node.Id)">@node.Label</button>
+                </li>
+            }
+        </ul>
+    </aside>
+</div>

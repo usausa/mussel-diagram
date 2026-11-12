@@ -53,6 +53,8 @@ public sealed partial class MusselDiagramView
     private async Task<DiagramExportResult> ExportAsync(ScriptExportOptions options, CancellationToken cancellationToken)
     {
         var current = controller ?? throw new InvalidOperationException("The view is not shown yet.");
+        WantIcons(null);
+        await Symbols.WhenLoadedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
         var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         exportRender = rendered;
         exporting = true;

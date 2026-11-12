@@ -4,11 +4,13 @@ using System.Collections.Immutable;
 
 internal sealed record MarkerDefinition(string Id, DiagramMarker Kind, string? Color);
 
-internal sealed record IconDefinition(string Id, DiagramIcon Icon, string Body);
+internal sealed record IconEntry(string Id, string Reference, DiagramIconSet Set, DiagramIcon Icon);
 
 internal sealed class RenderContext
 {
-    private readonly Dictionary<string, string> iconIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IconEntry> icons = new(StringComparer.Ordinal);
+
+    private readonly Dictionary<string, IconEntry> iconsById = new(StringComparer.Ordinal);
 
     private readonly Dictionary<(string Type, DiagramMarker Kind), string> markerIds = [];
 
@@ -16,20 +18,19 @@ internal sealed class RenderContext
     {
         Index = index;
         Tooltips = tooltips;
-        var icons = ImmutableArray.CreateBuilder<IconDefinition>();
         foreach (var set in index.Schema.IconSets)
         {
             foreach (var icon in set.Icons)
             {
                 var reference = $"{set.Prefix}:{icon.Id}";
-                if (iconIds.ContainsKey(reference))
+                if (icons.ContainsKey(reference))
                 {
                     continue;
                 }
 
-                var id = $"mussel-diagram-{viewId}-i{icons.Count}";
-                iconIds[reference] = id;
-                icons.Add(new IconDefinition(id, icon, SvgSanitizer.Body(set, icon)));
+                var entry = new IconEntry($"mussel-diagram-{viewId}-i{icons.Count}", reference, set, icon);
+                icons[reference] = entry;
+                iconsById[entry.Id] = entry;
             }
         }
 
@@ -51,7 +52,6 @@ internal sealed class RenderContext
 
         DefaultMarkerId = $"mussel-diagram-{viewId}-m";
         markers.Add(new MarkerDefinition(DefaultMarkerId, DiagramMarker.Arrow, null));
-        Icons = icons.ToImmutable();
         Markers = markers.ToImmutable();
     }
 
@@ -59,13 +59,15 @@ internal sealed class RenderContext
 
     public bool Tooltips { get; }
 
-    public ImmutableArray<IconDefinition> Icons { get; }
-
     public ImmutableArray<MarkerDefinition> Markers { get; }
 
     public string DefaultMarkerId { get; }
 
-    public string? FindIconId(string reference) => iconIds.GetValueOrDefault(reference);
+    public string? FindIconId(string reference) => icons.GetValueOrDefault(reference)?.Id;
+
+    public IconEntry? FindIcon(string reference) => icons.GetValueOrDefault(reference);
+
+    public IconEntry? FindIconById(string id) => iconsById.GetValueOrDefault(id);
 
     public string? FindMarkerId(string linkType, DiagramMarker kind) => markerIds.GetValueOrDefault((linkType, kind));
 }

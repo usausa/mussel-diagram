@@ -12,5 +12,8 @@
             <MusselDiagramPalette View="view" />
         }
     </aside>
-    <MusselDiagramView @ref="view" Diagram="diagram" class="example-aws" />
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" class="example-aws" />
+    </div>
 </div>

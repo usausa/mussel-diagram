@@ -11,15 +11,21 @@
         <nav class="page-switch" aria-label="ページ">
             <NavLink class="page" href="" Match="NavLinkMatch.All">基本</NavLink>
             <NavLink class="page" href="large">大きな図</NavLink>
-            <NavLink class="page" href="overlay">重ね表示</NavLink>
             <NavLink class="page" href="aws">AWS</NavLink>
+            <NavLink class="page" href="workflow">ワークフロー</NavLink>
+            <NavLink class="page" href="er">ER 図</NavLink>
+            <NavLink class="page" href="monitor">監視</NavLink>
+            <NavLink class="page" href="electric">電気設備</NavLink>
         </nav>
         <span class="layout-spacer"></span>
+        <MudIconButton Icon="@GridIcon" Color="Color.Inherit" Size="Size.Small" aria-label="グリッド" data-grid="@grid.Name()" OnClick="NextGrid" />
         <MudIconButton Icon="@DarkIcon" Color="Color.Inherit" Size="Size.Small" aria-label="暗い配色" aria-pressed="@DarkText" OnClick="ToggleDark" />
         <RenderModeSwitch />
     </header>
     <div class="layout-body">
-        @Body
+        <CascadingValue Value="grid">
+            @Body
+        </CascadingValue>
     </div>
 </div>
 
@@ -35,11 +41,17 @@
 
     private bool dark;
 
+    private GridMode grid = GridMode.Lines;
+
     private string LayoutClass => dark ? "layout mussel-dark" : "layout";
 
     private string DarkIcon => dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode;
 
     private string DarkText => dark ? "true" : "false";
 
+    private string GridIcon => grid == GridMode.Lines ? Icons.Material.Filled.GridOn : Icons.Material.Filled.GridOff;
+
     private void ToggleDark() => dark = !dark;
+
+    private void NextGrid() => grid = grid.Next();
 }

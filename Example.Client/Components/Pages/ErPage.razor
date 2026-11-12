@@ -1,0 +1,39 @@
+@page "/er"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar">
+        @if (view is not null)
+        {
+            <MusselDiagramPalette View="view" />
+        }
+    </aside>
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Issues="issues" SelectionChanged="OnSelectionChanged" class="example-er">
+            <TableTemplate />
+        </MusselDiagramView>
+    </div>
+    <aside class="diagram-panel" data-panel="table">
+        @if (Selected is { } table)
+        {
+            <MudTextField T="string" Label="テーブル名" Value="@table.Label" ValueChanged="@(v => Rename(table, v))" data-field="name" />
+            @foreach (var column in ErDiagrams.ColumnsOf(table.Data))
+            {
+                <div class="er-column-row" data-column="@column.Id">
+                    <MudTextField T="string" Label="列" Value="@column.Name" ValueChanged="@(v => Change(table, column with { Name = v ?? string.Empty }))" />
+                    <MudSelect T="string" Label="型" Value="@column.Type" ValueChanged="@(v => Change(table, column with { Type = v ?? string.Empty }))">
+                        @foreach (var type in ErDiagrams.Types)
+                        {
+                            <MudSelectItem Value="@type">@type</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudCheckBox T="bool" Label="主キー" Value="@column.Key" ValueChanged="@(v => Change(table, column with { Key = v }))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" aria-label="列を消す" OnClick="@(() => Remove(table, column))" />
+                </div>
+            }
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => AddColumn(table))" data-action="add-column">列を足す</MudButton>
+        }
+    </aside>
+</div>

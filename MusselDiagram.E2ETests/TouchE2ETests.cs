@@ -134,10 +134,12 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     {
         await OpenAsync(mode);
 
-        await TouchAsync("touchStart", (254, 208));
-        await TouchAsync("touchEnd");
-        await TouchAsync("touchStart", (254, 208));
-        await TouchAsync("touchEnd");
+        var time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000d;
+        await Task.WhenAll(
+            TouchAsync("touchStart", time, (254, 208)),
+            TouchAsync("touchEnd", time + 0.06),
+            TouchAsync("touchStart", time + 0.16, (254, 208)),
+            TouchAsync("touchEnd", time + 0.22));
 
         await Expect(opened!.View.Locator("textarea.mussel-diagram-text-editor")).ToHaveValueAsync("Web server 1");
     }
@@ -167,9 +169,18 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     private Task<JsonElement?> TouchAsync(string type, params (double X, double Y)[] points) =>
-        session!.SendAsync("Input.dispatchTouchEvent", new Dictionary<string, object>
-        {
-            ["type"] = type,
-            ["touchPoints"] = points.Select((p, i) => new Dictionary<string, object> { ["x"] = origin.X + p.X, ["y"] = origin.Y + p.Y, ["id"] = i + 1 }).ToArray()
-        });
+        session!.SendAsync("Input.dispatchTouchEvent", TouchEvent(type, points));
+
+    private Task<JsonElement?> TouchAsync(string type, double time, params (double X, double Y)[] points)
+    {
+        var touch = TouchEvent(type, points);
+        touch["timestamp"] = time;
+        return session!.SendAsync("Input.dispatchTouchEvent", touch);
+    }
+
+    private Dictionary<string, object> TouchEvent(string type, IEnumerable<(double X, double Y)> points) => new()
+    {
+        ["type"] = type,
+        ["touchPoints"] = points.Select((p, i) => new Dictionary<string, object> { ["x"] = origin.X + p.X, ["y"] = origin.Y + p.Y, ["id"] = i + 1 }).ToArray()
+    };
 }

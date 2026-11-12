@@ -3,19 +3,32 @@ namespace MusselDiagram.Internal;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 
-internal sealed class DiagramDefsView : ComponentBase
+internal sealed class DiagramDefsView : ComponentBase, IDisposable
 {
     private RenderContext? rendered;
+
+    private int renderedIcons = -1;
+
+    private IconSymbols? subscribed;
 
     [Parameter]
     [EditorRequired]
     public RenderContext Context { get; set; } = default!;
 
-    protected override bool ShouldRender() => !ReferenceEquals(Context, rendered);
+    [Parameter]
+    [EditorRequired]
+    public IconSymbols Icons { get; set; } = default!;
+
+    public void Dispose() => Subscribe(null);
+
+    protected override void OnParametersSet() => Subscribe(Icons);
+
+    protected override bool ShouldRender() => !ReferenceEquals(Context, rendered) || (Icons.Version != renderedIcons);
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         rendered = Context;
+        renderedIcons = Icons.Version;
         builder.OpenElement(0, "defs");
         foreach (var marker in Context.Markers)
         {
@@ -58,16 +71,35 @@ internal sealed class DiagramDefsView : ComponentBase
             builder.CloseElement();
         }
 
-        foreach (var icon in Context.Icons)
+        foreach (var icon in Icons.Symbols)
         {
             builder.OpenElement(20, "symbol");
             builder.SetKey(icon.Id);
             builder.AddAttribute(21, "id", icon.Id);
-            builder.AddAttribute(22, "viewBox", $"0 0 {Svg.Number(icon.Icon.Width)} {Svg.Number(icon.Icon.Height)}");
+            builder.AddAttribute(22, "viewBox", $"0 0 {Svg.Number(icon.Width)} {Svg.Number(icon.Height)}");
             builder.AddMarkupContent(23, icon.Body);
             builder.CloseElement();
         }
 
         builder.CloseElement();
+    }
+
+    private void Subscribe(IconSymbols? icons)
+    {
+        if (ReferenceEquals(subscribed, icons))
+        {
+            return;
+        }
+
+        if (subscribed is not null)
+        {
+            subscribed.Changed -= StateHasChanged;
+        }
+
+        subscribed = icons;
+        if (icons is not null)
+        {
+            icons.Changed += StateHasChanged;
+        }
     }
 }

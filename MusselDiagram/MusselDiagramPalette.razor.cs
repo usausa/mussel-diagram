@@ -90,6 +90,14 @@ public sealed partial class MusselDiagramPalette
         }
     }
 
+    private RenderFragment PaletteIconOf(string icon) => builder =>
+    {
+        builder.OpenComponent<PaletteIcon>(0);
+        builder.AddComponentParameter(1, nameof(PaletteIcon.View), View);
+        builder.AddComponentParameter(2, nameof(PaletteIcon.Icon), icon);
+        builder.CloseComponent();
+    };
+
     private void Subscribe(Diagram? diagram)
     {
         if (ReferenceEquals(subscribed, diagram))
@@ -165,9 +173,10 @@ public sealed partial class MusselDiagramPalette
         PaletteRow Item(DiagramBoxType type)
         {
             var look = View.RenderContext.Index.LookOf(type);
-            return new(type, type.Category, type.DisplayName ?? type.Name, look.Icon is { } icon ? View.RenderContext.FindIconId(icon) : null, true, look.Shape, look.Path, Svg.ShapeStyle(look));
+            var icon = (look.Icon is { } reference) && (View.RenderContext.FindIconId(reference) is not null) ? reference : null;
+            return new(type, type.Category, type.DisplayName ?? type.Name, icon, true, look.Shape, look.Path, Svg.ShapeStyle(look));
         }
     }
 
-    private sealed record PaletteRow(DiagramBoxType? Type, string? Category, string Label, string? IconId, bool Open, DiagramShape Shape, string? Path, string? Style);
+    private sealed record PaletteRow(DiagramBoxType? Type, string? Category, string Label, string? Icon, bool Open, DiagramShape Shape, string? Path, string? Style);
 }

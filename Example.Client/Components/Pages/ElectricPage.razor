@@ -1,0 +1,58 @@
+@page "/electric"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar">
+        @if (view is not null)
+        {
+            <MusselDiagramPalette View="view" />
+        }
+    </aside>
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="ElectricDiagrams.BadgeKinds" SelectionChanged="OnSelectionChanged" class="example-electric" />
+    </div>
+    <aside class="diagram-panel" data-panel="ledger">
+        @if (Selected is { } node)
+        {
+            <MudTextField T="string" Label="名称" Value="@node.Label" ValueChanged="@(v => Rename(node, v))" data-field="name" />
+            <div class="ledger-type">@TypeName(node)</div>
+            @switch (node.Data)
+            {
+                case BusData bus:
+                    <MudNumericField T="int" Label="フィーダーの数" Value="@bus.Feeders" Min="1" Max="8" ValueChanged="@(v => SetFeeders(node, v))" data-field="feeders" />
+                    break;
+                case EquipmentData data:
+                    if (ElectricDiagrams.IsSwitch(node.Type))
+                    {
+                        <MudSwitch T="bool" Value="@(!data.Open)" ValueChanged="@(v => Update(node, data with { Open = !v }))" Label="@(data.Open ? "切" : "入")" Color="Color.Primary" data-field="closed" />
+                    }
+
+                    <MudTextField T="string" Label="製造者" Value="@data.Maker" ValueChanged="@(v => Update(node, data with { Maker = v ?? string.Empty }))" data-field="maker" />
+                    <MudTextField T="string" Label="型式" Value="@data.Model" ValueChanged="@(v => Update(node, data with { Model = v ?? string.Empty }))" data-field="model" />
+                    <MudTextField T="string" Label="製造番号" Value="@data.Serial" ValueChanged="@(v => Update(node, data with { Serial = v ?? string.Empty }))" data-field="serial" />
+                    <MudNumericField T="int?" Label="製造年" Value="@data.Made" ValueChanged="@(v => Update(node, data with { Made = v }))" data-field="made" />
+                    <MudNumericField T="int?" Label="設置年" Value="@data.Installed" ValueChanged="@(v => Update(node, data with { Installed = v }))" data-field="installed" />
+                    @if (ElectricDiagrams.CapacityLabel(node.Type) is { } label)
+                    {
+                        <MudNumericField T="double?" Label="@label" Value="@data.Capacity" ValueChanged="@(v => Update(node, data with { Capacity = v }))" data-field="capacity" />
+                    }
+                    <MudTextField T="string" Label="次の点検日" Value="@DateText(data.NextInspection)" ValueChanged="@(v => Update(node, data with { NextInspection = ParseDate(v) }))" Placeholder="2026-12-01" data-field="inspection" />
+                    break;
+            }
+        }
+        else
+        {
+            <div class="ledger-list">
+                @foreach (var item in Equipment)
+                {
+                    <button type="button" class="ledger-item" data-device="@item.Id" data-status="@StatusName(item)" @onclick="@(() => FocusAsync(item.Id))">
+                        <span class="ledger-name">@item.Label</span>
+                        <span class="ledger-next">@NextText(item)</span>
+                    </button>
+                }
+            </div>
+        }
+    </aside>
+</div>

@@ -325,6 +325,8 @@ The permissions are select, move, resize, delete, connect and edit text. Counts,
 
 The view draws the diagram into one SVG from the type declarations and the templates. While panning and zooming, JS changes only transforms, and C# does not render in the meantime.
 
+The content stays hidden until JS is attached and the view calls made before it (such as fitting) are applied, so a prerendered page shows only the background, not the diagram at the default position without labels. The root then gets `data-attached`.
+
 ### Layers
 
 From back to front:
@@ -347,14 +349,14 @@ From back to front:
 
 | Operation | Behaviour |
 |---|---|
-| Pan | Space+drag, middle-button drag, wheel (vertical), Shift+wheel (horizontal). On touch, a one-finger drag on the background. A left drag on the background is box selection (Selection and moving) |
+| Pan | Space+drag, middle-button drag, wheel (vertical), Shift+wheel (horizontal). On touch, a one-finger drag on the background. A left drag on the background is box selection by default, and pans with `BackgroundDragMode` `Pan` (Selection and moving) |
 | Zoom | Ctrl+wheel, Alt+wheel, pinch (keeping the point under the pointer still), and the zoom commands |
 | Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. An element can also be brought to the center |
 
 - `WheelMode` makes the plain wheel zoom instead
 - The zoom goes from `MinZoom` (default 0.05) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
-- The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
+- The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram (with the labels and badges drawn outside the elements) or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
 - The position and zoom of the view are not in the diagram. To keep them, the app saves the values of `ViewportChanged`
 - The view has no edges. Page frames and limits on the visible area are not in the first version
 
@@ -433,6 +435,7 @@ C# and JS compute the port positions with the same formula from the type and the
 |---|---|
 | Background | Default |
 | Panning (while Space is held, middle button) | `grab`, and `grabbing` while moving |
+| The background with `BackgroundDragMode` `Pan` | `grab`, and `grabbing` while moving |
 | A movable element | `move` |
 | A resize handle | The `…-resize` for its direction |
 | A port that can start a link | `crosshair` |
@@ -453,6 +456,7 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click on a port that can start a link does not change the selection and opens the type picker (Palette)
 - Shift+click and Ctrl+click (Cmd on Mac) add to or remove from the selection
 - Box selection, a left drag on the background, selects the elements entirely inside the rectangle. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is not in the first version
+- `BackgroundDragMode` decides what a left drag on the background does with a mouse or a pen: `BoxSelect` (the default), `Pan` or `None`. A click on the background clears the selection in every mode. Touch keeps its gestures (a one-finger drag pans, and a drag after a long press selects)
 - A click on the background, and Esc outside an operation, clear the selection. Deleted elements leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment. Even when the selection known to C# is behind, they act on the selection the user saw
@@ -528,7 +532,7 @@ Context menus on right-click and long press are not in the first version.
 ### Turning behaviour off and adding it
 
 - Each built-in operation can be turned off with its `…Enabled`: pan, zoom, selection, box selection, move, resize, connect, drop, text editing, tooltip. `ReadOnly` turns off all editing operations (Components and packages)
-- The app adds its own behaviour through the click and double-click events and through commands. Switching modes is not in the first version
+- The app adds its own behaviour through the click and double-click events and through commands. Switching tools other than the background drag (`BackgroundDragMode`), such as drawing links or shapes, is not in the first version
 
 ## 🧲 Snapping and guides
 
@@ -1194,6 +1198,7 @@ A group type declares the form of its header.
 ### Reading the official package
 
 - The app reads the Icon package zip, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
+- The Example reads the newest zip in `Example/AwsIcons/` when the AWS page opens, and a zip chosen with the file button. Git ignores the folder
 - The ID is the file name without the release date and the size, with the prefix `aws`. It stays the same when a new release (three a year) replaces the package
 
 | File | ID | Size read |

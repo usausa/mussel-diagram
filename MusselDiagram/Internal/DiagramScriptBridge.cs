@@ -38,6 +38,9 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
     public JsonElement SearchTypes(string query, string[] names) => ScriptJson.ToElement(view.SearchTypes(query, names));
 
     [JSInvokable]
+    public void WantIcons(string[] ids) => view.WantIconIds(ids);
+
+    [JSInvokable]
     public async Task<JsonElement> CommitResizeAsync(string id, double x, double y, double width, double height, long baseVersion, int rejectionsSeen, string[] selection) =>
         ScriptJson.ToElement(await view.CommitResizeAsync(id, new DiagramRect(x, y, width, height), baseVersion, rejectionsSeen, selection).ConfigureAwait(true));
 

@@ -19,9 +19,9 @@
                 {
                     <div class="mussel-diagram-palette-item" role="option" title="@row.Label" data-mussel-type="@row.Type.Name" data-disabled="@(Disabled ? string.Empty : null)">
                         <svg class="mussel-diagram-palette-icon" viewBox="0 0 24 24" aria-hidden="true">
-                            @if (row.IconId is not null)
+                            @if (row.Icon is not null)
                             {
-                                <use href="@($"#{row.IconId}")" width="24" height="24" />
+                                @PaletteIconOf(row.Icon)
                             }
                             else
                             {

@@ -1371,9 +1371,12 @@ class DiagramController {
         this.resizeObserver = new ResizeObserver(() => this.onResize());
         this.resizeObserver.observe(root);
         this.applyView();
-        root.dataset.attached = '';
         this.notifyViewport();
         controllers.set(root, this);
+    }
+
+    ready() {
+        this.root.dataset.attached = '';
     }
 
     listen(target, type, handler, options) {
@@ -1399,6 +1402,7 @@ class DiagramController {
         this.canvas?.style.setProperty('--mussel-diagram-link-hit-width', String(options.linkHitWidth ?? 10));
         this.canvas?.classList.toggle('mussel-diagram-no-move', !options.moveEnabled);
         this.canvas?.classList.toggle('mussel-diagram-no-connect', !options.connectEnabled);
+        this.canvas?.classList.toggle('mussel-diagram-pan-drag', (options.backgroundDrag === 'pan') && options.panEnabled);
     }
 
     setNotAllowed(on) {
@@ -1424,6 +1428,18 @@ class DiagramController {
             reasons: schema.reasons ?? {},
             texts: schema.texts ?? { searchPlaceholder: '', noMatches: '' },
         };
+        this.wantedIcons = new Set();
+    }
+
+    wantIcons(ids) {
+        const fresh = ids.filter((id) => id && !this.wantedIcons.has(id));
+        if ((fresh.length === 0) || !this.dotnet) {
+            return;
+        }
+        for (const id of fresh) {
+            this.wantedIcons.add(id);
+        }
+        this.dotnet.invokeMethodAsync('WantIcons', fresh).catch(() => {});
     }
 
     setTable(table) {
@@ -1553,9 +1569,27 @@ class DiagramController {
 
     fit(bounds, margin) {
         this.foldGesture();
-        this.view = fitView(bounds, this.size.width, this.size.height, margin, this.options.minZoom, this.options.maxZoom);
+        this.view = fitView(this.drawnBounds(bounds), this.size.width, this.size.height, margin, this.options.minZoom, this.options.maxZoom);
         this.applyView();
         this.notifyViewport();
+    }
+
+    drawnBounds(bounds) {
+        let left = bounds.x;
+        let top = bounds.y;
+        let right = bounds.x + bounds.width;
+        let bottom = bounds.y + bounds.height;
+        const layers = this.canvas?.querySelectorAll(':scope > .mussel-diagram-viewport > :is(.mussel-diagram-groups, .mussel-diagram-overlay-groups, .mussel-diagram-links, .mussel-diagram-nodes, .mussel-diagram-badges)') ?? [];
+        for (const layer of layers) {
+            const box = layer.getBBox();
+            if ((box.width > 0) || (box.height > 0)) {
+                left = Math.min(left, box.x);
+                top = Math.min(top, box.y);
+                right = Math.max(right, box.x + box.width);
+                bottom = Math.max(bottom, box.y + box.height);
+            }
+        }
+        return { x: left, y: top, width: right - left, height: bottom - top };
     }
 
     onWheel(event) {
@@ -1730,10 +1764,7 @@ class DiagramController {
             }
         }
         if (this.pan?.pointerId === event.pointerId) {
-            this.view = { ...this.view, x: this.view.x + (event.clientX - this.pan.x), y: this.view.y + (event.clientY - this.pan.y) };
-            this.pan.x = event.clientX;
-            this.pan.y = event.clientY;
-            this.applyView();
+            this.panTo(event);
             return;
         }
         if (this.press?.pointerId !== event.pointerId) {
@@ -1755,6 +1786,13 @@ class DiagramController {
             if (press.touch && (press.hit.kind === 'background') && !press.long) {
                 this.press = null;
                 this.startPan(event);
+                return;
+            }
+            if (!press.touch && (press.hit.kind === 'background') && (this.options.backgroundDrag !== 'boxSelect')) {
+                this.press = null;
+                if ((this.options.backgroundDrag === 'pan') && this.startPan(event, press)) {
+                    this.panTo(event);
+                }
                 return;
             }
             if (!this.startDrag(press)) {
@@ -1815,13 +1853,21 @@ class DiagramController {
         }
     }
 
-    startPan(event) {
+    startPan(event, from = null) {
         if (!this.options.panEnabled) {
-            return;
+            return false;
         }
         this.foldGesture();
-        this.pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+        this.pan = { pointerId: event.pointerId, x: from?.x ?? event.clientX, y: from?.y ?? event.clientY };
         this.root.classList.add('mussel-diagram-panning');
+        return true;
+    }
+
+    panTo(event) {
+        this.view = { ...this.view, x: this.view.x + (event.clientX - this.pan.x), y: this.view.y + (event.clientY - this.pan.y) };
+        this.pan.x = event.clientX;
+        this.pan.y = event.clientY;
+        this.applyView();
     }
 
     longPress(press) {
@@ -3182,6 +3228,7 @@ class DiagramController {
             option.setAttribute('aria-selected', index === picker.active ? 'true' : 'false');
             const icon = svg('svg', { class: 'mussel-diagram-picker-icon', viewBox: '0 0 24 24' });
             if (item.type.icon) {
+                option.setAttribute('data-icon', item.type.icon);
                 icon.append(svg('use', { href: `#${item.type.icon}`, width: 24, height: 24 }));
             } else {
                 icon.append(shapeElement(item.type, { x: 3, y: 6, w: 18, h: 12 }, item.type.style ? { class: 'mussel-diagram-picker-shape', style: item.type.style } : { class: 'mussel-diagram-picker-shape' }));
@@ -3198,6 +3245,13 @@ class DiagramController {
             options.push(empty);
         }
         picker.list.replaceChildren(...options);
+        picker.observer ??= new IntersectionObserver((entries) => this.wantIcons(entries.filter((x) => x.isIntersecting).map((x) => x.target.getAttribute('data-icon'))), { root: picker.list });
+        picker.observer.disconnect();
+        for (const option of options) {
+            if (option.hasAttribute('data-icon')) {
+                picker.observer.observe(option);
+            }
+        }
         this.drawPickerPreview();
     }
 
@@ -3275,6 +3329,7 @@ class DiagramController {
             return;
         }
         document.removeEventListener('pointerdown', this.picker.outside, true);
+        this.picker.observer?.disconnect();
         this.picker.element.remove();
         this.picker = null;
         this.layers.preview.replaceChildren();
@@ -3991,6 +4046,9 @@ class DiagramController {
         }
         this.closeEditor();
         this.closePicker();
+        if (type.icon) {
+            this.wantIcons([type.icon]);
+        }
         const ghost = document.createElement('div');
         ghost.className = 'mussel-diagram-drag-ghost';
         const icon = item?.querySelector('svg')?.cloneNode(true);

@@ -116,7 +116,11 @@ public sealed partial class MusselDiagramView
             _ = SelectionChanged.InvokeAsync(SelectedIds);
         }
 
-        _ = InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(() =>
+        {
+            WantIcons(e);
+            StateHasChanged();
+        });
     }
 
     private async Task SyncScriptAsync(IJSObjectReference current, bool resend)

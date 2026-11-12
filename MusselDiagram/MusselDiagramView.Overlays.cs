@@ -80,6 +80,7 @@ public sealed partial class MusselDiagramView
         renderedIssues = Issues;
         renderedBadgeKinds = BadgeKinds;
         overlays = OverlayIndex.Build(Overlays, Issues, BadgeKinds, overlays);
+        WantBadgeIcons();
         commands?.Refresh();
     }
 

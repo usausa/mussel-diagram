@@ -71,7 +71,7 @@ Register the types, create a `Diagram` and show it in an interactive component.
 ```
 
 The diagram works without a view as well: `diagram.Validate()` checks the whole diagram, and `diagram.ToJson()` and `diagram.LoadJson(json)` save and load it.  
-The `Example` project shows every feature on Server, WebAssembly and Auto.  
+The `Example` project shows every feature on Server and WebAssembly, with sample apps for workflows, ER diagrams, device monitoring, electrical single-line diagrams and AWS architecture diagrams.  
 
 ## 🎨 Look
 
@@ -80,6 +80,7 @@ The `Example` project shows every feature on Server, WebAssembly and Auto.
 | Theme | CSS variables shared with the Mussel family (`--mussel-primary-text` and more), `--mussel-diagram-*` for the diagram, and `.mussel-dark` for dark backgrounds |
 | Types | Rectangles, ellipses, diamonds and paths, icons, colors, strokes and dashes, presets, group headers and label slots with formats |
 | Templates | Razor templates for node types that need their own drawing |
+| Grid | Dots or lines behind the diagram |
 | States | Selection, connection candidates, drop targets, errors and warnings, and states and badges of the app as overlays |
 
 ## ✅ Supported features
@@ -88,7 +89,7 @@ The `Example` project shows every feature on Server, WebAssembly and Auto.
 |---|---|
 | **Model** | Nodes, ports, links, tree groups, overlay groups that cross other groups, shared items, typed data, queries, undo and redo, and JSON with versions |
 | **Rules** | Connection rules by port, direction, kind and type, nesting, counts, permissions, locks, app rules and whole-diagram checks |
-| **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
+| **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection or panning by dragging the background, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
 | **Routes** | Orthogonal routes around obstacles, straight and curved lines, and a router that can be replaced |
 | **Palette** | Categories, search, dragging from the palette and from lists of the app, dropping on links, quick add by keys, and icon sets from Iconify JSON, zip files and folders |
 | **Commands** | A registry of commands with keys for toolbars and menus of the app |
@@ -100,12 +101,13 @@ The `Example` project shows every feature on Server, WebAssembly and Auto.
 ## ☁️ AWS architecture diagrams
 
 The Example shows how to draw AWS architecture diagrams with the official icons.  
-The icons are not included. Download them and load them in the Example:  
+The icons are not included. Download them and place them in the Example:  
 
 1. Download the "Icon package" zip from [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/).
-2. Run the Example and open the AWS page.
-3. Choose the zip with the file button. The service, resource and group icons are read, and the sample shows them.
+2. Put the zip in `Example/AwsIcons/`. Git ignores the folder.
+3. Run the Example and open the AWS page. The service, resource and group icons are read, and the sample shows them.
 
+A zip can also be chosen with the file button on the page.  
 Copy `Example.Client/Models/AwsDiagrams.cs` to use the same group looks, arrows and rules in an application.  
 
 ## 📖 API

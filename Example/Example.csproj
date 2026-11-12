@@ -14,4 +14,9 @@
     <ProjectReference Include="..\Example.Client\Example.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AwsIcon Include="..\AwsIcons\**\Arch_*_64.svg;..\AwsIcons\**\Res_*_48.svg;..\AwsIcons\**\Res_*_48_Light.svg;..\AwsIcons\**\*Group-Icons*\*_32.svg" Exclude="..\AwsIcons\__MACOSX\**" />
+    <Content Include="@(AwsIcon)" Link="AwsIcons\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

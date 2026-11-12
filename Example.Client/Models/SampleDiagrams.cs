@@ -1,7 +1,5 @@
 namespace Example.Client.Models;
 
-using System.Collections.Immutable;
-
 public static class SampleDiagrams
 {
     private const string ServerIcon = "<rect x=\"3\" y=\"4\" width=\"18\" height=\"7\" rx=\"1\" fill=\"#ED7100\" /><rect x=\"3\" y=\"13\" width=\"18\" height=\"7\" rx=\"1\" fill=\"#ED7100\" /><circle cx=\"7\" cy=\"7.5\" r=\"1.2\" fill=\"#fff\" /><circle cx=\"7\" cy=\"16.5\" r=\"1.2\" fill=\"#fff\" />";
@@ -90,28 +88,6 @@ public static class SampleDiagrams
         DefaultLinkType = "arrow"
     };
 
-    public static IReadOnlyList<DiagramBadgeKind> BadgeKinds { get; } =
-    [
-        new() { Name = "status", Corner = DiagramCorner.TopLeft },
-        new() { Name = "runs", Corner = DiagramCorner.BottomRight, Clickable = true }
-    ];
-
-    public static Diagram CreateFlow()
-    {
-        var diagram = new Diagram(Schema);
-        diagram.Add(Task("fetch", 40, 80, "Fetch orders", "Sato"));
-        diagram.Add(Task("transform", 280, 80, "Transform", null));
-        diagram.Add(Task("load", 520, 80, "Load", "Suzuki"));
-        diagram.Add(new DiagramNode { Id = "notify", Type = "process", Bounds = new DiagramRect(750, 80, 140, 60), Label = "Notify" });
-        diagram.Add(new DiagramNode { Id = "legacy", Type = "legacy", Bounds = new DiagramRect(40, 240, 140, 60), Label = "Old job" });
-        diagram.Add(Task("archive", 520, 240, "Archive", null));
-        diagram.Connect(TaskLink("fetch-transform", "fetch", "transform", "in"));
-        diagram.Connect(TaskLink("transform-load", "transform", "load", "in"));
-        diagram.Connect(TaskLink("load-notify", "load", "notify", "in"));
-        diagram.ClearHistory();
-        return diagram;
-    }
-
     public static Diagram CreateBasic()
     {
         var diagram = new Diagram(Schema);
@@ -146,19 +122,6 @@ public static class SampleDiagrams
 
     private static DiagramNode Icon(string id, string type, double x, double y, string parentId, string label) =>
         new() { Id = id, Type = type, Bounds = new DiagramRect(x, y, 48, 48), ParentId = parentId, Label = label };
-
-    private static DiagramNode Task(string id, double x, double y, string title, string? owner) =>
-        new()
-        {
-            Id = id,
-            Type = "task",
-            Bounds = new DiagramRect(x, y, 160, 60),
-            Label = title,
-            Texts = owner is null ? [] : ImmutableDictionary<string, string>.Empty.Add("owner", owner)
-        };
-
-    private static DiagramLink TaskLink(string id, string source, string target, string port) =>
-        new() { Id = id, Type = "arrow", Source = new DiagramLinkEnd(source, "out"), Target = new DiagramLinkEnd(target, port) };
 
     private static DiagramLink Link(string id, string source, string target) =>
         new() { Id = id, Type = "arrow", Source = new DiagramLinkEnd(source), Target = new DiagramLinkEnd(target) };

@@ -126,7 +126,7 @@ public sealed partial class MusselDiagramView
         if (!string.Equals(map, sentCommands, StringComparison.Ordinal))
         {
             sentCommands = map;
-            await current.InvokeVoidAsync("setCommands", JsonDocument.Parse(map).RootElement).ConfigureAwait(true);
+            await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
         }
 
         var palette = Diagram.Index.Schema.Rules.InPalette is null
@@ -135,7 +135,7 @@ public sealed partial class MusselDiagramView
         if (!string.Equals(palette, sentPalette, StringComparison.Ordinal))
         {
             sentPalette = palette;
-            await current.InvokeVoidAsync("setPaletteTypes", palette is null ? null : JsonDocument.Parse(palette).RootElement).ConfigureAwait(true);
+            await current.InvokeVoidAsync("setPaletteTypes", palette is null ? null : JsonElement.Parse(palette)).ConfigureAwait(true);
         }
     }
 

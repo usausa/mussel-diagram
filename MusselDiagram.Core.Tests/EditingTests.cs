@@ -79,7 +79,7 @@ public sealed class EditingTests
         diagram.Add(new DiagramSharedItem { Id = "admin", Type = "role" });
         diagram.Add(Group("g", 0, 0, 400, 300));
         diagram.Add(Node("a", 20, 40, "g"));
-        diagram.Add(Node("b", 200, 40, "g", "user") with { Data = JsonDocument.Parse("\"admin\"").RootElement });
+        diagram.Add(Node("b", 200, 40, "g", "user") with { Data = JsonElement.Parse("\"admin\"") });
         diagram.Add(Node("c", 500, 0));
         diagram.Connect(Link("ab", "a", "b"));
         diagram.Connect(Link("ac", "a", "c"));

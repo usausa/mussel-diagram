@@ -88,6 +88,38 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void FilesOverTheSizeLimitAreReported()
+    {
+        var result = DiagramIconImport.FromZip(Zip(("big.svg", "<svg>" + new string(' ', 4 * 1024 * 1024) + "</svg>")), "demo");
+
+        Assert.Empty(result.IconSet.Icons);
+        Assert.Equal(DiagramIssueKind.UnreadableIcon, Assert.Single(result.Issues).Kind);
+    }
+
+    [Fact]
+    public void FoldersAreReadWithTheMap()
+    {
+        var folder = Directory.CreateTempSubdirectory("mussel-diagram-icons-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "Arch_Compute", "64"));
+            Directory.CreateDirectory(Path.Combine(folder, "Arch_Compute", "48"));
+            File.WriteAllText(Path.Combine(folder, "Arch_Compute", "64", "Arch_Amazon-EC2_64.svg"), Square);
+            File.WriteAllText(Path.Combine(folder, "Arch_Compute", "48", "Arch_Amazon-EC2_48.svg"), "<svg><g></svg>");
+
+            var result = DiagramIconImport.FromFolder(folder, "aws", static path => path.Contains("/64/", StringComparison.Ordinal) ? new DiagramIconInfo("Arch_Amazon-EC2", "Amazon EC2", "Compute") : null);
+
+            var icon = Assert.Single(result.IconSet.Icons);
+            Assert.Equal(("Arch_Amazon-EC2", "Amazon EC2", "Compute"), (icon.Id, icon.Name, icon.Category));
+            Assert.Empty(result.Issues);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
     public void TypesAreMadeForEachIcon()
     {
         var set = new DiagramIconSet { Prefix = "aws", Icons = [new DiagramIcon { Id = "Arch_Amazon-EC2", Body = "<path/>", Name = "Amazon EC2", Category = "Compute" }] };

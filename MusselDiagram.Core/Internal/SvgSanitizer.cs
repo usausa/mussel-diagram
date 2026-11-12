@@ -9,8 +9,12 @@ using System.Xml.Linq;
 
 internal sealed record SanitizedSvg(string Body, double Width, double Height, IReadOnlyList<string> Removed, IReadOnlyList<string> RejectedUrls);
 
+internal sealed record IconContent(string Body, double Width, double Height);
+
 internal static partial class SvgSanitizer
 {
+    public const int MaxFileLength = 4 * 1024 * 1024;
+
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
 
     private static readonly object Marker = new();
@@ -57,7 +61,23 @@ internal static partial class SvgSanitizer
     public static string Body(DiagramIconSet set, DiagramIcon icon) =>
         Imported.TryGetValue(icon, out _)
             ? icon.Body
-            : Cleaned.GetValue(icon, x => new StrongBox<string>(FromBody(x.Body, $"{SafeId(set.Prefix)}-{SafeId(x.Id)}-", x.Width, x.Height)?.Body ?? string.Empty)).Value!;
+            : Cleaned.GetValue(icon, x => new StrongBox<string>(FromBody(x.Body, IdPrefix(set.Prefix, x.Id), x.Width, x.Height)?.Body ?? string.Empty)).Value!;
+
+    public static IconContent Content(DiagramIconSet set, DiagramIcon icon) => new(Body(set, icon), icon.Width, icon.Height);
+
+    public static async Task<IconContent?> LoadAsync(DiagramIconSet set, DiagramIcon icon, CancellationToken cancellationToken)
+    {
+        var read = ReadAsync(icon, cancellationToken);
+        await ((Task)read).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        if (!read.IsCompletedSuccessfully || (await read.ConfigureAwait(false) is not { Length: <= MaxFileLength } text))
+        {
+            return null;
+        }
+
+        return FromFile(text, IdPrefix(set.Prefix, icon.Id)) is { } svg ? new IconContent(svg.Body, svg.Width, svg.Height) : null;
+    }
+
+    public static string IdPrefix(string prefix, string id) => $"{SafeId(prefix)}-{SafeId(id)}-";
 
     public static DiagramIcon MarkImported(DiagramIcon icon)
     {
@@ -87,6 +107,9 @@ internal static partial class SvgSanitizer
 
         return builder.ToString();
     }
+
+    private static async Task<string?> ReadAsync(DiagramIcon icon, CancellationToken cancellationToken) =>
+        icon.Load is null ? null : await icon.Load(cancellationToken).ConfigureAwait(false);
 
     private static XElement? Parse(string text)
     {

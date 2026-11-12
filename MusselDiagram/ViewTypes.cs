@@ -6,6 +6,13 @@ public enum DiagramWheelMode
     Zoom
 }
 
+public enum DiagramBackgroundDragMode
+{
+    BoxSelect,
+    Pan,
+    None
+}
+
 public enum DiagramCommitMode
 {
     Optimistic,

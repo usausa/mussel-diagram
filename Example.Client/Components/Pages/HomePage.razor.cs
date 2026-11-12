@@ -10,8 +10,15 @@ public sealed partial class HomePage
 
     private MusselDiagramView? view;
 
+    private DiagramBackgroundDragMode dragMode;
+
+    private double zoom = 1;
+
     [SupplyParameterFromQuery]
     public bool Wait { get; set; }
+
+    [CascadingParameter]
+    private GridMode Grid { get; set; }
 
     protected override void OnAfterRender(bool firstRender)
     {
@@ -29,4 +36,6 @@ public sealed partial class HomePage
             e.Reason = "この例ではロードバランサーを動かせません";
         }
     }
+
+    private void OnViewportChanged(DiagramViewport viewport) => zoom = viewport.Zoom;
 }

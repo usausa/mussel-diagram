@@ -13,8 +13,6 @@ public sealed record DiagramIconImportResult(DiagramIconSet IconSet, ImmutableAr
 
 public static class DiagramIconImport
 {
-    private const int MaxFileLength = 4 * 1024 * 1024;
-
     public static DiagramIconImportResult FromIconify(Stream stream)
     {
         JsonDocument document;
@@ -118,7 +116,7 @@ public static class DiagramIconImport
                     body = $"<g transform=\"{string.Join(' ', transforms)}\">{body}</g>";
                 }
 
-                if (SvgSanitizer.FromBody(body, IdPrefix(prefix, id), iconWidth, iconHeight) is not { } svg)
+                if (SvgSanitizer.FromBody(body, SvgSanitizer.IdPrefix(prefix, id), iconWidth, iconHeight) is not { } svg)
                 {
                     issues.Add(Unreadable(id));
                     return;
@@ -132,32 +130,38 @@ public static class DiagramIconImport
 
     public static DiagramIconImportResult FromZip(Stream stream, string prefix, Func<string, DiagramIconInfo?>? map = null)
     {
-        var files = new List<(string Path, string? Text)>();
-        using (var archive = new ZipArchive(stream, ZipArchiveMode.Read, true))
-        {
-            foreach (var entry in archive.Entries)
-            {
-                if (entry.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-                {
-                    using var content = entry.Open();
-                    files.Add((entry.FullName.Replace('\\', '/'), Read(content)));
-                }
-            }
-        }
-
-        return FromFiles(files, prefix, map);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read, true);
+        return ReadFiles(
+            archive.Entries
+                .Where(static x => x.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                .Select(static x => (x.FullName.Replace('\\', '/'), (Func<string?>)(() => Read(x)))),
+            prefix,
+            map);
     }
 
-    public static DiagramIconImportResult FromFolder(string path, string prefix, Func<string, DiagramIconInfo?>? map = null)
+    public static DiagramIconImportResult FromFolder(string path, string prefix, Func<string, DiagramIconInfo?>? map = null) =>
+        ReadFiles(
+            Directory.EnumerateFiles(path, "*.svg", SearchOption.AllDirectories)
+                .Select(file => (Path.GetRelativePath(path, file).Replace('\\', '/'), (Func<string?>)(() => new FileInfo(file).Length > SvgSanitizer.MaxFileLength ? null : File.ReadAllText(file, Encoding.UTF8)))),
+            prefix,
+            map);
+
+    public static DiagramIconSet FromFiles(IEnumerable<string> paths, Func<string, CancellationToken, Task<string?>> read, string prefix, Func<string, DiagramIconInfo?>? map = null)
     {
-        var files = new List<(string Path, string? Text)>();
-        foreach (var file in Directory.EnumerateFiles(path, "*.svg", SearchOption.AllDirectories))
+        map ??= DefaultMap;
+        var icons = ImmutableArray.CreateBuilder<DiagramIcon>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in paths.Select(static x => x.Replace('\\', '/')).Where(static x => x.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal))
         {
-            var text = new FileInfo(file).Length > MaxFileLength ? null : File.ReadAllText(file, Encoding.UTF8);
-            files.Add((Path.GetRelativePath(path, file).Replace('\\', '/'), text));
+            if ((map(path) is not { } info) || !ids.Add(info.Id))
+            {
+                continue;
+            }
+
+            icons.Add(new DiagramIcon { Id = info.Id, Name = info.Name ?? info.Id, Category = info.Category, Load = cancellationToken => read(path, cancellationToken) });
         }
 
-        return FromFiles(files, prefix, map);
+        return new DiagramIconSet { Prefix = prefix, Icons = icons.ToImmutable() };
     }
 
     public static ImmutableArray<DiagramNodeType> CreateNodeTypes(DiagramIconSet set, DiagramNodeType baseType, Func<DiagramIcon, bool>? filter = null) =>
@@ -180,20 +184,20 @@ public static class DiagramIconImport
             Look = baseType.Look with { Icon = $"{set.Prefix}:{icon.Id}" }
         })];
 
-    private static DiagramIconImportResult FromFiles(IEnumerable<(string Path, string? Text)> files, string prefix, Func<string, DiagramIconInfo?>? map)
+    private static DiagramIconImportResult ReadFiles(IEnumerable<(string Path, Func<string?> Read)> files, string prefix, Func<string, DiagramIconInfo?>? map)
     {
         map ??= DefaultMap;
         var icons = ImmutableArray.CreateBuilder<DiagramIcon>();
         var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (path, text) in files.OrderBy(static x => x.Path, StringComparer.Ordinal))
+        foreach (var (path, read) in files.OrderBy(static x => x.Path, StringComparer.Ordinal))
         {
             if ((map(path) is not { } info) || !ids.Add(info.Id))
             {
                 continue;
             }
 
-            if ((text is null) || (SvgSanitizer.FromFile(text, IdPrefix(prefix, info.Id)) is not { } svg))
+            if ((read() is not { } text) || (SvgSanitizer.FromFile(text, SvgSanitizer.IdPrefix(prefix, info.Id)) is not { } svg))
             {
                 issues.Add(Unreadable(info.Id));
                 continue;
@@ -221,14 +225,23 @@ public static class DiagramIconImport
         return new DiagramIconInfo(name, name, category);
     }
 
-    private static string IdPrefix(string prefix, string id) => $"{SvgSanitizer.SafeId(prefix)}-{SvgSanitizer.SafeId(id)}-";
-
-    private static string? Read(Stream stream)
+    private static string? Read(ZipArchiveEntry entry)
     {
-        using var reader = new StreamReader(stream, Encoding.UTF8, true, 4096, true);
-        var buffer = new char[MaxFileLength + 1];
-        var length = reader.ReadBlock(buffer, 0, buffer.Length);
-        return length > MaxFileLength ? null : new string(buffer, 0, length);
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8, true, 4096, false);
+        var text = new StringBuilder();
+        var buffer = new char[4096];
+        int length;
+        while ((length = reader.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (text.Length + length > SvgSanitizer.MaxFileLength)
+            {
+                return null;
+            }
+
+            text.Append(buffer, 0, length);
+        }
+
+        return text.ToString();
     }
 
     private static void Report(string id, SanitizedSvg svg, ImmutableArray<DiagramIssue>.Builder issues)

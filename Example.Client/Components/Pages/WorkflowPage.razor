@@ -1,0 +1,58 @@
+@page "/workflow"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar">
+        <div class="diagram-actions">
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(run is { Running: true })" OnClick="RunAsync" data-action="run">実行</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ExportSvgAsync" data-action="svg">SVG</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Png)" data-action="png">PNG</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Jpeg)" data-action="jpeg">JPEG</MudButton>
+        </div>
+        @if (view is not null)
+        {
+            <MusselDiagramPalette View="view" />
+        }
+    </aside>
+    <div class="diagram-area">
+        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="WorkflowDiagrams.BadgeKinds" BadgeClicked="OnBadgeClicked" SelectionChanged="OnSelectionChanged" class="example-workflow" />
+    </div>
+    <aside class="diagram-panel" data-panel="settings">
+        @if (Selected is { } node)
+        {
+            <MudTextField T="string" Label="名前" Value="@node.Label" ValueChanged="@(v => Rename(node, v))" data-field="name" />
+            @switch (node.Data)
+            {
+                case TriggerSettings trigger:
+                    <MudTextField T="string" Label="スケジュール" Value="@trigger.Schedule" ValueChanged="@(v => Update(node, new TriggerSettings(v ?? string.Empty)))" data-field="schedule" />
+                    break;
+                case HttpSettings http:
+                    <MudSelect T="string" Label="メソッド" Value="@http.Method" ValueChanged="@(v => Update(node, http with { Method = v ?? string.Empty }))" data-field="method">
+                        @foreach (var method in Methods)
+                        {
+                            <MudSelectItem Value="@method">@method</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string" Label="URL" Value="@http.Address" ValueChanged="@(v => Update(node, http with { Address = v ?? string.Empty }))" data-field="url" />
+                    break;
+                case BranchSettings branch:
+                    <MudTextField T="string" Label="条件" Value="@branch.Condition" ValueChanged="@(v => Update(node, new BranchSettings(v ?? string.Empty)))" data-field="condition" />
+                    break;
+                case AgentSettings agent:
+                    <MudTextField T="string" Label="指示" Value="@agent.Prompt" ValueChanged="@(v => Update(node, new AgentSettings(v ?? string.Empty)))" Lines="4" data-field="prompt" />
+                    break;
+                case ModelSettings model:
+                    <MudTextField T="string" Label="モデル" Value="@model.Model" ValueChanged="@(v => Update(node, new ModelSettings(v ?? string.Empty)))" data-field="model" />
+                    break;
+                case ToolSettings tool:
+                    <MudTextField T="string" Label="説明" Value="@tool.Description" ValueChanged="@(v => Update(node, new ToolSettings(v ?? string.Empty)))" data-field="description" />
+                    break;
+                case NotifySettings notify:
+                    <MudTextField T="string" Label="チャンネル" Value="@notify.Channel" ValueChanged="@(v => Update(node, new NotifySettings(v ?? string.Empty)))" data-field="channel" />
+                    break;
+            }
+        }
+    </aside>
+</div>

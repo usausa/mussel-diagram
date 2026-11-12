@@ -76,19 +76,22 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     [MemberData(nameof(ModeNames))]
     public async Task KeysOutsideTypingWorkWhileEditingText(string mode)
     {
-        opened = await app.OpenAsync("overlay", mode);
+        opened = await app.OpenAsync("workflow", mode);
         var view = opened.View;
-        await opened.Page.Locator("[data-action='validate']").ClickAsync();
-        await Expect(view.Locator("g.mussel-diagram-node[data-id='archive']")).ToHaveClassAsync(new Regex("mussel-diagram-error"));
-        var label = await view.Locator("g.mussel-diagram-node[data-id='notify'] > text.mussel-diagram-label").BoundingBoxAsync() ?? throw new InvalidOperationException("The label is not shown.");
+        var model = await view.Locator("g.mussel-diagram-node[data-id='model'] > .mussel-diagram-shape").BoundingBoxAsync() ?? throw new InvalidOperationException("The node is not shown.");
+        await opened.Page.Mouse.ClickAsync(model.X + (model.Width / 2), model.Y + (model.Height / 2));
+        await Expect(view.Locator("g.mussel-diagram-node[data-id='model'][data-selected]")).ToHaveCountAsync(1);
+        await opened.Page.Keyboard.PressAsync("Delete");
+        await Expect(view.Locator("g.mussel-diagram-node[data-id='agent']")).ToHaveClassAsync(new Regex("mussel-diagram-error"));
+        var label = await view.Locator("g.mussel-diagram-node[data-id='reply'] > text.mussel-diagram-label").BoundingBoxAsync() ?? throw new InvalidOperationException("The label is not shown.");
 
         await opened.Page.Mouse.DblClickAsync(label.X + (label.Width / 2), label.Y + (label.Height / 2));
         var editor = view.Locator("textarea.mussel-diagram-text-editor");
         await Expect(editor).ToBeVisibleAsync();
         await opened.Page.Keyboard.PressAsync("F8");
 
-        await Expect(view.Locator("g.mussel-diagram-node[data-selected]:is([data-id='legacy'], [data-id='archive'])")).ToHaveCountAsync(1);
-        await Expect(view.Locator("g.mussel-diagram-node[data-id='notify'][data-selected]")).ToHaveCountAsync(0);
+        await Expect(view.Locator("g.mussel-diagram-node[data-id='agent'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(view.Locator("g.mussel-diagram-node[data-id='reply'][data-selected]")).ToHaveCountAsync(0);
     }
 
     [Theory]

@@ -38,6 +38,30 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TheContentShowsOnlyAfterTheFirstViewIsApplied(string mode)
+    {
+        opened = await app.OpenAsync("workflow", mode);
+        var state = await opened.Page.EvaluateAsync<string[]>(
+            """
+            () => {
+                const root = document.querySelector('.mussel-diagram');
+                const stage = root.querySelector('.mussel-diagram-stage');
+                const transform = root.querySelector('svg.mussel-diagram-canvas > g.mussel-diagram-viewport').getAttribute('transform');
+                const shown = getComputedStyle(stage).visibility;
+                root.removeAttribute('data-attached');
+                const hidden = getComputedStyle(stage).visibility;
+                root.setAttribute('data-attached', '');
+                return [transform, shown, hidden];
+            }
+            """);
+
+        Assert.NotEqual("translate(0,0) scale(1)", state[0]);
+        Assert.Equal("visible", state[1]);
+        Assert.Equal("hidden", state[2]);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task WheelPansAndControlWheelZooms(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
