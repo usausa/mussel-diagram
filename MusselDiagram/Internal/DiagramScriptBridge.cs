@@ -32,6 +32,9 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
         view.OnClickedAsync(id, new DiagramPoint(x, y), shift, ctrl, alt, meta, twice);
 
     [JSInvokable]
+    public Task OnBadgeClickedAsync(string id, int index) => view.OnBadgeClickedAsync(id, index);
+
+    [JSInvokable]
     public JsonElement SearchTypes(string query, string[] names) => ScriptJson.ToElement(view.SearchTypes(query, names));
 
     [JSInvokable]

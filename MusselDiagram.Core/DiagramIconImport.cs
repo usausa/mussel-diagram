@@ -245,7 +245,7 @@ public static class DiagramIconImport
     }
 
     private static DiagramIssue Unreadable(string id) =>
-        DiagramValidator.Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.RemovedSvgContent, [], [id, "the whole icon (not a readable SVG)"]);
+        DiagramValidator.Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.UnreadableIcon, [], [id]);
 
     private static double? Number(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && (value.ValueKind == JsonValueKind.Number) ? value.GetDouble() : null;

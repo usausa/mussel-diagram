@@ -23,7 +23,7 @@ internal static class DiagramValidator
     }
 
     public static DiagramIssue Issue(DiagramIssueSeverity severity, DiagramIssueKind kind, ImmutableArray<string> elementIds, ImmutableArray<string> arguments, string? portId = null) =>
-        new(severity, kind, BuiltInTexts.Issue(kind, arguments)) { ElementIds = elementIds, PortId = portId, Arguments = arguments };
+        new(severity, kind, DiagramCultures.Issue(kind, arguments)) { ElementIds = elementIds, PortId = portId, Arguments = arguments };
 
     private static void CheckLinks(DiagramSnapshot snapshot, SchemaIndex index, ImmutableArray<DiagramIssue>.Builder issues)
     {

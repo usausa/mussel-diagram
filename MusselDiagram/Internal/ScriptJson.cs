@@ -58,6 +58,23 @@ internal sealed record ScriptOptions
 
 internal sealed record ScriptBounds(double X, double Y, double Width, double Height);
 
+internal sealed record ScriptExportOptions
+{
+    public required string Format { get; init; }
+
+    public required double Margin { get; init; }
+
+    public required bool Background { get; init; }
+
+    public required bool Overlays { get; init; }
+
+    public required bool Fonts { get; init; }
+
+    public double Scale { get; init; } = 1;
+
+    public double Quality { get; init; } = 0.92;
+}
+
 internal sealed record ScriptPort
 {
     public required string Id { get; init; }
@@ -122,6 +139,8 @@ internal sealed record ScriptBox
     public bool Editable { get; init; }
 
     public IReadOnlyList<ScriptPort>? Ports { get; init; }
+
+    public IReadOnlyDictionary<string, string>? Texts { get; init; }
 }
 
 internal sealed record ScriptSlot
@@ -131,6 +150,8 @@ internal sealed record ScriptSlot
     public required bool Editable { get; init; }
 
     public required int MaxLines { get; init; }
+
+    public string? Placeholder { get; init; }
 }
 
 internal sealed record ScriptCommand
@@ -245,7 +266,14 @@ internal sealed record ScriptLinkType
     public required bool AllowCycles { get; init; }
 }
 
-internal sealed record ScriptSchema(IReadOnlyList<ScriptType> Types, IReadOnlyList<ScriptLinkType> LinkTypes, string? DefaultLinkType, IReadOnlyDictionary<string, string> Reasons);
+internal sealed record ScriptTexts
+{
+    public required string SearchPlaceholder { get; init; }
+
+    public required string NoMatches { get; init; }
+}
+
+internal sealed record ScriptSchema(IReadOnlyList<ScriptType> Types, IReadOnlyList<ScriptLinkType> LinkTypes, string? DefaultLinkType, IReadOnlyDictionary<string, string> Reasons, ScriptTexts Texts);
 
 internal sealed record ScriptTable(long Version, IReadOnlyList<ScriptBox> Boxes, IReadOnlyList<ScriptLink> Links);
 
@@ -256,6 +284,7 @@ internal sealed record ScriptCommitResult(bool Accepted, long Version, string? R
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, GenerationMode = JsonSourceGenerationMode.Serialization, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(ScriptOptions))]
 [JsonSerializable(typeof(ScriptBounds))]
+[JsonSerializable(typeof(ScriptExportOptions))]
 [JsonSerializable(typeof(ScriptSchema))]
 [JsonSerializable(typeof(ScriptTable))]
 [JsonSerializable(typeof(ScriptChanges))]
@@ -269,6 +298,8 @@ internal static class ScriptJson
     public static JsonElement ToElement(ScriptOptions value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptOptions);
 
     public static JsonElement ToElement(ScriptBounds value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptBounds);
+
+    public static JsonElement ToElement(ScriptExportOptions value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptExportOptions);
 
     public static JsonElement ToElement(ScriptSchema value) => JsonSerializer.SerializeToElement(value, ScriptJsonContext.Default.ScriptSchema);
 

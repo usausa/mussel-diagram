@@ -74,14 +74,14 @@ public sealed class AppFixture : IAsyncLifetime
         }
     }
 
-    public async Task<DiagramPage> OpenAsync(string path, string mode)
+    public async Task<DiagramPage> OpenAsync(string path, string mode, bool touch = false)
     {
         if (browser is null)
         {
             Assert.Skip("Neither Edge nor Chrome was found, so the E2E test is skipped.");
         }
 
-        var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 } }).ConfigureAwait(false);
+        var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = touch }).ConfigureAwait(false);
         var page = new DiagramPage(context, await context.NewPageAsync().ConfigureAwait(false));
         var response = await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
         page.InitialHtml = response is null ? string.Empty : await response.TextAsync().ConfigureAwait(false);

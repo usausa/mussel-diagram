@@ -10,5 +10,7 @@
             <MusselDiagramDragSource View="view" Type="server" Value="Imported server" class="diagram-source">Imported server</MusselDiagramDragSource>
         }
     </aside>
-    <MusselDiagramView @ref="view" Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)" />
+    <MusselDiagramView @ref="view" Diagram="diagram" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
+        <TaskTemplate />
+    </MusselDiagramView>
 </div>

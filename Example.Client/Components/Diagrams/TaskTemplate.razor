@@ -1,0 +1,6 @@
+<DiagramTemplate Type="task" Context="item">
+    <rect class="mussel-diagram-shape" width="@item.Width" height="@item.Height" />
+    <rect class="task-band" width="@item.Width" height="6" />
+    <text class="task-title" data-slot="title" x="10" y="29">@item.Label</text>
+    <text class="@OwnerClass(item)" data-slot="owner" x="10" y="49">@Owner(item)</text>
+</DiagramTemplate>

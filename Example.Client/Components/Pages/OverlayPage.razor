@@ -1,0 +1,16 @@
+@page "/overlay"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar diagram-actions">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ToggleIssues" data-action="validate">検査</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="Advance" data-action="run">実行</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ExportSvgAsync" data-action="svg">SVG</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Png)" data-action="png">PNG</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Jpeg)" data-action="jpeg">JPEG</MudButton>
+    </aside>
+    <MusselDiagramView @ref="view" Diagram="diagram" Issues="issues" Overlays="overlays" BadgeKinds="BadgeKinds" BadgeClicked="OnBadgeClicked">
+        <TaskTemplate />
+    </MusselDiagramView>
+</div>

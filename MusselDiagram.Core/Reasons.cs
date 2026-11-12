@@ -17,6 +17,7 @@ public enum DiagramReasonKind
     Nesting,
     Changed,
     Canceled,
+    TooLarge,
     App
 }
 

@@ -67,7 +67,7 @@ public sealed partial class MusselDiagramView
         commands.Register(new DiagramCommand
         {
             Name = DiagramCommands.ToggleLock,
-            DisplayName = BuiltInTexts.Command(DiagramCommands.ToggleLock),
+            DisplayName = DiagramCultures.Command(DiagramCommands.ToggleLock),
             Keys = ["Ctrl+L"],
             CanExecute = c => (subscribed is not null) && Editable && (Lockable(c.SelectedIds).Count > 0),
             GetIsChecked = c => Lockable(c.SelectedIds) is { Count: > 0 } items && items.All(IsLocked),
@@ -78,11 +78,14 @@ public sealed partial class MusselDiagramView
         Register(DiagramCommands.ResetZoom, ["Ctrl+0"], _ => ZoomEnabled, _ => RunViewAsync(current => current.InvokeVoidAsync("resetZoom")).AsTask(), true);
         Register(DiagramCommands.ZoomToFit, ["Ctrl+Shift+H"], _ => true, _ => ZoomToFitAsync().AsTask(), true);
         Register(DiagramCommands.ZoomToSelection, [], c => c.SelectedIds.Count > 0, _ => ZoomToSelectionAsync().AsTask(), true);
+        Register(DiagramCommands.NextIssue, ["F8"], _ => SelectionEnabled && HasIssues(), _ => ShowIssueAsync(true));
+        Register(DiagramCommands.PreviousIssue, ["Shift+F8"], _ => SelectionEnabled && HasIssues(), _ => ShowIssueAsync(false));
+        commands.Refresh();
         return commands;
     }
 
     private void Register(string name, string[] keys, Func<DiagramCommandContext, bool> canExecute, Func<DiagramCommandContext, Task> execute, bool local = false) =>
-        commands!.Register(new DiagramCommand { Name = name, DisplayName = BuiltInTexts.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
+        commands!.Register(new DiagramCommand { Name = name, DisplayName = DiagramCultures.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
 
     private void RegisterAlign(string name, AlignEdge edge) =>
         Register(name, [], c => CanArrange(c.SelectedIds, 2), c => ArrangeAsync(Arrangement.Align(Snapshot, Diagram.Index, c.SelectedIds, edge)));
@@ -200,7 +203,7 @@ public sealed partial class MusselDiagramView
         }
 
         await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
-        await RunViewAsync(current => current.InvokeVoidAsync("showReason", reason.Message ?? BuiltInTexts.Reason(reason.Kind) ?? string.Empty)).ConfigureAwait(true);
+        await RunViewAsync(current => current.InvokeVoidAsync("showReason", reason.Message ?? DiagramCultures.Reason(reason.Kind) ?? string.Empty)).ConfigureAwait(true);
         return false;
     }
 

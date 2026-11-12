@@ -1,7 +1,5 @@
 namespace MusselDiagram;
 
-using MusselDiagram.Internal;
-
 public sealed class ValidationTests
 {
     [Fact]
@@ -177,5 +175,5 @@ public sealed class ValidationTests
         Assert.Equal(issues.Length, diagram.Snapshot.Validate(diagram.Schema).Length);
     }
 
-    private static string? Reason(DiagramReasonKind kind) => BuiltInTexts.Reason(kind);
+    private static string? Reason(DiagramReasonKind kind) => DiagramCultures.Reason(kind);
 }

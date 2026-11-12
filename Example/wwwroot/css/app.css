@@ -84,3 +84,40 @@ body {
     flex: 1;
     min-width: 0;
 }
+
+.task-band {
+    fill: #7cb342;
+}
+
+.task-title {
+    fill: var(--mussel-diagram-text-color);
+    font-weight: 600;
+}
+
+.task-owner {
+    fill: var(--mussel-diagram-text-color);
+    font-size: 11px;
+}
+
+.task-empty {
+    fill: var(--mussel-muted-text, #8c959f);
+}
+
+.diagram-actions {
+    gap: 8px;
+    padding: 8px;
+}
+
+.mussel-diagram-state-running > .mussel-diagram-shape {
+    stroke: #1a73e8;
+    stroke-width: 2.5;
+}
+
+.mussel-diagram-state-done > .mussel-diagram-shape {
+    fill: #e6f4ea;
+}
+
+.mussel-diagram-state-flowed > .mussel-diagram-link-line {
+    stroke: #1f883d;
+    stroke-width: 2;
+}

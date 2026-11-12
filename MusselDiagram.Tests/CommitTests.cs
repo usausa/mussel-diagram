@@ -83,7 +83,7 @@ public sealed class CommitTests : BunitContext
         var unrelated = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, seen, stale.Rejections));
 
         Assert.False(stale.Accepted);
-        Assert.Equal(MusselDiagram.Internal.BuiltInTexts.Reason(DiagramReasonKind.Changed), stale.Reason);
+        Assert.Equal(DiagramCultures.Reason(DiagramReasonKind.Changed), stale.Reason);
         Assert.True(unrelated.Accepted);
     }
 

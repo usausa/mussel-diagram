@@ -61,7 +61,7 @@ The arguments of the before events (`…ing`) have `Cancel` and `Reason` (`strin
 | `ZoomToFitAsync()`, `ZoomToSelectionAsync()`, `CenterOnAsync(id)` | Fitting and centering |
 | `OpenTypePickerAsync(position)` | Opens the type picker for quick add at a position, or at the pointer when `null` |
 | `Commands` | The `DiagramCommandRegistry` of the view |
-| `ExportSvgAsync(options)`, `ExportImageAsync(options)` | Export; see Export |
+| `ExportSvgAsync(options, cancellationToken)`, `ExportImageAsync(options, cancellationToken)` | Export; see Export |
 | `FocusAsync()` | Gives the view the focus |
 
 ### Templates
@@ -75,7 +75,8 @@ The arguments of the before events (`…ing`) have `Cancel` and `Reason` (`strin
 </MusselDiagramView>
 ```
 
-`DiagramTemplate` has `Type` (the type name) and `ChildContent` (`RenderFragment<DiagramTemplateContext>`). `DiagramTemplateContext`: `Element`, `Width`, `Height`, `Label`, `Texts`, `Data` and `GetData<T>()`. The origin is the top left of the element.  
+`DiagramTemplate` has `Type` (the type name) and `ChildContent` (`RenderFragment<DiagramTemplateContext>`). `DiagramTemplateContext`: `Element` (the node), `Width`, `Height`, `Label`, `Texts` and `Data`. The origin is the top left of the element.  
+Templates are for node types. The view still draws the ports and the tooltip. A template renders again only when its node changes. An element with `data-slot="<slot name>"` is edited in place, and an element with the class `mussel-diagram-shape` gets the built-in looks (states, issues and render overrides).  
 
 ## 🧰 MusselDiagramPalette
 
@@ -267,11 +268,11 @@ Each import returns a `DiagramIconImportResult` with `IconSet` and `Issues` (wha
 | Group | Values |
 |---|---|
 | Whole-diagram check | `ConnectionRule`, `NestingRule`, `MaxCount`, `RequiredType`, `RequiredPort`, `MissingPort`, `MissingSharedItem`, `UnregisteredType`, `App` |
-| Loading | `DuplicateId`, `MissingEnd`, `InvalidParent`, `InvalidMember`, `KindMismatch`, `InvalidSize`, `UnreadableData` |
-| Sanitizing | `RemovedSvgContent`, `RejectedUrl` |
+| Loading | `DuplicateId`, `MissingEnd`, `InvalidParent`, `InvalidMember`, `NoMembers`, `KindMismatch`, `InvalidSize`, `UnreadableData` |
+| Sanitizing | `RemovedSvgContent`, `RejectedUrl`, `UnreadableIcon` |
 | Export | `ImageNotEmbedded` |
 
-`DiagramReasonKind`: `NoConnectionPoint`, `Direction`, `PortKind`, `Permission`, `Limit`, `SelfOrDuplicate`, `PeerType`, `CrossParent`, `Cycle`, `Count`, `Nesting`, `Changed`, `Canceled` and `App`.  
+`DiagramReasonKind`: `NoConnectionPoint`, `Direction`, `PortKind`, `Permission`, `Limit`, `SelfOrDuplicate`, `PeerType`, `CrossParent`, `Cycle`, `Count`, `Nesting`, `Changed`, `Canceled`, `TooLarge` (an image larger than the canvas limits) and `App`.  
 
 ## 🏷️ Overlays
 
@@ -281,6 +282,8 @@ Each import returns a `DiagramIconImportResult` with `IconSet` and `Issues` (wha
 | `DiagramRenderOverride` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `Opacity`; `null` keeps the look of the type |
 | `DiagramBadge` | `Kind`, `Text`, `Icon`, `Tone` (`DiagramBadgeTone`: `Default`, `Info`, `Success`, `Warning` or `Error`), `Tooltip` |
 | `DiagramBadgeKind` | `Name`, `Corner` (`DiagramCorner`: `TopLeft`, `TopRight`, `BottomLeft` or `BottomRight`), `Order`, `Clickable` |
+
+On links, badges line up at the middle of the route and the corner is not used.  
 
 ## 💾 JSON
 
@@ -306,7 +309,8 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 
 ## 🖼️ Export
 
-`ExportSvgAsync` and `ExportImageAsync` return a `DiagramExportResult`: `Content` (a `Stream`, or `null` when nothing was exported), `Error` (a `DiagramReason`) and `Issues` (images that could not be embedded).  
+`ExportSvgAsync` and `ExportImageAsync` return a `DiagramExportResult`: `Content` (a `Stream` at its start that the app disposes, or `null` when nothing was exported), `Error` (a `DiagramReason` of the kind `TooLarge`) and `Issues` (`ImageNotEmbedded` for images that could not be embedded).  
+Tooltips, classes and styles are not exported; `data-id` and `data-type` are kept.  
 
 | `DiagramSvgExportOptions` | Default | Description |
 |---|---|---|
@@ -319,7 +323,12 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 
 ## 🌐 Languages
 
-`DiagramCultures` maps culture names to `DiagramTexts`. The empty name (English) and `ja` (Japanese) are built in; change their texts with `with`. Register before the first diagram is created.  
+`DiagramCultures.Texts` maps culture names (case-insensitive) to `DiagramTexts`. The empty name (`DiagramTexts.English`) and `ja` (`JapaneseLanguage.Texts`) are built in. Register before the first diagram is created.  
+Each item is looked up from the culture to its parents; a missing or empty item falls back, and English is the last resort. So a language can set only some items, and the built-in texts change with `with`.  
+
+```csharp
+DiagramCultures.Texts["ja"] = JapaneseLanguage.Texts with { NoMatches = "該当なし" };
+```
 
 | `DiagramTexts` | Description |
 |---|---|
@@ -327,7 +336,6 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 | `Issues` | A format string for each `DiagramIssueKind` |
 | `Commands` | The display name of each built-in command, by name |
 | `SearchPlaceholder`, `NoMatches` | The palette and the type picker |
-| `ExportTooLarge` | The reason an image is larger than the canvas limits |
 
 `JapaneseLanguage` is in `MusselDiagram.Languages.Japanese` of `MusselDiagram.Core`. A language of your own is written the same way.  
 
@@ -366,8 +374,12 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 |---|---|
 | `mussel-diagram`, `mussel-diagram-palette` | The roots of the view and the palette |
 | `mussel-diagram-node`, `mussel-diagram-group`, `mussel-diagram-link`, `mussel-diagram-port`, and `data-type` | Elements and their type names |
-| `mussel-diagram-selected`, `mussel-diagram-hover`, `mussel-diagram-not-allowed`, `mussel-diagram-candidate`, `mussel-diagram-drop-target`, `mussel-diagram-pending`, `mussel-diagram-error`, `mussel-diagram-warning` | Built-in states |
+| `data-template` | Nodes drawn by a template |
+| `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending` | Built-in states that the view sets while editing; hover is `:hover` |
+| `mussel-diagram-error`, `mussel-diagram-warning`, `mussel-diagram-locked`, `mussel-diagram-unregistered` | Built-in states from issues, locks and unregistered types |
 | `mussel-diagram-state-<name>` | States of overlays |
+| `--mussel-diagram-override-fill`, `--mussel-diagram-override-stroke`, `--mussel-diagram-override-stroke-width`, `--mussel-diagram-override-dash`, `--mussel-diagram-override-opacity` | Render overrides, set on the element |
+| `mussel-diagram-badge` and `data-tone` | Badges and their tones |
 | `mussel-diagram-nodrag`, `mussel-diagram-nowheel` | Set by the app on elements in templates |
 
 ## ⚠️ Limits

@@ -13,7 +13,7 @@ public sealed class MusselDiagramViewTests : BunitContext
                 Name = "service",
                 Look = new DiagramLook { Shape = DiagramShape.Ellipse, Fill = "#ffeecc", Icon = "test:gear" },
                 Slots = [new DiagramLabelSlot { Name = "name", Placement = DiagramLabelPlacement.Below, MaxLines = 2 }],
-                Ports = [new DiagramPortDefinition { Id = "in", Side = DiagramSide.Left }, new DiagramPortDefinition { Id = "out", Side = DiagramSide.Right }]
+                Ports = [new DiagramPortDefinition { Id = "in", Side = DiagramSide.Left, Label = "Input" }, new DiagramPortDefinition { Id = "out", Side = DiagramSide.Right }]
             }
         ],
         GroupTypes = [new DiagramGroupType { Name = "vpc", Look = new DiagramLook { Dash = DiagramDash.Dashed } }],
@@ -64,6 +64,7 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.Equal("44", label.GetAttribute("y"));
         Assert.Empty(label.ChildNodes);
         Assert.Equal(["in", "out"], node.QuerySelectorAll("circle.mussel-diagram-port").Select(static x => x.GetAttribute("data-port")));
+        Assert.Equal(["Input", null], node.QuerySelectorAll("circle.mussel-diagram-port").Select(static x => x.QuerySelector("title")?.TextContent));
 
         var group = cut.Find("g.mussel-diagram-group[data-id='vpc']");
         Assert.Contains("--mussel-diagram-shape-dash: 6 4;", group.GetAttribute("style"), StringComparison.Ordinal);

@@ -1,4 +1,5 @@
 <div @ref="Root" @attributes="AdditionalAttributes" class="@RootClass" tabindex="0" data-version="@Snapshot.Version">
+    <CascadingValue Value="this" IsFixed="true">@ChildContent</CascadingValue>
     <div class="mussel-diagram-stage">
         <svg class="mussel-diagram-canvas">
             @Defs
@@ -8,6 +9,7 @@
                 <g class="mussel-diagram-overlay-groups">@OverlayGroups</g>
                 <g class="mussel-diagram-links">@Links</g>
                 <g class="mussel-diagram-nodes">@Nodes</g>
+                <g class="mussel-diagram-badges">@Badges</g>
             </g>
         </svg>
         <svg class="mussel-diagram-overlay">

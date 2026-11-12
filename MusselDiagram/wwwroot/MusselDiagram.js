@@ -179,10 +179,98 @@ class LabelWriter {
     }
 }
 
+const BADGE_SIZE = 16;
+const BADGE_GAP = 4;
+
+class BadgeWriter {
+    constructor(layer) {
+        this.layer = layer;
+        this.context = document.createElement('canvas').getContext('2d');
+        this.observer = new MutationObserver((records) => this.observe(records));
+        this.observer.observe(layer, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-w', 'data-h'] });
+        this.refresh = () => this.writeAll();
+        document.fonts?.addEventListener('loadingdone', this.refresh);
+        this.writeAll();
+    }
+
+    observe(records) {
+        const sets = new Set();
+        for (const record of records) {
+            const target = record.target.nodeType === Node.ELEMENT_NODE ? record.target : record.target.parentElement;
+            const set = target?.closest?.('.mussel-diagram-badge-set');
+            if (set) {
+                sets.add(set);
+            }
+            for (const node of record.addedNodes) {
+                if ((node.nodeType === Node.ELEMENT_NODE) && node.classList.contains('mussel-diagram-badge-set')) {
+                    sets.add(node);
+                }
+            }
+        }
+        for (const set of sets) {
+            if (set.isConnected) {
+                this.write(set);
+            }
+        }
+    }
+
+    writeAll() {
+        for (const set of this.layer.querySelectorAll(':scope > .mussel-diagram-badge-set')) {
+            this.write(set);
+        }
+    }
+
+    write(set) {
+        const w = Number(set.getAttribute('data-w')) || 0;
+        const h = Number(set.getAttribute('data-h')) || 0;
+        const link = set.hasAttribute('data-link');
+        const corners = new Map();
+        for (const badge of set.querySelectorAll(':scope > .mussel-diagram-badge')) {
+            const corner = link ? 'link' : (badge.getAttribute('data-corner') ?? 'top-right');
+            let list = corners.get(corner);
+            if (!list) {
+                list = [];
+                corners.set(corner, list);
+            }
+            list.push({ badge, width: this.size(badge) });
+        }
+        for (const [corner, list] of corners) {
+            const total = list.reduce((sum, item) => sum + item.width, 0) + (BADGE_GAP * (list.length - 1));
+            const right = corner.endsWith('right');
+            const y = corner.startsWith('bottom') ? h : 0;
+            let x = corner === 'link' ? -total / 2 : (right ? w + (BADGE_SIZE / 2) : -(BADGE_SIZE / 2));
+            for (const item of list) {
+                const left = right ? x - item.width : x;
+                item.badge.setAttribute('transform', `translate(${formatNumber(left)},${formatNumber(y)})`);
+                x = right ? left - BADGE_GAP : left + item.width + BADGE_GAP;
+            }
+        }
+    }
+
+    size(badge) {
+        const text = badge.querySelector(':scope > .mussel-diagram-badge-text');
+        let width = BADGE_SIZE;
+        if (text) {
+            const style = getComputedStyle(text);
+            this.context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+            const start = Number(text.getAttribute('x')) || 4;
+            width = Math.max(BADGE_SIZE, Math.ceil(start + this.context.measureText(text.textContent ?? '').width + 4));
+        }
+        badge.querySelector(':scope > .mussel-diagram-badge-frame')?.setAttribute('width', String(width));
+        return width;
+    }
+
+    dispose() {
+        this.observer.disconnect();
+        document.fonts?.removeEventListener('loadingdone', this.refresh);
+    }
+}
+
 const SETTLE_DELAY = 180;
 const WHEEL_ZOOM_RATE = 0.0015;
 const MOUSE_THRESHOLD = 4;
 const TOUCH_THRESHOLD = 8;
+const LONG_PRESS_DELAY = 250;
 const REASON_DURATION = 3000;
 const SELECTION_PADDING = 4;
 const HANDLE_SIZE = 8;
@@ -804,6 +892,26 @@ function svg(name, attributes) {
     return element;
 }
 
+function routeMidpoint(points) {
+    if (points.length === 0) {
+        return { x: 0, y: 0 };
+    }
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+        total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    }
+    let half = total / 2;
+    for (let i = 1; i < points.length; i++) {
+        const length = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+        if ((length > 0) && (half <= length)) {
+            const t = half / length;
+            return { x: points[i - 1].x + ((points[i].x - points[i - 1].x) * t), y: points[i - 1].y + ((points[i].y - points[i - 1].y) * t) };
+        }
+        half -= length;
+    }
+    return points[points.length - 1];
+}
+
 function restore(saved) {
     for (const [element, value] of saved) {
         for (const [attribute, old] of value) {
@@ -814,6 +922,322 @@ function restore(saved) {
             }
         }
     }
+}
+
+const EXPORT_PROPERTIES = [
+    ['fill', true, 'rgb(0, 0, 0)'],
+    ['fill-opacity', true, '1'],
+    ['fill-rule', true, 'nonzero'],
+    ['stroke', true, 'none'],
+    ['stroke-width', true, '1px'],
+    ['stroke-dasharray', true, 'none'],
+    ['stroke-dashoffset', true, '0px'],
+    ['stroke-opacity', true, '1'],
+    ['stroke-linecap', true, 'butt'],
+    ['stroke-linejoin', true, 'miter'],
+    ['font-family', true, null],
+    ['font-size', true, null],
+    ['font-weight', true, '400'],
+    ['font-style', true, 'normal'],
+    ['letter-spacing', true, 'normal'],
+    ['text-anchor', true, 'start'],
+    ['dominant-baseline', true, 'auto'],
+    ['visibility', true, 'visible'],
+    ['color', true, null],
+    ['opacity', false, '1'],
+    ['vector-effect', false, 'none'],
+];
+const EXPORT_HTML_PROPERTIES = ['display', 'box-sizing', 'width', 'height', 'margin', 'padding', 'border', 'border-radius', 'background-color', 'color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'text-align', 'white-space', 'overflow', 'opacity'];
+const EXPORT_KEPT_ATTRIBUTES = new Set(['data-id', 'data-type']);
+const EXPORT_DEFINITIONS = 'defs, marker, symbol, clipPath, mask, pattern, linearGradient, radialGradient, filter';
+const EXPORT_MARKS = ['data-selected', 'data-pending', 'data-candidate', 'data-drop-target', 'data-not-allowed', 'data-editing', 'data-split-target', 'data-reconnecting'];
+
+function normalizeFamily(name) {
+    return name.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+}
+
+function localUrl(value) {
+    return value.replace(/url\(\s*(['"]?)[^#'")]*#([^'")]+)\1\s*\)/g, 'url(#$2)');
+}
+
+function renameIds(root, suffix) {
+    const names = new Map();
+    for (const element of root.querySelectorAll('[id]')) {
+        const id = element.getAttribute('id');
+        names.set(id, `${id}${suffix}`);
+        element.setAttribute('id', `${id}${suffix}`);
+    }
+    if (names.size === 0) {
+        return;
+    }
+    for (const element of [root, ...root.querySelectorAll('*')]) {
+        for (const attribute of [...element.attributes]) {
+            const value = attribute.value;
+            if (!value.includes('#')) {
+                continue;
+            }
+            let next = value.replace(/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g, (whole, quote, id) => (names.has(id) ? `url(#${names.get(id)})` : whole));
+            if (((attribute.name === 'href') || (attribute.name === 'xlink:href')) && next.startsWith('#') && names.has(next.slice(1))) {
+                next = `#${names.get(next.slice(1))}`;
+            }
+            if (next !== value) {
+                element.setAttribute(attribute.name, next);
+            }
+        }
+    }
+}
+
+function inlineIcons(clone) {
+    const symbols = new Map([...clone.querySelectorAll('symbol[id]')].map((symbol) => [symbol.getAttribute('id'), symbol]));
+    let copy = 0;
+    for (const use of [...clone.querySelectorAll('use')]) {
+        const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
+        const symbol = href.startsWith('#') ? symbols.get(href.slice(1)) : null;
+        if (!symbol) {
+            use.remove();
+            continue;
+        }
+        const inner = document.createElementNS(SVG_NS, 'svg');
+        for (const name of ['x', 'y', 'width', 'height', 'class']) {
+            const value = use.getAttribute(name);
+            if (value !== null) {
+                inner.setAttribute(name, value);
+            }
+        }
+        for (const name of ['viewBox', 'preserveAspectRatio']) {
+            const value = symbol.getAttribute(name);
+            if (value !== null) {
+                inner.setAttribute(name, value);
+            }
+        }
+        for (const child of symbol.childNodes) {
+            inner.append(child.cloneNode(true));
+        }
+        copy++;
+        renameIds(inner, `-e${copy}`);
+        use.replaceWith(inner);
+    }
+    for (const symbol of symbols.values()) {
+        symbol.remove();
+    }
+}
+
+async function readDataUrl(url, base, cache) {
+    const key = new URL(url, base).href;
+    if (!cache.has(key)) {
+        cache.set(key, (async () => {
+            try {
+                const response = await fetch(key, { mode: 'cors', credentials: 'same-origin' });
+                if (!response.ok) {
+                    return null;
+                }
+                const blob = await response.blob();
+                return await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                });
+            } catch {
+                return null;
+            }
+        })());
+    }
+    return cache.get(key);
+}
+
+async function embedImages(clone, cache) {
+    const missing = new Map();
+    for (const image of [...clone.querySelectorAll('image')]) {
+        const href = image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+        if (!href || href.startsWith('data:')) {
+            continue;
+        }
+        const data = await readDataUrl(href, document.baseURI, cache);
+        if (data) {
+            image.removeAttribute('xlink:href');
+            image.setAttribute('href', data);
+            continue;
+        }
+        const id = image.closest('[data-id]')?.getAttribute('data-id') ?? image.closest('[data-for]')?.getAttribute('data-for');
+        let ids = missing.get(href);
+        if (!ids) {
+            ids = new Set();
+            missing.set(href, ids);
+        }
+        if (id) {
+            ids.add(id);
+        }
+        image.remove();
+    }
+    return [...missing].map(([url, ids]) => ({ url, ids: [...ids] }));
+}
+
+function inlineStyles(root) {
+    const families = new Set();
+    const entries = [];
+    const walk = (element, parent) => {
+        const style = getComputedStyle(element);
+        const definition = element.closest(EXPORT_DEFINITIONS);
+        if ((style.display === 'none') && !definition) {
+            entries.push({ element, remove: true });
+            return;
+        }
+        const html = element.namespaceURI !== SVG_NS;
+        const values = new Map();
+        const attributes = [];
+        if (html) {
+            attributes.push(['style', EXPORT_HTML_PROPERTIES.map((name) => `${name}:${style.getPropertyValue(name)}`).join(';')]);
+        } else {
+            for (const [name, inherited, initial] of EXPORT_PROPERTIES) {
+                const value = localUrl(style.getPropertyValue(name));
+                values.set(name, value);
+                const base = inherited ? (parent?.get(name) ?? initial) : initial;
+                if (value !== base) {
+                    attributes.push([name, value]);
+                }
+            }
+        }
+        if (html || (element.localName === 'text')) {
+            for (const family of style.fontFamily.split(',')) {
+                families.add(normalizeFamily(family));
+            }
+        }
+        entries.push({ element, attributes });
+        for (const child of element.children) {
+            walk(child, html ? parent : values);
+        }
+    };
+    walk(root, null);
+    for (const entry of entries) {
+        const element = entry.element;
+        if (entry.remove) {
+            element.remove();
+            continue;
+        }
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name;
+            if ((name === 'class') || (name === 'style') || (name.startsWith('data-') && !EXPORT_KEPT_ATTRIBUTES.has(name))) {
+                element.removeAttribute(name);
+            }
+        }
+        for (const [name, value] of entry.attributes) {
+            element.setAttribute(name, value);
+        }
+    }
+    return families;
+}
+
+async function fontFaceRules() {
+    const result = [];
+    const visit = (rules, base) => {
+        for (const rule of rules) {
+            if (rule instanceof CSSFontFaceRule) {
+                result.push({ rule, base });
+            } else if (rule instanceof CSSImportRule) {
+                try {
+                    if (rule.styleSheet) {
+                        visit(rule.styleSheet.cssRules, rule.styleSheet.href ?? base);
+                    }
+                } catch {
+                }
+            } else if (rule.cssRules) {
+                visit(rule.cssRules, base);
+            }
+        }
+    };
+    for (const sheet of document.styleSheets) {
+        const base = sheet.href ?? document.baseURI;
+        let rules = null;
+        try {
+            rules = sheet.cssRules;
+        } catch {
+            rules = null;
+        }
+        if (rules) {
+            visit(rules, base);
+            continue;
+        }
+        if (!sheet.href) {
+            continue;
+        }
+        try {
+            const response = await fetch(sheet.href, { mode: 'cors' });
+            if (response.ok) {
+                const parsed = new CSSStyleSheet();
+                parsed.replaceSync((await response.text()).replace(/@import[^;]*;/g, ''));
+                visit(parsed.cssRules, sheet.href);
+            }
+        } catch {
+        }
+    }
+    return result;
+}
+
+async function embedFonts(families, cache) {
+    if (families.size === 0) {
+        return '';
+    }
+    const ranges = (value) => (value || 'U+0-10FFFF').replace(/\s+/g, '').toLowerCase();
+    const loaded = new Set();
+    for (const face of document.fonts ?? []) {
+        if (face.status === 'loaded') {
+            loaded.add(`${normalizeFamily(face.family)}|${ranges(face.unicodeRange)}`);
+        }
+    }
+    const faces = [];
+    for (const { rule, base } of await fontFaceRules()) {
+        const family = rule.style.getPropertyValue('font-family');
+        const range = rule.style.getPropertyValue('unicode-range');
+        if (!families.has(normalizeFamily(family)) || !loaded.has(`${normalizeFamily(family)}|${ranges(range)}`)) {
+            continue;
+        }
+        const sources = [...rule.style.getPropertyValue('src').matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)\s*(?:format\(\s*(['"]?)(.*?)\3\s*\))?/g)]
+            .map((match) => ({ url: match[2], format: match[4] ?? '' }));
+        const source = sources.find((x) => x.format === 'woff2') ?? sources[0];
+        const data = source ? await readDataUrl(source.url, base, cache) : null;
+        if (!data) {
+            continue;
+        }
+        const descriptors = ['font-weight', 'font-style', 'font-stretch', 'unicode-range']
+            .map((name) => [name, rule.style.getPropertyValue(name)])
+            .filter(([, value]) => value)
+            .map(([name, value]) => `${name}:${value};`)
+            .join('');
+        faces.push(`@font-face{font-family:${family};src:url(${data})${source.format ? ` format("${source.format}")` : ''};${descriptors}}`);
+    }
+    return faces.join('');
+}
+
+async function rasterize(text, width, height, options) {
+    const scale = options.scale > 0 ? options.scale : 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    if (!context || (canvas.width !== Math.max(1, Math.round(width * scale))) || (canvas.height !== Math.max(1, Math.round(height * scale)))) {
+        return { tooLarge: true };
+    }
+    const x = canvas.width - 1;
+    const y = canvas.height - 1;
+    context.fillStyle = '#010203';
+    context.fillRect(x, y, 1, 1);
+    const probe = context.getImageData(x, y, 1, 1).data;
+    context.clearRect(x, y, 1, 1);
+    if ((probe[0] !== 1) || (probe[1] !== 2) || (probe[2] !== 3)) {
+        return { tooLarge: true };
+    }
+    const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+    try {
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, `image/${options.format}`, options.quality));
+    return blob ? { blob } : { tooLarge: true };
 }
 
 class DiagramController {
@@ -859,6 +1283,8 @@ class DiagramController {
         this.size = { width: root.clientWidth, height: root.clientHeight };
         this.labels = new LabelWriter(this.canvas);
         this.labels.tooltips = options.tooltipEnabled !== false;
+        this.badgeLayer = root.querySelector('.mussel-diagram-badges');
+        this.badges = this.badgeLayer ? new BadgeWriter(this.badgeLayer) : null;
         this.commandMap = new Map();
         this.editor = null;
         this.external = null;
@@ -868,6 +1294,9 @@ class DiagramController {
         this.lastPointer = null;
         this.mac = /Mac|iPhone|iPad/.test(navigator.platform ?? '');
         this.inFlight = new Set();
+        this.exports = new Map();
+        this.touches = new Map();
+        this.pinch = null;
         this.commandsInFlight = new Set();
         this.commandChain = Promise.resolve();
         this.listeners = [];
@@ -882,6 +1311,7 @@ class DiagramController {
         this.listen(root, 'keyup', (e) => this.onKeyUp(e));
         this.listen(root, 'blur', () => this.setSpace(false));
         this.listen(root, 'dblclick', (e) => this.onDoubleClick(e));
+        this.listen(root, 'contextmenu', (e) => this.onContextMenu(e));
         this.versionObserver = new MutationObserver(() => this.settlePending());
         this.versionObserver.observe(root, { attributes: true, attributeFilter: ['data-version'] });
         this.resizeObserver = new ResizeObserver(() => this.onResize());
@@ -916,6 +1346,7 @@ class DiagramController {
             linkTypes: new Map(schema.linkTypes.map((t) => [t.name, t])),
             defaultLinkType: schema.defaultLinkType ?? schema.linkTypes[0]?.name ?? null,
             reasons: schema.reasons ?? {},
+            texts: schema.texts ?? { searchPlaceholder: '', noMatches: '' },
         };
     }
 
@@ -1110,6 +1541,15 @@ class DiagramController {
         if (!this.canvas.contains(event.target)) {
             return null;
         }
+        const badge = event.target.closest('.mussel-diagram-badge');
+        if (badge) {
+            const id = badge.parentElement?.getAttribute('data-for');
+            const box = this.table.boxes.has(id);
+            if (!box && !this.table.links.has(id)) {
+                return null;
+            }
+            return badge.hasAttribute('data-clickable') ? { kind: 'badge', id, index: Number(badge.getAttribute('data-index')) } : { kind: 'element', id, box };
+        }
         const target = event.target.closest(ELEMENT_SELECTOR);
         if (!target || !this.canvas.contains(target)) {
             return null;
@@ -1158,6 +1598,13 @@ class DiagramController {
             this.closePicker();
         }
         this.root.focus({ preventScroll: true });
+        if (event.pointerType === 'touch') {
+            this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (this.touches.size > 1) {
+                this.startPinch(event);
+                return;
+            }
+        }
         const panButton = (event.button === 1) || ((event.button === 0) && this.spaceDown);
         if (panButton) {
             if (this.options.panEnabled) {
@@ -1185,11 +1632,23 @@ class DiagramController {
             shift: event.shiftKey,
             keys: { shift: event.shiftKey, ctrl: event.ctrlKey, alt: event.altKey, meta: event.metaKey },
             threshold: event.pointerType === 'touch' ? TOUCH_THRESHOLD : MOUSE_THRESHOLD,
+            touch: event.pointerType === 'touch',
         };
+        if (this.press.touch) {
+            const press = this.press;
+            press.timer = setTimeout(() => this.longPress(press), LONG_PRESS_DELAY);
+        }
     }
 
     onPointerMove(event) {
         this.lastPointer = this.point(event);
+        if (this.touches.has(event.pointerId)) {
+            this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (this.pinch) {
+                this.updatePinch();
+                return;
+            }
+        }
         if (this.pan?.pointerId === event.pointerId) {
             this.view = { ...this.view, x: this.view.x + (event.clientX - this.pan.x), y: this.view.y + (event.clientY - this.pan.y) };
             this.pan.x = event.clientX;
@@ -1204,8 +1663,21 @@ class DiagramController {
             return;
         }
         if (!this.drag) {
-            const distance = Math.hypot(event.clientX - this.press.x, event.clientY - this.press.y);
-            if ((distance < this.press.threshold) || !this.startDrag(this.press)) {
+            const press = this.press;
+            const distance = Math.hypot(event.clientX - press.x, event.clientY - press.y);
+            if (distance < press.threshold) {
+                return;
+            }
+            clearTimeout(press.timer);
+            if (press.consumed) {
+                return;
+            }
+            if (press.touch && (press.hit.kind === 'background') && !press.long) {
+                this.press = null;
+                this.startPan(event);
+                return;
+            }
+            if (!this.startDrag(press)) {
                 return;
             }
             this.clearHover();
@@ -1216,6 +1688,12 @@ class DiagramController {
     }
 
     onPointerUp(event) {
+        if (this.touches.delete(event.pointerId) && this.pinch) {
+            if (this.touches.size < 2) {
+                this.endPinch();
+            }
+            return;
+        }
         if (this.pan?.pointerId === event.pointerId) {
             this.pan = null;
             this.root.classList.remove('mussel-diagram-panning');
@@ -1227,30 +1705,134 @@ class DiagramController {
         }
         const press = this.press;
         this.press = null;
+        clearTimeout(press.timer);
         if (this.drag) {
             this.drag.point = this.point(event);
             this.drag.alt = event.altKey;
             this.finishDrag();
-        } else {
+        } else if (!press.consumed) {
             this.click(press);
             this.notifyClick(press, false);
         }
     }
 
     onPointerCancel(event) {
+        if (this.touches.delete(event.pointerId) && this.pinch) {
+            if (this.touches.size < 2) {
+                this.endPinch();
+            }
+            return;
+        }
         if (this.pan?.pointerId === event.pointerId) {
             this.pan = null;
             this.root.classList.remove('mussel-diagram-panning');
             this.settle();
         }
         if (this.press?.pointerId === event.pointerId) {
+            clearTimeout(this.press.timer);
             this.press = null;
             this.cancelDrag();
         }
     }
 
+    startPan(event) {
+        if (!this.options.panEnabled) {
+            return;
+        }
+        this.foldGesture();
+        this.pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+        this.root.classList.add('mussel-diagram-panning');
+    }
+
+    longPress(press) {
+        if ((this.press !== press) || this.drag) {
+            return;
+        }
+        press.long = true;
+        const hit = press.hit;
+        if ((hit.kind !== 'element') || !this.options.selectionEnabled) {
+            return;
+        }
+        const selectable = hit.box ? this.table.boxes.get(hit.id)?.selectable : this.table.links.get(hit.id)?.selectable;
+        if (!selectable) {
+            return;
+        }
+        press.consumed = true;
+        const next = new Set(this.selection);
+        if (next.has(hit.id)) {
+            next.delete(hit.id);
+        } else {
+            next.add(hit.id);
+        }
+        this.setSelection([...next]);
+    }
+
+    startPinch(event) {
+        if (this.pinch) {
+            return;
+        }
+        this.root.setPointerCapture(event.pointerId);
+        if (this.press) {
+            clearTimeout(this.press.timer);
+            this.press = null;
+        }
+        if (this.drag) {
+            this.cancelDrag();
+        }
+        if (this.pan) {
+            this.pan = null;
+            this.root.classList.remove('mussel-diagram-panning');
+        }
+        this.foldGesture();
+        const [first, second] = [...this.touches.values()];
+        const rect = this.root.getBoundingClientRect();
+        this.pinch = {
+            ids: [...this.touches.keys()].slice(0, 2),
+            distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+            mid: { x: ((first.x + second.x) / 2) - rect.left, y: ((first.y + second.y) / 2) - rect.top },
+            rect,
+        };
+    }
+
+    updatePinch() {
+        const pinch = this.pinch;
+        const first = this.touches.get(pinch.ids[0]);
+        const second = this.touches.get(pinch.ids[1]);
+        if (!first || !second) {
+            return;
+        }
+        const mid = { x: ((first.x + second.x) / 2) - pinch.rect.left, y: ((first.y + second.y) / 2) - pinch.rect.top };
+        const factor = Math.hypot(second.x - first.x, second.y - first.y) / pinch.distance;
+        const k = this.options.zoomEnabled ? limitFactor(this.view.zoom, factor, this.options.minZoom, this.options.maxZoom) : 1;
+        const to = this.options.panEnabled ? mid : pinch.mid;
+        this.gesture = { k, x: to.x - (pinch.mid.x * k), y: to.y - (pinch.mid.y * k), point: to };
+        this.stage.style.transform = `matrix(${k},0,0,${k},${this.gesture.x},${this.gesture.y})`;
+    }
+
+    endPinch() {
+        this.pinch = null;
+        this.settle();
+        const rest = [...this.touches][0];
+        if (rest && this.options.panEnabled) {
+            this.pan = { pointerId: rest[0], x: rest[1].x, y: rest[1].y };
+            this.root.classList.add('mussel-diagram-panning');
+        }
+    }
+
+    onContextMenu(event) {
+        if (this.press?.touch || this.pinch || (this.touches.size > 0)) {
+            event.preventDefault();
+        }
+    }
+
     click(press) {
         const hit = press.hit;
+        if (hit.kind === 'badge') {
+            if (this.dotnet) {
+                this.track(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index).catch(() => {}));
+            }
+            return;
+        }
         if ((hit.kind === 'port') || (hit.kind === 'arrow')) {
             const box = this.table.boxes.get(hit.id);
             const port = findPort(box, hit.port);
@@ -1545,6 +2127,8 @@ class DiagramController {
             case 'end':
                 started = this.startReconnect(press);
                 break;
+            case 'badge':
+                break;
             default:
                 started = this.startBoxSelection(press);
                 break;
@@ -1788,6 +2372,7 @@ class DiagramController {
             base: this.table.version,
             queued: this.pending.length > 0,
             elements: new Map(),
+            badgeSets: new Map(),
             paths: new Map(),
             target: undefined,
         };
@@ -1797,15 +2382,29 @@ class DiagramController {
                 this.drag.elements.set(id, element);
                 this.save(this.drag.saved, element, 'transform');
             }
+            const set = this.badgeSet(id);
+            if (set) {
+                this.drag.badgeSets.set(id, set);
+                this.save(this.drag.saved, set, 'transform');
+            }
         }
         for (const link of links) {
-            const element = this.element(link.id);
-            const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line') };
-            this.drag.paths.set(link.id, paths);
-            this.save(this.drag.saved, paths.hit, 'd');
-            this.save(this.drag.saved, paths.line, 'd');
+            this.drag.paths.set(link.id, this.linkPaths(link.id, this.drag.saved));
         }
         return true;
+    }
+
+    linkPaths(id, saved) {
+        const element = this.element(id);
+        const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line'), badges: this.badgeSet(id) };
+        this.save(saved, paths.hit, 'd');
+        this.save(saved, paths.line, 'd');
+        this.save(saved, paths.badges, 'transform');
+        return paths;
+    }
+
+    badgeSet(id) {
+        return this.badgeLayer?.querySelector(`:scope > [data-for="${CSS.escape(id)}"]`) ?? null;
     }
 
     updateMove(drag) {
@@ -1885,6 +2484,12 @@ class DiagramController {
                 element.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
             }
         }
+        for (const [id, set] of drag.badgeSets) {
+            const box = this.table.boxes.get(id);
+            if (box && (box.kind !== 'overlay')) {
+                set.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
+            }
+        }
         for (const link of drag.links) {
             this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id));
         }
@@ -1897,6 +2502,10 @@ class DiagramController {
         const points = routeLink(link, source, target);
         paths.hit?.setAttribute('d', toPath(points, link.form));
         paths.line?.setAttribute('d', toPath(points, link.form, link.sourceCut, link.targetCut));
+        if (paths.badges) {
+            const middle = routeMidpoint(points);
+            paths.badges.setAttribute('transform', `translate(${formatNumber(middle.x)},${formatNumber(middle.y)})`);
+        }
     }
 
     finishMove(drag) {
@@ -1952,11 +2561,7 @@ class DiagramController {
             queued: this.pending.length > 0,
         };
         for (const link of links) {
-            const element = this.element(link.id);
-            const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line') };
-            drag.paths.set(link.id, paths);
-            this.save(drag.saved, paths.hit, 'd');
-            this.save(drag.saved, paths.line, 'd');
+            drag.paths.set(link.id, this.linkPaths(link.id, drag.saved));
         }
         this.drag = drag;
         return true;
@@ -2332,7 +2937,8 @@ class DiagramController {
         const search = document.createElement('input');
         search.className = 'mussel-diagram-picker-search';
         search.type = 'text';
-        search.setAttribute('aria-label', 'Search');
+        search.setAttribute('aria-label', this.schema.texts.searchPlaceholder);
+        search.placeholder = this.schema.texts.searchPlaceholder;
         const list = document.createElement('div');
         list.className = 'mussel-diagram-picker-list';
         list.setAttribute('role', 'listbox');
@@ -2400,7 +3006,7 @@ class DiagramController {
         if (options.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'mussel-diagram-picker-empty';
-            empty.textContent = 'No matches';
+            empty.textContent = this.schema.texts.noMatches;
             options.push(empty);
         }
         picker.list.replaceChildren(...options);
@@ -2906,15 +3512,32 @@ class DiagramController {
         }
         const element = this.element(id);
         for (const slot of slots) {
-            const label = element?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(slot.name)}"]`);
+            const label = this.slotElement(element, slot.name);
             const rect = label?.getBoundingClientRect();
             if (rect && (rect.width > 0) && (event.clientX >= rect.left - 4) && (event.clientX <= rect.right + 4) && (event.clientY >= rect.top - 4) && (event.clientY <= rect.bottom + 4)) {
                 return slot.name;
             }
         }
         const first = slots[0];
-        const label = element?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(first.name)}"]`);
-        return (this.table.boxes.get(id)?.kind === 'node') && label && (!label.getAttribute('data-label') || label.hasAttribute('data-default')) ? first.name : null;
+        const label = this.slotElement(element, first.name);
+        const box = this.table.boxes.get(id);
+        if ((box?.kind !== 'node') || !label) {
+            return null;
+        }
+        if (box.texts) {
+            return box.texts[first.name] ? null : first.name;
+        }
+        return !label.getAttribute('data-label') || label.hasAttribute('data-default') ? first.name : null;
+    }
+
+    slotElement(element, slot) {
+        if (!element) {
+            return null;
+        }
+        const name = CSS.escape(slot);
+        return element.hasAttribute('data-template')
+            ? element.querySelector(`[data-slot="${name}"]`)
+            : element.querySelector(`:scope > .mussel-diagram-label[data-slot="${name}"]`);
     }
 
     editText(id, slot) {
@@ -2922,23 +3545,24 @@ class DiagramController {
             return;
         }
         const definition = this.editableSlots(id).find((x) => x.name === slot);
-        const label = this.element(id)?.querySelector(`:scope > .mussel-diagram-label[data-slot="${CSS.escape(slot)}"]`);
+        const label = this.slotElement(this.element(id), slot);
         if (!definition || !label) {
             return;
         }
         this.closeEditor();
         this.hideReason();
-        const isDefault = label.hasAttribute('data-default');
-        const text = isDefault ? '' : (label.getAttribute('data-label') ?? '');
+        const texts = this.table.boxes.get(id)?.texts;
+        const isDefault = texts ? !texts[slot] : label.hasAttribute('data-default');
+        const text = texts ? (texts[slot] ?? '') : (isDefault ? '' : (label.getAttribute('data-label') ?? ''));
         const input = document.createElement('textarea');
         input.className = 'mussel-diagram-text-editor mussel-diagram-nowheel';
         input.value = text;
-        input.placeholder = isDefault ? (label.getAttribute('data-label') ?? '') : '';
+        input.placeholder = texts ? (definition.placeholder ?? '') : (isDefault ? (label.getAttribute('data-label') ?? '') : '');
         input.rows = 1;
         input.spellcheck = false;
         input.setAttribute('aria-label', slot);
         this.root.append(input);
-        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, base: this.table.version, pending: false };
+        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, base: this.table.version, pending: false, template: !!texts };
         label.setAttribute('data-editing', '');
         input.addEventListener('keydown', (e) => this.onEditorKey(e));
         input.addEventListener('input', () => this.placeEditor());
@@ -2964,6 +3588,10 @@ class DiagramController {
         const label = editor.label;
         const style = getComputedStyle(label);
         const fontSize = parseFloat(style.fontSize) || 12;
+        if (editor.template) {
+            this.placeTemplateEditor(editor, style, fontSize);
+            return;
+        }
         const width = Number(label.getAttribute('data-width')) || box.w;
         const anchor = label.getAttribute('text-anchor') ?? 'start';
         const valign = label.getAttribute('data-valign') ?? 'top';
@@ -2982,6 +3610,26 @@ class DiagramController {
         input.style.fontFamily = style.fontFamily;
         input.style.fontWeight = style.fontWeight;
         input.style.textAlign = anchor === 'middle' ? 'center' : (anchor === 'end' ? 'right' : 'left');
+        input.style.height = 'auto';
+        input.style.height = `${input.scrollHeight}px`;
+    }
+
+    placeTemplateEditor(editor, style, fontSize) {
+        const zoom = this.view.zoom;
+        const rect = editor.label.getBoundingClientRect();
+        const root = this.root.getBoundingClientRect();
+        const width = Math.max(rect.width, 80 * zoom);
+        const align = (style.textAnchor === 'middle') || (style.textAlign === 'center') ? 'center' : ((style.textAnchor === 'end') || (style.textAlign === 'right') ? 'right' : 'left');
+        const left = align === 'center' ? rect.left + (rect.width / 2) - (width / 2) : (align === 'right' ? rect.right - width : rect.left);
+        const top = rect.height > 0 ? rect.top : rect.top - (fontSize * zoom);
+        const input = editor.input;
+        input.style.left = `${left - root.left}px`;
+        input.style.top = `${top - root.top}px`;
+        input.style.width = `${width}px`;
+        input.style.fontSize = `${fontSize * zoom}px`;
+        input.style.fontFamily = style.fontFamily;
+        input.style.fontWeight = style.fontWeight;
+        input.style.textAlign = align;
         input.style.height = 'auto';
         input.style.height = `${input.scrollHeight}px`;
     }
@@ -3053,6 +3701,12 @@ class DiagramController {
                     }
                 },
             }, call);
+            return;
+        }
+        if (editor.template) {
+            this.closeEditor();
+            this.commit(operation, { saved: new Map(), previous: new Map() }, call);
+            this.root.focus({ preventScroll: true });
             return;
         }
         const saved = new Map();
@@ -3258,6 +3912,97 @@ class DiagramController {
         this.root.classList.remove('mussel-diagram-dropping');
     }
 
+    async exportDiagram(options) {
+        this.exportCount = (this.exportCount ?? 0) + 1;
+        const id = this.exportCount;
+        const result = await this.buildExport(options);
+        if (result.blob) {
+            this.exports.set(id, result.blob);
+        }
+        return JSON.stringify({ id, empty: !!result.empty, tooLarge: !!result.tooLarge, missing: result.missing ?? [] });
+    }
+
+    takeExport(id) {
+        const blob = this.exports.get(id) ?? new Blob([]);
+        this.exports.delete(id);
+        return blob;
+    }
+
+    async buildExport(options) {
+        const host = document.createElement('div');
+        host.style.cssText = 'position:absolute;left:-200000px;top:0;width:10px;height:10px;overflow:hidden;opacity:0;pointer-events:none';
+        const clone = this.canvas.cloneNode(true);
+        host.append(clone);
+        this.root.append(host);
+        try {
+            const viewport = clone.querySelector(':scope > .mussel-diagram-viewport');
+            viewport.removeAttribute('transform');
+            clone.querySelector('.mussel-diagram-grid')?.remove();
+            for (const element of clone.querySelectorAll('.mussel-diagram-link-hit, title')) {
+                element.remove();
+            }
+            if (!options.overlays) {
+                clone.querySelector('.mussel-diagram-badges')?.remove();
+                for (const element of clone.querySelectorAll('[class*="mussel-diagram-state-"], .mussel-diagram-error, .mussel-diagram-warning')) {
+                    for (const name of [...element.classList]) {
+                        if (name.startsWith('mussel-diagram-state-') || (name === 'mussel-diagram-error') || (name === 'mussel-diagram-warning')) {
+                            element.classList.remove(name);
+                        }
+                    }
+                }
+                for (const element of clone.querySelectorAll('[style*="--mussel-diagram-override-"]')) {
+                    for (const name of [...element.style]) {
+                        if (name.startsWith('--mussel-diagram-override-')) {
+                            element.style.removeProperty(name);
+                        }
+                    }
+                }
+            }
+            for (const name of EXPORT_MARKS) {
+                for (const element of clone.querySelectorAll(`[${name}]`)) {
+                    element.removeAttribute(name);
+                }
+            }
+            if (!viewport.querySelector(ELEMENT_SELECTOR)) {
+                return { empty: true };
+            }
+            const bounds = viewport.getBBox();
+            const cache = new Map();
+            inlineIcons(clone);
+            const missing = await embedImages(clone, cache);
+            const background = getComputedStyle(this.root).backgroundColor;
+            const families = inlineStyles(clone);
+            const fonts = options.fonts ? await embedFonts(families, cache) : '';
+            const margin = Math.max(0, options.margin);
+            const width = Math.max(1, Math.ceil(bounds.width + (margin * 2)));
+            const height = Math.max(1, Math.ceil(bounds.height + (margin * 2)));
+            clone.setAttribute('width', String(width));
+            clone.setAttribute('height', String(height));
+            clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            viewport.setAttribute('transform', `translate(${formatNumber(margin - bounds.x)},${formatNumber(margin - bounds.y)})`);
+            if (fonts) {
+                let defs = clone.querySelector(':scope > defs');
+                if (!defs) {
+                    defs = svg('defs');
+                    clone.prepend(defs);
+                }
+                const style = svg('style');
+                style.textContent = fonts;
+                defs.prepend(style);
+            }
+            if (options.background) {
+                viewport.before(svg('rect', { width, height, fill: background }));
+            }
+            const text = new XMLSerializer().serializeToString(clone);
+            if (options.format === 'svg') {
+                return { blob: new Blob([text], { type: 'image/svg+xml' }), missing };
+            }
+            return { ...(await rasterize(text, width, height, options)), missing };
+        } finally {
+            host.remove();
+        }
+    }
+
     dispose() {
         clearTimeout(this.settleTimer);
         cancelAnimationFrame(this.frameRequest);
@@ -3270,6 +4015,7 @@ class DiagramController {
             remove();
         }
         this.labels.dispose();
+        this.badges?.dispose();
         this.closeEditor();
         this.cancelExternal();
         controllers.delete(this.root);
@@ -3282,12 +4028,19 @@ class DragSource {
     constructor(element, viewRoot) {
         this.element = element;
         this.viewRoot = viewRoot;
+        this.armed = false;
         this.onDown = (event) => this.down(event);
+        this.onTouchMove = (event) => {
+            if (this.armed) {
+                event.preventDefault();
+            }
+        };
         element.addEventListener('pointerdown', this.onDown);
+        element.addEventListener('touchmove', this.onTouchMove, { passive: false });
     }
 
     down(event) {
-        if ((event.button !== 0) || (event.pointerType === 'touch')) {
+        if (event.button !== 0) {
             return;
         }
         const item = event.target.closest?.('[data-mussel-type]');
@@ -3295,12 +4048,38 @@ class DragSource {
         if (!item || !this.element.contains(item) || item.hasAttribute('data-disabled') || !controller) {
             return;
         }
-        event.preventDefault();
+        const touch = event.pointerType === 'touch';
+        if (!touch) {
+            event.preventDefault();
+        }
         const start = { x: event.clientX, y: event.clientY };
         let dragging = false;
+        let armed = !touch;
+        const timer = touch
+            ? setTimeout(() => {
+                armed = true;
+                this.armed = true;
+                item.setAttribute('data-armed', '');
+            }, LONG_PRESS_DELAY)
+            : 0;
+        const block = (e) => {
+            if (armed) {
+                e.preventDefault();
+            }
+        };
         const move = (e) => {
+            if (e.pointerId !== event.pointerId) {
+                return;
+            }
             if (!dragging) {
-                if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < MOUSE_THRESHOLD) {
+                const distance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+                if (!armed) {
+                    if (distance >= TOUCH_THRESHOLD) {
+                        end();
+                    }
+                    return;
+                }
+                if (distance < (touch ? TOUCH_THRESHOLD : MOUSE_THRESHOLD)) {
                     return;
                 }
                 dragging = !!controller.startExternal(item.getAttribute('data-mussel-type'), item.getAttribute('data-mussel-value'), item);
@@ -3312,12 +4091,18 @@ class DragSource {
             controller.moveExternal(e);
         };
         const up = (e) => {
+            if (e.pointerId !== event.pointerId) {
+                return;
+            }
             if (dragging) {
                 controller.dropExternal(e);
             }
             end();
         };
-        const cancel = () => {
+        const cancel = (e) => {
+            if (e && (e.pointerId !== undefined) && (e.pointerId !== event.pointerId)) {
+                return;
+            }
             if (dragging) {
                 controller.cancelExternal();
             }
@@ -3330,19 +4115,27 @@ class DragSource {
             }
         };
         const end = () => {
+            clearTimeout(timer);
+            this.armed = false;
+            item.removeAttribute('data-armed');
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', up);
             window.removeEventListener('pointercancel', cancel);
             window.removeEventListener('keydown', key, true);
+            window.removeEventListener('contextmenu', block, true);
         };
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
         window.addEventListener('pointercancel', cancel);
         window.addEventListener('keydown', key, true);
+        if (touch) {
+            window.addEventListener('contextmenu', block, true);
+        }
     }
 
     dispose() {
         this.element.removeEventListener('pointerdown', this.onDown);
+        this.element.removeEventListener('touchmove', this.onTouchMove);
     }
 }
 

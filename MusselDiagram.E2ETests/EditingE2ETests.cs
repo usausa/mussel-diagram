@@ -145,6 +145,37 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TemplateTextIsEditedInPlace(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+
+        await DragInAsync(opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='task']"), 300, 520);
+
+        var task = opened.View.Locator("g.mussel-diagram-node[data-type='task'][data-template]");
+        var title = task.Locator("text[data-slot='title']");
+        var owner = task.Locator("text[data-slot='owner']");
+        await Expect(title).ToHaveTextAsync("New task");
+        await Expect(task.Locator(":scope > .mussel-diagram-label")).ToHaveCountAsync(0);
+        await title.DblClickAsync();
+        await Expect(editor).ToHaveValueAsync("New task");
+        await opened.Page.Keyboard.PressAsync("Control+A");
+        await opened.Page.Keyboard.TypeAsync("Review");
+        await opened.Page.Keyboard.PressAsync("Enter");
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(title).ToHaveTextAsync("Review");
+
+        await Expect(owner).ToHaveTextAsync("Owner");
+        await owner.DblClickAsync();
+        await Expect(editor).ToHaveValueAsync(string.Empty);
+        await Expect(editor).ToHaveAttributeAsync("placeholder", "Owner");
+        await opened.Page.Keyboard.TypeAsync("Sato");
+        await opened.Page.Keyboard.PressAsync("Enter");
+        await Expect(owner).ToHaveTextAsync("Sato");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task GroupAndUngroupWithKeys(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

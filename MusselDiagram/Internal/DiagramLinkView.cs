@@ -11,6 +11,8 @@ internal sealed class DiagramLinkView : ComponentBase
 
     private RenderContext? renderedContext;
 
+    private ElementLook? renderedLook;
+
     [Parameter]
     [EditorRequired]
     public DiagramLink Link { get; set; } = default!;
@@ -19,27 +21,33 @@ internal sealed class DiagramLinkView : ComponentBase
     [EditorRequired]
     public RenderContext Context { get; set; } = default!;
 
-    protected override bool ShouldRender() => !ReferenceEquals(Link, renderedLink) || !ReferenceEquals(Context, renderedContext);
+    [Parameter]
+    public ElementLook? Look { get; set; }
+
+    protected override bool ShouldRender() => !ReferenceEquals(Link, renderedLink) || !ReferenceEquals(Context, renderedContext) || !ReferenceEquals(Look, renderedLook);
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         renderedLink = Link;
         renderedContext = Context;
+        renderedLook = Look;
         var link = Link;
         var type = Context.Index.FindLinkType(link.Type);
         var form = type?.Form ?? DiagramLineForm.Orthogonal;
         var (sourceCut, targetCut) = LinkRouting.Cuts(type);
 
         builder.OpenElement(0, "g");
-        builder.AddAttribute(1, "class", type is null ? "mussel-diagram-link mussel-diagram-unregistered" : "mussel-diagram-link");
+        var classes = new StringBuilder(type is null ? "mussel-diagram-link mussel-diagram-unregistered" : "mussel-diagram-link");
+        DiagramBoxView.AppendLook(classes, Look);
+        builder.AddAttribute(1, "class", classes.ToString());
         builder.AddAttribute(2, "data-id", link.Id);
         builder.AddAttribute(3, "data-type", link.Type);
-        if (StyleOf(type?.Look) is { } style)
+        if (StyleOf(type?.Look, Look?.Style) is { } style)
         {
             builder.AddAttribute(4, "style", style);
         }
 
-        if (Context.Tooltips && (type?.GetTooltip?.Invoke(link) is { Length: > 0 } tooltip))
+        if (Context.Tooltips && (TooltipOf(link, type, Look) is { } tooltip))
         {
             builder.OpenElement(5, "title");
             builder.AddContent(6, tooltip);
@@ -70,29 +78,36 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.CloseElement();
     }
 
-    private static string? StyleOf(DiagramLook? look)
+    private static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
     {
-        if (look is null)
-        {
-            return null;
-        }
-
         var builder = new StringBuilder();
-        if (look.Stroke is not null)
+        if (look?.Stroke is not null)
         {
             builder.Append("--mussel-diagram-link-stroke: ").Append(look.Stroke).Append(';');
         }
 
-        if (look.StrokeWidth is { } width)
+        if (look?.StrokeWidth is { } width)
         {
             builder.Append("--mussel-diagram-link-stroke-width: ").Append(Svg.Number(width)).Append(';');
         }
 
-        if (Svg.Dash(look.Dash) is { } dash)
+        if ((look is not null) && (Svg.Dash(look.Dash) is { } dash))
         {
             builder.Append("--mussel-diagram-link-dash: ").Append(dash).Append(';');
         }
 
+        DiagramBoxView.AppendOverride(builder, style);
         return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    private static string? TooltipOf(DiagramLink link, DiagramLinkType? type, ElementLook? look)
+    {
+        var own = type?.GetTooltip?.Invoke(link);
+        if (look?.IssueText is not { } issues)
+        {
+            return string.IsNullOrEmpty(own) ? null : own;
+        }
+
+        return string.IsNullOrEmpty(own) ? issues : $"{own}\n{issues}";
     }
 }

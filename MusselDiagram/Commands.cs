@@ -69,6 +69,10 @@ public static class DiagramCommands
     public const string ZoomToFit = nameof(ZoomToFit);
 
     public const string ZoomToSelection = nameof(ZoomToSelection);
+
+    public const string NextIssue = nameof(NextIssue);
+
+    public const string PreviousIssue = nameof(PreviousIssue);
 }
 
 public sealed class DiagramCommandContext

@@ -180,7 +180,7 @@ public sealed partial class MusselDiagramView
     private static DiagramReason? Canceled(bool cancel, string? reason) =>
         cancel ? new DiagramReason(reason is null ? DiagramReasonKind.Canceled : DiagramReasonKind.App, reason) : null;
 
-    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, BuiltInTexts.Reason(kind));
+    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, DiagramCultures.Reason(kind));
 
     private async Task<ScriptCommitResult> CommitAsync(
         DiagramOperation operation,
@@ -214,7 +214,7 @@ public sealed partial class MusselDiagramView
             {
                 rejections++;
                 await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
-                return new ScriptCommitResult(false, Snapshot.Version, reason.Message ?? BuiltInTexts.Reason(reason.Kind), rejections);
+                return new ScriptCommitResult(false, Snapshot.Version, reason.Message ?? DiagramCultures.Reason(reason.Kind), rejections);
             }
 
             write();

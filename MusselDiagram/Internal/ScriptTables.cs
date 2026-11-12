@@ -4,13 +4,13 @@ using System.Text.Json;
 
 internal static class ScriptTables
 {
-    public static ScriptTable Build(DiagramSnapshot snapshot, SchemaIndex index) =>
+    public static ScriptTable Build(DiagramSnapshot snapshot, SchemaIndex index, DiagramTemplateSet? templates = null) =>
         new(
             snapshot.Version,
-            [.. snapshot.Groups.Select(x => Box(x, index)), .. snapshot.Nodes.Select(x => Box(x, index))],
+            [.. snapshot.Groups.Select(x => Box(x, index, templates)), .. snapshot.Nodes.Select(x => Box(x, index, templates))],
             [.. snapshot.Links.Select(x => Link(x, index))]);
 
-    public static ScriptChanges Changes(DiagramChangedEventArgs change, SchemaIndex index)
+    public static ScriptChanges Changes(DiagramChangedEventArgs change, SchemaIndex index, DiagramTemplateSet? templates = null)
     {
         var boxes = new List<ScriptBox>();
         var links = new List<ScriptLink>();
@@ -19,7 +19,7 @@ internal static class ScriptTables
             switch (change.After.Find(id))
             {
                 case DiagramBox box:
-                    boxes.Add(Box(box, index));
+                    boxes.Add(Box(box, index, templates));
                     break;
                 case DiagramLink link:
                     links.Add(Link(link, index));
@@ -30,16 +30,18 @@ internal static class ScriptTables
         return new ScriptChanges(change.After.Version, boxes, links, change.Deleted);
     }
 
-    public static ScriptSchema Schema(RenderContext context)
+    public static ScriptSchema Schema(RenderContext context, DiagramTemplateSet? templates = null)
     {
         var schema = context.Index.Schema;
         return new ScriptSchema(
-            [.. schema.NodeTypes.Select(x => Type(x, false, context)), .. schema.GroupTypes.Select(x => Type(x, true, context))],
+            [.. schema.NodeTypes.Select(x => Type(x, false, context, templates)), .. schema.GroupTypes.Select(x => Type(x, true, context, null))],
             [.. schema.LinkTypes.Select(LinkType)],
             schema.DefaultLinkType,
             Enum.GetValues<DiagramReasonKind>()
-                .Where(static x => BuiltInTexts.Reason(x) is not null)
-                .ToDictionary(static x => JsonNamingPolicy.CamelCase.ConvertName(x.ToString()), static x => BuiltInTexts.Reason(x)!, StringComparer.Ordinal));
+                .Select(static x => (Kind: x, Text: DiagramCultures.Reason(x)))
+                .Where(static x => x.Text is not null)
+                .ToDictionary(static x => JsonNamingPolicy.CamelCase.ConvertName(x.Kind.ToString()), static x => x.Text!, StringComparer.Ordinal),
+            new ScriptTexts { SearchPlaceholder = DiagramCultures.SearchPlaceholder, NoMatches = DiagramCultures.NoMatches });
     }
 
     public static DiagramPermissions PermissionsOf(DiagramBox box, SchemaIndex index) => ElementPermissions.Of(box, index);
@@ -60,7 +62,7 @@ internal static class ScriptTables
         _ => "orthogonal"
     };
 
-    private static ScriptBox Box(DiagramBox box, SchemaIndex index)
+    private static ScriptBox Box(DiagramBox box, SchemaIndex index, DiagramTemplateSet? templates)
     {
         var type = index.FindBoxType(box);
         var permissions = PermissionsOf(box, index);
@@ -90,8 +92,21 @@ internal static class ScriptTables
             Connectable = (type is not null) && ((permissions & DiagramPermissions.Connect) != 0),
             Whole = (type is not null) && (type.ConnectsAsWhole || ports.IsEmpty),
             Editable = (type is not null) && ((permissions & DiagramPermissions.EditText) != 0),
-            Ports = ports.IsEmpty ? null : [.. ports.Select(Port)]
+            Ports = ports.IsEmpty ? null : [.. ports.Select(Port)],
+            Texts = (box is DiagramNode) && (type is not null) && (templates?.Find(box.Type) is not null) ? SlotTexts(box, type) : null
         };
+    }
+
+    private static Dictionary<string, string> SlotTexts(DiagramBox box, DiagramBoxType type)
+    {
+        var slots = LabelLayout.SlotsOf(box, type);
+        var texts = new Dictionary<string, string>(slots.Length, StringComparer.Ordinal);
+        for (var i = 0; i < slots.Length; i++)
+        {
+            texts[slots[i].Name] = (i == 0 ? box.Label : box.Texts.GetValueOrDefault(slots[i].Name)) ?? string.Empty;
+        }
+
+        return texts;
     }
 
     private static ScriptLink Link(DiagramLink link, SchemaIndex index)
@@ -116,7 +131,7 @@ internal static class ScriptTables
         };
     }
 
-    private static ScriptType Type(DiagramBoxType type, bool isGroup, RenderContext context)
+    private static ScriptType Type(DiagramBoxType type, bool isGroup, RenderContext context, DiagramTemplateSet? templates)
     {
         var group = type as DiagramGroupType;
         var ports = LinkRouting.Place(type.Ports);
@@ -127,7 +142,7 @@ internal static class ScriptTables
             Category = type.Category,
             CategoryLabel = type.Category is { } category ? context.Index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null,
             Search = type.SearchWords.IsEmpty ? null : [.. type.SearchWords],
-            Slots = [.. LabelLayout.SlotsOf(type, isGroup).Select(static x => new ScriptSlot { Name = x.Name, Editable = x.Editable, MaxLines = x.MaxLines ?? 0 })],
+            Slots = [.. LabelLayout.SlotsOf(type, isGroup).Select(static x => new ScriptSlot { Name = x.Name, Editable = x.Editable, MaxLines = x.MaxLines ?? 0, Placeholder = x.DefaultText })],
             Group = isGroup,
             Overlay = group?.Kind == DiagramGroupKind.Overlay,
             Content = group?.Sizing == DiagramGroupSizing.Content,
@@ -137,7 +152,7 @@ internal static class ScriptTables
             MinW = type.MinSize?.Width,
             MinH = type.MinSize?.Height,
             Icon = type.Look.Icon is { } icon ? context.FindIconId(icon) : null,
-            Shape = type.Look.Shape switch
+            Shape = templates?.Find(type.Name) is not null ? "rectangle" : type.Look.Shape switch
             {
                 DiagramShape.Ellipse => "ellipse",
                 DiagramShape.Diamond => "diamond",

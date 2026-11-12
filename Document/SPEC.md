@@ -374,6 +374,8 @@ From back to front:
 - The component draws the declared shape (rectangle, ellipse, diamond, path), the icon and the labels. A path is written in a 0–1 box and stretched to the size of the element, without stretching the stroke width
 - A type with a template is drawn by the template. Templates are registered on the view by type name. A template receives the element with its size, labels and data, and renders SVG elements with the top left of the element as the origin. HTML can go inside `foreignObject`
 - Templates do not render again when states such as selection or hover change. CSS draws the states
+- Templates are for node types. A template renders again only when its node changes. The view still draws the ports and the tooltip
+- In a template, an element with the class `mussel-diagram-shape` gets the built-in looks of states, issues and render overrides, and an element with `data-slot` set to a slot name is edited in place (Commands and keys)
 - Icons are `<symbol>` elements drawn with `<use>`. When the `Icon` of an element is an image URL, it is drawn with `<image>`
 - A group draws its frame, fill and header (icon and name). The fill is not hit-tested; the frame, the header and the ports are (the type can make the fill hit-tested too)
 - Group headers and presets for AWS are in AWS architecture diagrams
@@ -1014,6 +1016,7 @@ The keys follow draw.io.
 - Starting: a double-click on an editable slot edits that slot. F2 and Enter edit the first editable slot of the only selected element
 - A slot is editable unless it is declared not editable (`Editable` is true by default, also for the label of a type without slots), and while the text editing permission (view, element, type) does not stop it
 - An HTML input lies over the SVG at the position and width of the slot, with a text size that follows the zoom. It grows with the lines. An empty slot shows the default text faintly, without filling it in
+- In a node drawn by a template, the elements with `data-slot` set to a slot name are its slots, and the input lies over the element. Without them, the text of the template is not edited in place
 
 | Key | Behaviour |
 |---|---|
@@ -1099,6 +1102,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - The colors, strokes and text formats that CSS variables and classes decide are written to the attributes of the elements as computed values, so the SVG looks the same without CSS
 - Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
 - Fonts are written by name only by default. When chosen, the fonts used among those the page loaded with `@font-face` are embedded as data URLs
+- Tooltips, classes, styles and the hit areas of links are left out. `data-id` and `data-type` are kept
 - PDF, and images with the diagram data embedded, are not in the first version
 
 ### PNG and JPEG export
@@ -1106,7 +1110,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - `ExportImageAsync` of the view takes the format (PNG or JPEG), the scale (default 1) and the background, draws the exported SVG on a canvas of the browser, and returns the image
 - The SVG it draws always embeds the fonts used among those the page loaded with `@font-face`
 - JPEG cannot be transparent, so the background is filled with the background color. The quality can be chosen
-- When the image would be larger than the canvas limits of the browser, nothing is exported and the reason is returned
+- When the image would be larger than the canvas limits of the browser, nothing is exported and the reason (`TooLarge`) is returned. The limits are checked by drawing a test pixel, because a browser can keep an oversized canvas and draw nothing on it
 
 ### Sending large data
 
@@ -1138,7 +1142,8 @@ The app can draw states over elements without changing the model (run states, ch
 
 - A badge has a kind, text, an icon, a tone and a tooltip
 - Kinds are registered in `BadgeKinds` of the view, with a name, a corner (top left, top right, bottom left, bottom right), an order and whether they can be clicked. Unregistered kinds go last in the top right
-- Badges are packed from their corner along the side, in order, 4 px apart. They are 16 high and scale with the diagram
+- Badges are packed from their corner along the top or bottom side, in order, 4 px apart. The first one is centered on the corner. They are 16 high and scale with the diagram
+- On links, badges line up in order at the middle of the route, and the corner of the kind is not used
 - The tones are default, info, success, warning and error. Their colors are CSS variables (Rendering)
 - A badge without text is a dot. The tooltip uses `<title>`
 - A click on a badge of a clickable kind does not change the selection, and `BadgeClicked` reports it. Clicks on other badges go through to the element
@@ -1214,7 +1219,7 @@ A group type declares the form of its header.
 
 ## 🌐 Languages
 
-The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `DiagramCultures` of the core. English and Japanese are built in and need no registration.
+The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `DiagramCultures.Texts` of the core. English and Japanese are built in and need no registration.
 
 - Texts follow `CurrentUICulture`, looked up from the culture to its parents (`ja-JP`, `ja`, the empty name). Items not set and empty items do not count, and items found nowhere are English
 - The built-in languages are English under the empty name and Japanese under `ja`. Japanese uses only the public API and is a model for other languages. The app adds languages in the same form, and can replace the built-in texts
@@ -1225,11 +1230,10 @@ The code of the core, the components and JS knows no language. Texts are in lang
 
 | Language data | Content |
 |---|---|
-| Rejection reasons | Connection rules (Types and rules), where an element can be placed (Palette), commits (Commit and validation) |
+| Rejection reasons | Connection rules (Types and rules), where an element can be placed (Palette), commits (Commit and validation), images too large to export (Saving and export) |
 | Issues | The whole-diagram check (Commit and validation), what loading fixed and what sanitizing removed (Saving and export) |
 | Commands | The display names of the built-in commands (Commands and keys) |
 | Palette and type picker | The placeholder of the search box, the text when nothing matches |
-| Export | The reasons an export failed |
 
 ## ♿ Accessibility
 

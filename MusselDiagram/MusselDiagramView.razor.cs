@@ -14,6 +14,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private readonly string viewId = DiagramIds.Create()[..8];
 
+    private readonly DiagramTemplateSet templates = new();
+
     private IJSObjectReference? module;
 
     private IJSObjectReference? controller;
@@ -59,6 +61,9 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     [Parameter]
     public EventCallback<DiagramViewport> ViewportChanged { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
@@ -122,12 +127,14 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             builder.SetKey(link.Id);
             builder.AddComponentParameter(1, nameof(DiagramLinkView.Link), link);
             builder.AddComponentParameter(2, nameof(DiagramLinkView.Context), RenderContext);
+            builder.AddComponentParameter(3, nameof(DiagramLinkView.Look), overlays.Looks.GetValueOrDefault(link.Id));
             builder.CloseComponent();
         }
     };
 
     private RenderFragment Nodes => builder =>
     {
+        exportRendered = exporting;
         foreach (var node in Snapshot.Nodes)
         {
             if (IsShown(node.Id, node.Bounds))
@@ -164,6 +171,22 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         commitLock.Dispose();
     }
 
+    internal void SetTemplate(DiagramTemplate template)
+    {
+        if (templates.Set(template))
+        {
+            OnTemplatesChanged();
+        }
+    }
+
+    internal void RemoveTemplate(DiagramTemplate template)
+    {
+        if (templates.Remove(template))
+        {
+            OnTemplatesChanged();
+        }
+    }
+
     internal void OnViewportChanged(double zoom, double x, double y, double width, double height)
     {
         var visible = new DiagramRect(-x / zoom, -y / zoom, width / zoom, height / zoom);
@@ -177,6 +200,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     {
         Subscribe(Diagram);
         RefreshContext();
+        RefreshOverlays();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -197,8 +221,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 tableChanged = false;
                 schemaChanged = false;
                 pendingChanges.Clear();
-                var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index));
-                var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext));
+                var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates));
+                var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates));
                 controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
                 await SyncCommandsAsync(controller).ConfigureAwait(true);
                 if (pendingView is not null)
@@ -225,7 +249,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             if (schemaChanged)
             {
                 schemaChanged = false;
-                await controller.InvokeVoidAsync("setSchema", ScriptJson.ToElement(ScriptTables.Schema(RenderContext))).ConfigureAwait(true);
+                await controller.InvokeVoidAsync("setSchema", ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates))).ConfigureAwait(true);
             }
 
             var changed = tableChanged;
@@ -242,6 +266,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             {
                 await ReleaseAsync().ConfigureAwait(true);
             }
+
+            CompleteExportRender();
         }
     }
 
@@ -258,7 +284,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     }
 
     private bool IsShown(string id, DiagramRect bounds) =>
-        (area is not { } visible) || bounds.Intersects(visible) || SelectedIds.Contains(id, StringComparer.Ordinal);
+        exporting || (area is not { } visible) || bounds.Intersects(visible) || SelectedIds.Contains(id, StringComparer.Ordinal);
 
     private async ValueTask RunViewAsync(Func<IJSObjectReference, ValueTask> command)
     {
@@ -283,7 +309,21 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         builder.SetKey(box.Id);
         builder.AddComponentParameter(1, nameof(DiagramBoxView.Box), box);
         builder.AddComponentParameter(2, nameof(DiagramBoxView.Context), RenderContext);
+        builder.AddComponentParameter(3, nameof(DiagramBoxView.Templates), templates);
+        builder.AddComponentParameter(4, nameof(DiagramBoxView.Look), overlays.Looks.GetValueOrDefault(box.Id));
         builder.CloseComponent();
+    }
+
+    private void OnTemplatesChanged()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        tableChanged = true;
+        schemaChanged = true;
+        StateHasChanged();
     }
 
     private void Subscribe(Diagram? diagram)

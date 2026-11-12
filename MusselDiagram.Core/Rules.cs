@@ -91,11 +91,13 @@ public enum DiagramIssueKind
     MissingEnd,
     InvalidParent,
     InvalidMember,
+    NoMembers,
     KindMismatch,
     InvalidSize,
     UnreadableData,
     RemovedSvgContent,
     RejectedUrl,
+    UnreadableIcon,
     ImageNotEmbedded
 }
 

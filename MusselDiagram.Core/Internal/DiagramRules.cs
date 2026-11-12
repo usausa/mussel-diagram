@@ -149,7 +149,7 @@ internal static class DiagramRules
         return getReferences(element.Data);
     }
 
-    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, BuiltInTexts.Reason(kind));
+    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, DiagramCultures.Reason(kind));
 
     private static bool Sends(PortPlacement? port) => (port is null) || (port.Definition.Direction != DiagramPortDirection.In);
 

@@ -2,11 +2,11 @@
 @implements IAsyncDisposable
 
 <div @ref="root" @attributes="AdditionalAttributes" class="@RootClass">
-    <input class="mussel-diagram-palette-search" type="search" placeholder="Search" aria-label="Search" value="@query" @oninput="OnSearch" />
+    <input class="mussel-diagram-palette-search" type="search" placeholder="@DiagramCultures.SearchPlaceholder" aria-label="@DiagramCultures.SearchPlaceholder" value="@query" @oninput="OnSearch" />
     <div class="mussel-diagram-palette-list" role="listbox">
         @if (rows.Count == 0)
         {
-            <div class="mussel-diagram-palette-empty">@BuiltInTexts.NoMatches</div>
+            <div class="mussel-diagram-palette-empty">@DiagramCultures.NoMatches</div>
         }
         else
         {

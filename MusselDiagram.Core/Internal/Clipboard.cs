@@ -158,5 +158,5 @@ internal static class Clipboard
         }
     }
 
-    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, BuiltInTexts.Reason(kind));
+    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, DiagramCultures.Reason(kind));
 }

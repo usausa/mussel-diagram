@@ -96,7 +96,7 @@ public sealed partial class MusselDiagramView
         }
         else
         {
-            pendingChanges.Add(ScriptTables.Changes(e, Diagram.Index));
+            pendingChanges.Add(ScriptTables.Changes(e, Diagram.Index, templates));
         }
 
         if (SelectedIds.Any(x => !e.After.Contains(x)))
@@ -113,7 +113,7 @@ public sealed partial class MusselDiagramView
         if (resend)
         {
             pendingChanges.Clear();
-            await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index))).ConfigureAwait(true);
+            await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
             return;
         }
 

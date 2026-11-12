@@ -6,7 +6,7 @@ internal sealed record GroupingResult(Action<SnapshotEditor>? Edit, ImmutableArr
 {
     public static GroupingResult None { get; } = new(null, [], null);
 
-    public static GroupingResult Rejected(DiagramReasonKind kind) => new(null, [], new DiagramReason(kind, BuiltInTexts.Reason(kind)));
+    public static GroupingResult Rejected(DiagramReasonKind kind) => new(null, [], new DiagramReason(kind, DiagramCultures.Reason(kind)));
 
     public static GroupingResult Rejected(DiagramReason reason) => new(null, [], reason);
 }
@@ -229,6 +229,6 @@ internal static class Grouping
 
     private static DiagramReason? CheckMembers(DiagramGroupType type, IEnumerable<DiagramBox> members) =>
         (type.AllowedMembers is { } allowed) && members.Any(x => !allowed.Contains(x.Type))
-            ? new DiagramReason(DiagramReasonKind.Nesting, BuiltInTexts.Reason(DiagramReasonKind.Nesting))
+            ? new DiagramReason(DiagramReasonKind.Nesting, DiagramCultures.Reason(DiagramReasonKind.Nesting))
             : null;
 }

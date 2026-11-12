@@ -519,7 +519,7 @@ internal static class DiagramJsonFormat
                 {
                     if (group.MemberIds.IsEmpty)
                     {
-                        Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidMember, group.Id);
+                        Report(DiagramIssueSeverity.Error, DiagramIssueKind.NoMembers, group.Id);
                     }
 
                     dropped.Add(group.Id);

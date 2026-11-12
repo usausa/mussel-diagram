@@ -12,6 +12,10 @@ internal sealed class DiagramBoxView : ComponentBase
 
     private RenderContext? renderedContext;
 
+    private int renderedTemplates = -1;
+
+    private ElementLook? renderedLook;
+
     [Parameter]
     [EditorRequired]
     public DiagramBox Box { get; set; } = default!;
@@ -20,34 +24,62 @@ internal sealed class DiagramBoxView : ComponentBase
     [EditorRequired]
     public RenderContext Context { get; set; } = default!;
 
-    protected override bool ShouldRender() => !ReferenceEquals(Box, renderedBox) || !ReferenceEquals(Context, renderedContext);
+    [Parameter]
+    [EditorRequired]
+    public DiagramTemplateSet Templates { get; set; } = default!;
+
+    [Parameter]
+    public ElementLook? Look { get; set; }
+
+    protected override bool ShouldRender() =>
+        !ReferenceEquals(Box, renderedBox) || !ReferenceEquals(Context, renderedContext) || (Templates.Version != renderedTemplates) || !ReferenceEquals(Look, renderedLook);
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         renderedBox = Box;
         renderedContext = Context;
+        renderedTemplates = Templates.Version;
+        renderedLook = Look;
         var box = Box;
         var type = Context.Index.FindBoxType(box);
         var look = type?.Look;
         var width = box.Bounds.Width;
         var height = box.Bounds.Height;
         var isGroup = box is DiagramGroup;
+        var template = (box is DiagramNode) && (type is not null) ? Templates.Find(box.Type) : null;
 
         builder.OpenElement(0, "g");
-        builder.AddAttribute(1, "class", ClassOf(box, type));
+        builder.AddAttribute(1, "class", ClassOf(box, type, Look));
         builder.AddAttribute(2, "data-id", box.Id);
         builder.AddAttribute(3, "data-type", box.Type);
         builder.AddAttribute(4, "transform", Svg.Translate(box.Bounds.X, box.Bounds.Y));
-        if (StyleOf(look) is { } style)
+        if (StyleOf(look, Look?.Style) is { } style)
         {
             builder.AddAttribute(5, "style", style);
         }
 
-        if (Context.Tooltips && (type?.GetTooltip?.Invoke(box) is { Length: > 0 } tooltip))
+        if (template is not null)
         {
-            builder.OpenElement(6, "title");
-            builder.AddContent(7, tooltip);
+            builder.AddAttribute(6, "data-template", string.Empty);
+        }
+
+        if (Context.Tooltips && (TooltipOf(box, type, Look) is { } tooltip))
+        {
+            builder.OpenElement(7, "title");
+            builder.AddContent(8, tooltip);
             builder.CloseElement();
+        }
+
+        if (template is not null)
+        {
+            builder.OpenComponent<DiagramTemplateView>(9);
+            builder.AddComponentParameter(70, nameof(DiagramTemplateView.Node), box);
+            builder.AddComponentParameter(71, nameof(DiagramTemplateView.Template), template);
+            builder.AddComponentParameter(72, nameof(DiagramTemplateView.Version), Templates.Version);
+            builder.CloseComponent();
+            AddPorts(builder, box, width, height);
+            builder.CloseElement();
+            return;
         }
 
         AddShape(builder, look?.Shape ?? DiagramShape.Rectangle, look?.Path, width, height);
@@ -103,6 +135,12 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.CloseElement();
         }
 
+        AddPorts(builder, box, width, height);
+        builder.CloseElement();
+    }
+
+    private void AddPorts(RenderTreeBuilder builder, DiagramBox box, double width, double height)
+    {
         var local = new DiagramRect(0, 0, width, height);
         foreach (var port in Context.Index.PortsOf(box))
         {
@@ -117,10 +155,16 @@ internal sealed class DiagramBoxView : ComponentBase
             {
                 builder.AddAttribute(66, "data-hidden", string.Empty);
             }
+
+            if (Context.Tooltips && !string.IsNullOrEmpty(port.Definition.Label))
+            {
+                builder.OpenElement(67, "title");
+                builder.AddContent(68, port.Definition.Label);
+                builder.CloseElement();
+            }
+
             builder.CloseElement();
         }
-
-        builder.CloseElement();
     }
 
     private static void AddShape(RenderTreeBuilder builder, DiagramShape shape, string? path, double width, double height)
@@ -159,7 +203,7 @@ internal sealed class DiagramBoxView : ComponentBase
         }
     }
 
-    private static string ClassOf(DiagramBox box, DiagramBoxType? type)
+    private static string ClassOf(DiagramBox box, DiagramBoxType? type, ElementLook? look)
     {
         var builder = new StringBuilder(box is DiagramGroup ? "mussel-diagram-group" : "mussel-diagram-node");
         if (type is null)
@@ -172,22 +216,67 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.Append(" mussel-diagram-locked");
         }
 
+        AppendLook(builder, look);
         return builder.ToString();
     }
 
-    private static string? StyleOf(DiagramLook? look)
+    private static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
+    {
+        var builder = new StringBuilder();
+        if (look is not null)
+        {
+            Append(builder, "--mussel-diagram-shape-fill", look.Fill);
+            Append(builder, "--mussel-diagram-shape-stroke", look.Stroke);
+            Append(builder, "--mussel-diagram-shape-stroke-width", look.StrokeWidth is { } strokeWidth ? Svg.Number(strokeWidth) : null);
+            Append(builder, "--mussel-diagram-shape-dash", Svg.Dash(look.Dash));
+        }
+
+        AppendOverride(builder, style);
+        return builder.Length == 0 ? null : builder.ToString();
+    }
+
+    private static string? TooltipOf(DiagramBox box, DiagramBoxType? type, ElementLook? look)
+    {
+        var own = type?.GetTooltip?.Invoke(box);
+        if (look?.IssueText is not { } issues)
+        {
+            return string.IsNullOrEmpty(own) ? null : own;
+        }
+
+        var head = string.IsNullOrEmpty(own) ? box.Label : own;
+        return string.IsNullOrEmpty(head) ? issues : $"{head}\n{issues}";
+    }
+
+    internal static void AppendLook(StringBuilder builder, ElementLook? look)
     {
         if (look is null)
         {
-            return null;
+            return;
         }
 
-        var builder = new StringBuilder();
-        Append(builder, "--mussel-diagram-shape-fill", look.Fill);
-        Append(builder, "--mussel-diagram-shape-stroke", look.Stroke);
-        Append(builder, "--mussel-diagram-shape-stroke-width", look.StrokeWidth is { } strokeWidth ? Svg.Number(strokeWidth) : null);
-        Append(builder, "--mussel-diagram-shape-dash", Svg.Dash(look.Dash));
-        return builder.Length == 0 ? null : builder.ToString();
+        foreach (var state in look.States)
+        {
+            builder.Append(" mussel-diagram-state-").Append(state);
+        }
+
+        if (look.Severity is { } severity)
+        {
+            builder.Append(severity == DiagramIssueSeverity.Error ? " mussel-diagram-error" : " mussel-diagram-warning");
+        }
+    }
+
+    internal static void AppendOverride(StringBuilder builder, DiagramRenderOverride? style)
+    {
+        if (style is null)
+        {
+            return;
+        }
+
+        Append(builder, "--mussel-diagram-override-fill", style.Fill);
+        Append(builder, "--mussel-diagram-override-stroke", style.Stroke);
+        Append(builder, "--mussel-diagram-override-stroke-width", style.StrokeWidth is { } strokeWidth ? Svg.Number(strokeWidth) : null);
+        Append(builder, "--mussel-diagram-override-dash", style.Dash is { } dash ? Svg.Dash(dash) ?? "none" : null);
+        Append(builder, "--mussel-diagram-override-opacity", style.Opacity is { } opacity ? Svg.Number(opacity) : null);
     }
 
     private static string? TextStyleOf(DiagramTextFormat? format)
