@@ -108,7 +108,8 @@ public sealed partial class AppFixture : IAsyncLifetime
         }
 
         var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = touch }).ConfigureAwait(false);
-        var page = new DiagramPage(context, await context.NewPageAsync().ConfigureAwait(false));
+        var page = new DiagramPage(context, await context.NewPageAsync().ConfigureAwait(false), Log);
+        page.Watch();
         var response = await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
         page.InitialHtml = response is null ? string.Empty : await response.TextAsync().ConfigureAwait(false);
         await page.WaitForViewAsync().ConfigureAwait(false);
