@@ -29,6 +29,8 @@ public sealed record DiagramRouteRequest
     public required ImmutableArray<DiagramRect> Obstacles { get; init; }
 
     public DiagramLinkType? LinkType { get; init; }
+
+    public double GridSize { get; init; }
 }
 
 public sealed record DiagramRouteResult

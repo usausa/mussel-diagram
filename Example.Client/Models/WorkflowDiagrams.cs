@@ -71,8 +71,8 @@ public static class WorkflowDiagrams
                 "action",
                 [
                     MainIn,
-                    new DiagramPortDefinition { Id = "true", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Ratio = 0.3, Kind = "main", Label = "true" },
-                    new DiagramPortDefinition { Id = "false", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Ratio = 0.7, Kind = "main", Label = "false" }
+                    new DiagramPortDefinition { Id = "true", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Kind = "main", Label = "true" },
+                    new DiagramPortDefinition { Id = "false", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Kind = "main", Label = "false" }
                 ],
                 WorkflowJsonContext.Default.BranchSettings,
                 new BranchSettings("count > 0")),
@@ -83,8 +83,8 @@ public static class WorkflowDiagrams
                 [
                     MainIn,
                     MainOut,
-                    new DiagramPortDefinition { Id = "model", Direction = DiagramPortDirection.Out, Side = DiagramSide.Bottom, Ratio = 0.3, Kind = "ai-model", LinkType = "ai", MaxLinks = 1, Required = true, Label = "モデル" },
-                    new DiagramPortDefinition { Id = "tools", Direction = DiagramPortDirection.Out, Side = DiagramSide.Bottom, Ratio = 0.7, Kind = "ai-tool", LinkType = "ai", Label = "ツール" }
+                    new DiagramPortDefinition { Id = "model", Direction = DiagramPortDirection.Out, Side = DiagramSide.Bottom, Kind = "ai-model", LinkType = "ai", MaxLinks = 1, Required = true, Label = "モデル" },
+                    new DiagramPortDefinition { Id = "tools", Direction = DiagramPortDirection.Out, Side = DiagramSide.Bottom, Kind = "ai-tool", LinkType = "ai", Label = "ツール" }
                 ],
                 WorkflowJsonContext.Default.AgentSettings,
                 new AgentSettings("受注の内容を読んで、お客様への返信を考える")) with
@@ -159,7 +159,7 @@ public static class WorkflowDiagrams
         Name = name,
         DisplayName = displayName,
         Category = category,
-        Size = new DiagramSize(64, 64),
+        Size = new DiagramSize(60, 60),
         Look = new DiagramLook { Icon = $"{Prefix}:{name}", Fill = "var(--example-node-fill)", Stroke = "var(--example-node-stroke)" },
         Slots = [new DiagramLabelSlot { Name = "name", Placement = DiagramLabelPlacement.Below, Width = 120, MaxLines = 2 }],
         Ports = ports,
@@ -172,7 +172,7 @@ public static class WorkflowDiagrams
         new() { Id = id, Body = $"<g transform=\"translate(6 6)\">{body}</g>", Width = 36, Height = 36 };
 
     private static DiagramNode Step(string id, string type, double x, double y, string label, object data) =>
-        new() { Id = id, Type = type, Bounds = new DiagramRect(x, y, 64, 64), Label = label, Data = data };
+        new() { Id = id, Type = type, Bounds = new DiagramRect(x, y, 60, 60), Label = label, Data = data };
 
     private static DiagramLink Link(string id, string source, string sourcePort, string target, string targetPort, string type) =>
         new() { Id = id, Type = type, Source = new DiagramLinkEnd(source, sourcePort), Target = new DiagramLinkEnd(target, targetPort) };

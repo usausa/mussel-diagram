@@ -35,9 +35,9 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await TouchAsync("touchEnd");
         await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"^translate\(0,-9\d\) scale\(1\)$"));
 
-        await TouchAsync("touchStart", (254, 174 - 90));
+        await TouchAsync("touchStart", (250, 170 - 90));
         await TouchAsync("touchEnd");
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='web1'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
     }
 
     [Theory]
@@ -47,21 +47,21 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await OpenAsync(mode);
         var selected = opened!.View.Locator("g.mussel-diagram-node[data-selected]");
 
-        await TouchAsync("touchStart", (254, 174));
+        await TouchAsync("touchStart", (250, 170));
         await TouchAsync("touchEnd");
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='web1'][data-selected]")).ToHaveCountAsync(1);
-        await LongPressAsync((254, 304));
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
+        await LongPressAsync((250, 300));
         await Expect(selected).ToHaveCountAsync(2);
-        await LongPressAsync((254, 174));
+        await LongPressAsync((250, 170));
         await Expect(selected).ToHaveCountAsync(1);
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='web2'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star2'][data-selected]")).ToHaveCountAsync(1);
 
         await TouchAsync("touchStart", (455, 140));
         await Task.Delay(400, TestContext.Current.CancellationToken);
         await MoveAsync([(455, 140)], [(200, 360)]);
         await TouchAsync("touchEnd");
         await Expect(selected).ToHaveCountAsync(3);
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='web1'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
     }
 
@@ -70,20 +70,20 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     public async Task ASecondFingerCancelsTheMoveAndPinchZooms(string mode)
     {
         await OpenAsync(mode);
-        var web1 = opened!.View.Locator("g.mussel-diagram-node[data-id='web1']");
-        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+        var star1 = opened!.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
 
-        await TouchAsync("touchStart", (254, 174));
-        await MoveAsync([(254, 174)], [(254, 234)]);
-        await Expect(web1).Not.ToHaveAttributeAsync("transform", "translate(230,150)");
+        await TouchAsync("touchStart", (250, 170));
+        await MoveAsync([(250, 170)], [(250, 230)]);
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
 
-        await TouchAsync("touchStart", (254, 234), (454, 234));
-        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
-        await MoveAsync([(254, 234), (454, 234)], [(204, 234), (504, 234)]);
+        await TouchAsync("touchStart", (250, 230), (450, 230));
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
+        await MoveAsync([(250, 230), (450, 230)], [(200, 230), (500, 230)]);
         await TouchAsync("touchEnd");
 
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\.[45]\d*\)$"));
-        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
         await Expect(opened.View.Locator(".mussel-diagram-stage")).ToHaveAttributeAsync("style", string.Empty);
     }
 
@@ -93,22 +93,22 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     {
         await OpenAsync(mode);
         var nodes = opened!.View.Locator("g.mussel-diagram-node");
-        await Expect(nodes).ToHaveCountAsync(6);
+        await Expect(nodes).ToHaveCountAsync(9);
         await opened.Page.Locator(".mussel-diagram-palette[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
-        var item = await opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='server']").BoundingBoxAsync() ?? throw new InvalidOperationException("The item is not shown.");
+        var item = await opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']").BoundingBoxAsync() ?? throw new InvalidOperationException("The item is not shown.");
         var from = (X: item.X + (item.Width / 2) - origin.X, Y: item.Y + (item.Height / 2) - origin.Y);
 
         await TouchAsync("touchStart", from);
         await MoveAsync([from], [(from.X + 60, from.Y)]);
         await TouchAsync("touchEnd");
-        await Expect(nodes).ToHaveCountAsync(6);
+        await Expect(nodes).ToHaveCountAsync(9);
         await Task.Delay(1000, TestContext.Current.CancellationToken);
 
         await TouchAsync("touchStart", from);
         await Task.Delay(400, TestContext.Current.CancellationToken);
         await MoveAsync([from], [(120, 520)]);
         await TouchAsync("touchEnd");
-        await Expect(nodes).ToHaveCountAsync(7);
+        await Expect(nodes).ToHaveCountAsync(10);
     }
 
     [Theory]
@@ -118,9 +118,9 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await OpenAsync(mode);
         var arrows = opened!.View.Locator(".mussel-diagram-overlay .mussel-diagram-arrow");
 
-        await TouchAsync("touchStart", (550, 335));
+        await TouchAsync("touchStart", (550, 340));
         await TouchAsync("touchEnd");
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='check'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='diamond'][data-selected]")).ToHaveCountAsync(1);
         await Expect(arrows).ToHaveCountAsync(4);
 
         await TouchAsync("touchStart", (700, 470));
@@ -136,12 +136,12 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
 
         var time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000d;
         await Task.WhenAll(
-            TouchAsync("touchStart", time, (254, 208)),
+            TouchAsync("touchStart", time, (250, 204)),
             TouchAsync("touchEnd", time + 0.06),
-            TouchAsync("touchStart", time + 0.16, (254, 208)),
+            TouchAsync("touchStart", time + 0.16, (250, 204)),
             TouchAsync("touchEnd", time + 0.22));
 
-        await Expect(opened!.View.Locator("textarea.mussel-diagram-text-editor")).ToHaveValueAsync("Web server 1");
+        await Expect(opened!.View.Locator("textarea.mussel-diagram-text-editor")).ToHaveValueAsync("星 1");
     }
 
     private async Task OpenAsync(string mode)

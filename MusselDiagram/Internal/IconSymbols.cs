@@ -22,6 +22,8 @@ internal sealed class IconSymbols : IDisposable
 
     private ImmutableArray<IconSymbol>? symbols;
 
+    private bool disposed;
+
     public IconSymbols(Func<Action, Task> invoke)
     {
         this.invoke = invoke;
@@ -35,6 +37,12 @@ internal sealed class IconSymbols : IDisposable
 
     public void Dispose()
     {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
         cancellation.Cancel();
         cancellation.Dispose();
     }
@@ -84,7 +92,7 @@ internal sealed class IconSymbols : IDisposable
             return true;
         }
 
-        if (!loading.ContainsKey(entry.Icon))
+        if (!disposed && !loading.ContainsKey(entry.Icon))
         {
             var task = LoadAsync(entry);
             if (!task.IsCompleted)

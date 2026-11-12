@@ -1,0 +1,6 @@
+<DiagramTemplate Type="card" Context="item">
+    <rect class="mussel-diagram-shape" width="@item.Width" height="@item.Height" />
+    <rect class="card-band" width="@item.Width" height="6" />
+    <text class="card-title" data-slot="title" x="10" y="29">@item.Label</text>
+    <text class="@NoteClass(item)" data-slot="note" x="10" y="49">@Note(item)</text>
+</DiagramTemplate>

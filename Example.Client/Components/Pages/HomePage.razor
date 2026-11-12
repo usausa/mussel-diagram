@@ -7,13 +7,13 @@
         @if (view is not null)
         {
             <MusselDiagramPalette View="view" />
-            <MusselDiagramDragSource View="view" Type="server" Value="Imported server" class="diagram-source">Imported server</MusselDiagramDragSource>
+            <MusselDiagramDragSource View="view" Type="star" Value="外から置いた星" class="diagram-source">外から置いた星</MusselDiagramDragSource>
         }
     </aside>
     <div class="diagram-area">
         <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
         <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
-            <TaskTemplate />
+            <CardTemplate />
         </MusselDiagramView>
     </div>
 </div>

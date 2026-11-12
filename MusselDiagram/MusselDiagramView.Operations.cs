@@ -25,9 +25,6 @@ public sealed partial class MusselDiagramView
     public DiagramGridStyle GridStyle { get; set; }
 
     [Parameter]
-    public double GridSize { get; set; } = 10;
-
-    [Parameter]
     public bool SnapToGrid { get; set; } = true;
 
     [Parameter]

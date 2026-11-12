@@ -1,7 +1,7 @@
 <DiagramTemplate Type="table" Context="item">
     <rect class="mussel-diagram-shape" width="@item.Width" height="@item.Height" />
     <rect class="er-header" width="@item.Width" height="@ErDiagrams.HeaderHeight" />
-    <text class="er-name" data-slot="name" x="10" y="21">@item.Label</text>
+    <text class="er-name" data-slot="name" x="10" y="25">@item.Label</text>
     @{
         var columns = ErDiagrams.ColumnsOf(item.Data);
     }
@@ -10,9 +10,9 @@
         var column = columns[i];
         <g class="er-row" transform="@RowTransform(i)">
             <line class="er-line" x1="0" y1="0" x2="@item.Width" y2="0" />
-            <text class="er-key" x="10" y="16">@(column.Key ? "PK" : null)</text>
-            <text class="@(column.Key ? "er-column er-primary" : "er-column")" x="36" y="16">@column.Name</text>
-            <text class="er-type" x="@(item.Width - 12)" y="16">@column.Type</text>
+            <text class="er-key" x="10" y="14">@(column.Key ? "PK" : null)</text>
+            <text class="@(column.Key ? "er-column er-primary" : "er-column")" x="36" y="14">@column.Name</text>
+            <text class="er-type" x="@(item.Width - 12)" y="14">@column.Type</text>
         </g>
     }
 </DiagramTemplate>

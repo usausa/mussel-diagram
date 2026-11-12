@@ -30,10 +30,10 @@ public sealed partial class HomePage
 
     private static void OnMoving(DiagramMovingEventArgs e)
     {
-        if (e.ElementIds.Contains("lb"))
+        if (e.ElementIds.Contains("pin"))
         {
             e.Cancel = true;
-            e.Reason = "この例ではロードバランサーを動かせません";
+            e.Reason = "この例ではピンを動かせません";
         }
     }
 

@@ -12,9 +12,9 @@ public sealed partial class ErJsonContext : JsonSerializerContext;
 
 public static class ErDiagrams
 {
-    public const double HeaderHeight = 32;
+    public const double HeaderHeight = 40;
 
-    public const double RowHeight = 24;
+    public const double RowHeight = 20;
 
     public const double Width = 220;
 

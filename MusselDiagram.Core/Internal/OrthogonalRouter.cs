@@ -13,9 +13,9 @@ internal static class OrthogonalRouter
     [ThreadStatic]
     private static Scratch? scratch;
 
-    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, double stub, double margin, ObstacleIndex obstacles, string sourceId, string targetId, DiagramRect source, DiagramRect target)
+    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, double stub, double margin, ObstacleIndex obstacles, string sourceId, string targetId, DiagramRect source, DiagramRect target, double grid)
     {
-        var simple = LinkRouting.Orthogonal(start, end, stub);
+        var simple = LinkRouting.Orthogonal(start, end, stub, grid);
         var found = new List<DiagramRect>();
         if (IsClear(simple, obstacles, sourceId, targetId, margin, source, target, found))
         {
@@ -33,7 +33,7 @@ internal static class OrthogonalRouter
         foreach (var regionMargin in RegionMargins)
         {
             var region = Region(startOut, endOut, regionMargin);
-            if (Search(start, end, startOut, endOut, Blockers(obstacles, Inflate(region, margin), sourceId, targetId, margin, endMargin, source, target), region) is { } route)
+            if (Search(start, end, startOut, endOut, Blockers(obstacles, Inflate(region, margin), sourceId, targetId, margin, endMargin, source, target), region, grid) is { } route)
             {
                 return route;
             }
@@ -51,7 +51,7 @@ internal static class OrthogonalRouter
         blockers.Add(Inflate(source, endMargin));
         blockers.Add(Inflate(target, endMargin));
         all = Union(Union(all, blockers[^1]), blockers[^2]);
-        return Search(start, end, startOut, endOut, blockers, Inflate(all, 40)) ?? simple;
+        return Search(start, end, startOut, endOut, blockers, Inflate(all, 40), grid) ?? simple;
 
         bool Trapped(DiagramPoint point)
         {
@@ -74,9 +74,9 @@ internal static class OrthogonalRouter
         }
     }
 
-    public static ImmutableArray<DiagramPoint>? Clear(LinkAnchor start, LinkAnchor end, double stub, double margin, ObstacleIndex obstacles, string sourceId, string targetId, DiagramRect source, DiagramRect target)
+    public static ImmutableArray<DiagramPoint>? Clear(LinkAnchor start, LinkAnchor end, double stub, double margin, ObstacleIndex obstacles, string sourceId, string targetId, DiagramRect source, DiagramRect target, double grid)
     {
-        var simple = LinkRouting.Orthogonal(start, end, stub);
+        var simple = LinkRouting.Orthogonal(start, end, stub, grid);
         return IsClear(simple, obstacles, sourceId, targetId, margin, source, target, []) ? simple : null;
     }
 
@@ -189,17 +189,17 @@ internal static class OrthogonalRouter
         return new DiagramRect(left, top, Math.Abs(a.X - b.X) + (margin * 2), Math.Abs(a.Y - b.Y) + (margin * 2));
     }
 
-    private static double[] Coordinates(List<double> values, List<DiagramRect> blockers, bool horizontal, double first, double second, double low, double high)
+    private static double[] Coordinates(List<double> values, List<DiagramRect> blockers, bool horizontal, double first, double second, double low, double high, double grid)
     {
         values.Clear();
         values.Add(first);
         values.Add(second);
-        values.Add(low);
-        values.Add(high);
+        values.Add(Math.Min(LinkRouting.GridUp(low, grid), high));
+        values.Add(Math.Max(LinkRouting.GridDown(high, grid), low));
         foreach (var blocker in blockers)
         {
-            var a = horizontal ? blocker.X : blocker.Y;
-            var b = horizontal ? blocker.Right : blocker.Bottom;
+            var a = LinkRouting.GridDown(horizontal ? blocker.X : blocker.Y, grid);
+            var b = LinkRouting.GridUp(horizontal ? blocker.Right : blocker.Bottom, grid);
             if ((a > low) && (a < high))
             {
                 values.Add(a);
@@ -226,12 +226,6 @@ internal static class OrthogonalRouter
         return result;
     }
 
-    private static int FirstAtLeast(double[] values, double value)
-    {
-        var index = Array.BinarySearch(values, value);
-        return index >= 0 ? index : ~index;
-    }
-
     private static int FirstAbove(double[] values, double value)
     {
         var index = Array.BinarySearch(values, value);
@@ -250,7 +244,7 @@ internal static class OrthogonalRouter
         return index >= 0 ? index - 1 : ~index - 1;
     }
 
-    private static ImmutableArray<DiagramPoint>? Search(LinkAnchor start, LinkAnchor end, DiagramPoint startOut, DiagramPoint endOut, List<DiagramRect> blockers, DiagramRect region)
+    private static ImmutableArray<DiagramPoint>? Search(LinkAnchor start, LinkAnchor end, DiagramPoint startOut, DiagramPoint endOut, List<DiagramRect> blockers, DiagramRect region, double grid)
     {
         var work = scratch ??= new Scratch();
         var inside = work.InRegion;
@@ -263,8 +257,8 @@ internal static class OrthogonalRouter
             }
         }
 
-        var xs = Coordinates(work.Values, inside, true, startOut.X, endOut.X, region.X, region.Right);
-        var ys = Coordinates(work.Values, inside, false, startOut.Y, endOut.Y, region.Y, region.Bottom);
+        var xs = Coordinates(work.Values, inside, true, startOut.X, endOut.X, region.X, region.Right, grid);
+        var ys = Coordinates(work.Values, inside, false, startOut.Y, endOut.Y, region.Y, region.Bottom, grid);
         var width = xs.Length;
         var height = ys.Length;
         if ((width * height) > MaxNodes)
@@ -278,17 +272,17 @@ internal static class OrthogonalRouter
         var blockedDown = work.BlockedDown;
         foreach (var blocker in inside)
         {
-            var columnFrom = FirstAtLeast(xs, blocker.X);
-            var columnTo = LastAtMost(xs, blocker.Right);
+            var columnFrom = Math.Max(LastAtMost(xs, blocker.X), 0);
+            var columnTo = Math.Min(LastBelow(xs, blocker.Right), width - 2);
             var innerColumnFrom = FirstAbove(xs, blocker.X);
             var innerColumnTo = LastBelow(xs, blocker.Right);
-            var rowFrom = FirstAtLeast(ys, blocker.Y);
-            var rowTo = LastAtMost(ys, blocker.Bottom);
+            var rowFrom = Math.Max(LastAtMost(ys, blocker.Y), 0);
+            var rowTo = Math.Min(LastBelow(ys, blocker.Bottom), height - 2);
             var innerRowFrom = FirstAbove(ys, blocker.Y);
             var innerRowTo = LastBelow(ys, blocker.Bottom);
             for (var row = innerRowFrom; row <= innerRowTo; row++)
             {
-                for (var column = columnFrom; column < columnTo; column++)
+                for (var column = columnFrom; column <= columnTo; column++)
                 {
                     blockedRight[(row * width) + column] = generation;
                 }
@@ -301,7 +295,7 @@ internal static class OrthogonalRouter
 
             for (var column = innerColumnFrom; column <= innerColumnTo; column++)
             {
-                for (var row = rowFrom; row < rowTo; row++)
+                for (var row = rowFrom; row <= rowTo; row++)
                 {
                     blockedDown[(row * width) + column] = generation;
                 }

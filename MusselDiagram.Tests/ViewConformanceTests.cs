@@ -232,6 +232,18 @@ public sealed class ViewConformanceTests : BunitContext
     }
 
     [Fact]
+    public void TheGridSizeOfTheSchemaGoesToTheScript()
+    {
+        var diagram = CreateDiagram();
+        diagram.Schema = diagram.Schema with { GridSize = 20 };
+
+        Render<MusselDiagramView>(parameters => parameters.Add(p => p.Diagram, diagram));
+
+        var options = (JsonElement)module.Invocations["attach"][0].Arguments[2]!;
+        Assert.Equal(20, options.GetProperty("gridSize").GetDouble());
+    }
+
+    [Fact]
     public void ThePaletteDrawsTheShapeOfEachType()
     {
         var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));

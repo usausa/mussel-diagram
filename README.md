@@ -71,7 +71,7 @@ Register the types, create a `Diagram` and show it in an interactive component.
 ```
 
 The diagram works without a view as well: `diagram.Validate()` checks the whole diagram, and `diagram.ToJson()` and `diagram.LoadJson(json)` save and load it.  
-The `Example` project shows every feature on Server and WebAssembly, with sample apps for workflows, ER diagrams, device monitoring, electrical single-line diagrams and AWS architecture diagrams.  
+The `Example` project shows every feature on Server and WebAssembly: a sample of shapes, groups and lines, a large office network, and sample apps for workflows, ER diagrams, device monitoring, electrical single-line diagrams and AWS architecture diagrams.  
 
 ## 🎨 Look
 
@@ -91,7 +91,7 @@ The `Example` project shows every feature on Server and WebAssembly, with sample
 | **Rules** | Connection rules by port, direction, kind and type, nesting, counts, permissions, locks, app rules and whole-diagram checks |
 | **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection or panning by dragging the background, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
 | **Routes** | Orthogonal routes around obstacles, straight and curved lines, and a router that can be replaced |
-| **Palette** | Categories, search, dragging from the palette and from lists of the app, dropping on links, quick add by keys, and icon sets from Iconify JSON, zip files and folders |
+| **Palette** | Categories, search, dragging from the palette and from lists of the app, dropping on links, quick add by keys, and icon sets from Iconify JSON, zip files and folders, with large sets read icon by icon when shown |
 | **Commands** | A registry of commands with keys for toolbars and menus of the app |
 | **Export** | SVG, PNG and JPEG, with images and fonts embedded |
 | **Touch** | Pan, pinch zoom, long press and dragging from the palette |
@@ -104,8 +104,8 @@ The Example shows how to draw AWS architecture diagrams with the official icons.
 The icons are not included. Download them and place them in the Example:  
 
 1. Download the "Icon package" zip from [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/).
-2. Put the zip in `Example/AwsIcons/`. Git ignores the folder.
-3. Run the Example and open the AWS page. The service, resource and group icons are read, and the sample shows them.
+2. Extract the SVG files into `AwsIcons/` at the root of the repository. Git ignores the folder.
+3. Build and run the Example. The build copies the service, resource and group icons to the output folder, and the AWS page reads each icon when it is shown.
 
 A zip can also be chosen with the file button on the page.  
 Copy `Example.Client/Models/AwsDiagrams.cs` to use the same group looks, arrows and rules in an application.  

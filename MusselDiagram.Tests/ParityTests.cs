@@ -9,6 +9,8 @@ using MusselDiagram.Internal;
 
 public sealed class ParityTests
 {
+    private static readonly double[] Grids = [0, 10, 15];
+
     private static readonly DiagramSchema Schema = new()
     {
         NodeTypes =
@@ -85,7 +87,7 @@ public sealed class ParityTests
 
                 foreach (var type in Schema.LinkTypes)
                 {
-                    routes.Add(Route(snapshot, index, source, target, type));
+                    routes.Add(Route(snapshot, index, source, target, type, Grids[routes.Count % Grids.Length]));
                 }
             }
         }
@@ -160,7 +162,7 @@ public sealed class ParityTests
         }
     }
 
-    private static JsonObject Route(DiagramSnapshot snapshot, SchemaIndex index, DiagramLinkEnd source, DiagramLinkEnd target, DiagramLinkType type)
+    private static JsonObject Route(DiagramSnapshot snapshot, SchemaIndex index, DiagramLinkEnd source, DiagramLinkEnd target, DiagramLinkType type, double grid)
     {
         var from = (DiagramBox)snapshot.Find(source.ElementId)!;
         var to = (DiagramBox)snapshot.Find(target.ElementId)!;
@@ -177,9 +179,10 @@ public sealed class ParityTests
                 ["form"] = ScriptTables.FormName(type.Form),
                 ["stub"] = type.StubLength,
                 ["sourceCut"] = sourceCut,
-                ["targetCut"] = targetCut
+                ["targetCut"] = targetCut,
+                ["grid"] = grid
             },
-            ["expected"] = LinkRouting.ToPath(LinkRouting.Simple(start, end, type), type.Form, sourceCut, targetCut)
+            ["expected"] = LinkRouting.ToPath(LinkRouting.Simple(start, end, type, grid), type.Form, sourceCut, targetCut)
         };
     }
 

@@ -475,15 +475,25 @@ function simplify(points) {
     return result;
 }
 
-export function orthogonalRoute(start, end, stub) {
+export function gridMiddle(a, b, grid) {
+    const middle = (a + b) / 2;
+    if (!(grid > 0)) {
+        return middle;
+    }
+    const first = Math.ceil(Math.min(a, b) / grid) * grid;
+    const last = Math.floor(Math.max(a, b) / grid) * grid;
+    return first > last ? middle : Math.min(Math.max(Math.round(middle / grid) * grid, first), last);
+}
+
+export function orthogonalRoute(start, end, stub, grid = 0) {
     const startOut = stepOut(start, start.side, stub);
     const endOut = stepOut(end, end.side, stub);
     const points = [{ x: start.x, y: start.y }, startOut];
     if (isHorizontal(start.side) && isHorizontal(end.side)) {
-        const middle = (startOut.x + endOut.x) / 2;
+        const middle = gridMiddle(startOut.x, endOut.x, grid);
         points.push({ x: middle, y: startOut.y }, { x: middle, y: endOut.y });
     } else if (!isHorizontal(start.side) && !isHorizontal(end.side)) {
-        const middle = (startOut.y + endOut.y) / 2;
+        const middle = gridMiddle(startOut.y, endOut.y, grid);
         points.push({ x: startOut.x, y: middle }, { x: endOut.x, y: middle });
     } else if (isHorizontal(start.side)) {
         points.push({ x: endOut.x, y: startOut.y });
@@ -501,11 +511,11 @@ export function curveRoute(start, end, stub) {
     return [{ x: start.x, y: start.y }, stepOut(start, start.side, reach), stepOut(end, end.side, reach), { x: end.x, y: end.y }];
 }
 
-export function routeBetween(start, end, form, stub) {
+export function routeBetween(start, end, form, stub, grid = 0) {
     if (form === 'straight') {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
     }
-    return form === 'curved' ? curveRoute(start, end, stub) : orthogonalRoute(start, end, stub);
+    return form === 'curved' ? curveRoute(start, end, stub) : orthogonalRoute(start, end, stub, grid);
 }
 
 function findPort(box, id) {
@@ -520,9 +530,9 @@ export function linkAnchors(link, source, target) {
     return { start: anchorOf(source, sourcePort, sourceToward), end: anchorOf(target, targetPort, targetToward) };
 }
 
-export function routeLink(link, source, target) {
+export function routeLink(link, source, target, grid = 0) {
     const { start, end } = linkAnchors(link, source, target);
-    return routeBetween(start, end, link.form ?? 'orthogonal', link.stub ?? DEFAULT_LINK_TYPE.stub);
+    return routeBetween(start, end, link.form ?? 'orthogonal', link.stub ?? DEFAULT_LINK_TYPE.stub, grid);
 }
 
 export function formatNumber(value) {
@@ -620,6 +630,10 @@ export function matchingLines(lines, values) {
 
 export function gridSnap(value, size) {
     return size > 0 ? Math.round(value / size) * size : value;
+}
+
+export function gridAnchor(bounds, centered) {
+    return centered ? { x: bounds.x + (bounds.w / 2), y: bounds.y + (bounds.h / 2) } : { x: bounds.x, y: bounds.y };
 }
 
 export function resizeEdges(box, handle, dx, dy) {
@@ -2501,7 +2515,7 @@ class DiagramController {
         const top = Math.min(...boxes.map((b) => b.y));
         const bounds = { x: left, y: top, w: Math.max(...boxes.map((b) => b.x + b.w)) - left, h: Math.max(...boxes.map((b) => b.y + b.h)) - top };
         const pressed = this.table.boxes.get(press.hit.id);
-        const anchor = pressed && moving.has(pressed.id) ? { x: pressed.x, y: pressed.y } : { x: bounds.x, y: bounds.y };
+        const anchor = pressed && moving.has(pressed.id) ? gridAnchor(pressed, pressed.kind === 'node') : gridAnchor(bounds, false);
         const excluded = new Set(moving);
         for (const id of roots) {
             for (const ancestor of this.table.ancestors(id)) {
@@ -2670,7 +2684,7 @@ class DiagramController {
         if (!source || !target || !paths) {
             return;
         }
-        const points = routeLink(link, source, target);
+        const points = routeLink(link, source, target, this.options.gridSize);
         paths.hit?.setAttribute('d', toPath(points, link.form));
         paths.line?.setAttribute('d', toPath(points, link.form, link.sourceCut, link.targetCut));
         if (paths.badges) {
@@ -2992,7 +3006,7 @@ class DiagramController {
         const type = this.schema.linkTypes.get(drag.linkType) ?? DEFAULT_LINK_TYPE;
         const sourceAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? endAnchor : startAnchor;
         const targetAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? startAnchor : endAnchor;
-        const points = routeBetween(sourceAnchor, targetAnchor, type.form, type.stub);
+        const points = routeBetween(sourceAnchor, targetAnchor, type.form, type.stub, this.options.gridSize);
         drag.preview = this.previewLine(drag.linkType, toPath(points, type.form, type.sourceCut, type.targetCut));
         this.layers.preview.replaceChildren(drag.preview);
     }
@@ -3133,8 +3147,9 @@ class DiagramController {
             bounds = placeBeside(placement.box, placement.side, size, this.options.quickAddSpacing, along ? (isHorizontal(placement.side) ? along.y : along.x) : undefined);
         }
         if (this.options.snapToGrid) {
-            bounds.x = gridSnap(bounds.x, this.options.gridSize);
-            bounds.y = gridSnap(bounds.y, this.options.gridSize);
+            const anchor = gridAnchor(bounds, !type.group);
+            bounds.x += gridSnap(anchor.x, this.options.gridSize) - anchor.x;
+            bounds.y += gridSnap(anchor.y, this.options.gridSize) - anchor.y;
         }
         return bounds;
     }
@@ -3271,7 +3286,7 @@ class DiagramController {
         const type = this.schema.linkTypes.get(linkType) ?? DEFAULT_LINK_TYPE;
         const virtual = { ...item.bounds, id: '\u0000placed', ports: item.type.ports };
         const link = { sourcePort: from.port, targetPort: item.end, form: type.form, stub: type.stub };
-        const points = fromBox ? routeLink(link, fromBox, virtual) : [];
+        const points = fromBox ? routeLink(link, fromBox, virtual, this.options.gridSize) : [];
         this.layers.preview.replaceChildren(
             shapeElement(item.type, item.bounds, { class: 'mussel-diagram-place-frame' }),
             this.previewLine(linkType, toPath(points, type.form, type.sourceCut, type.targetCut)));
@@ -4111,8 +4126,9 @@ class DiagramController {
         const world = this.toWorld(external.point);
         let x = world.x - (type.w / 2);
         let y = world.y - (type.h / 2);
-        const snapX = this.snapAxisOrGrid(external.lines.x, [x, x + (type.w / 2), x + type.w], x, external.alt);
-        const snapY = this.snapAxisOrGrid(external.lines.y, [y, y + (type.h / 2), y + type.h], y, external.alt);
+        const anchor = gridAnchor({ x, y, w: type.w, h: type.h }, !type.group);
+        const snapX = this.snapAxisOrGrid(external.lines.x, [x, x + (type.w / 2), x + type.w], anchor.x, external.alt);
+        const snapY = this.snapAxisOrGrid(external.lines.y, [y, y + (type.h / 2), y + type.h], anchor.y, external.alt);
         x += snapX.delta;
         y += snapY.delta;
         external.snappedX = snapX.line !== null;

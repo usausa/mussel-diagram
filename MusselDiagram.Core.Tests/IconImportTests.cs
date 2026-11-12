@@ -3,6 +3,8 @@ namespace MusselDiagram;
 using System.IO.Compression;
 using System.Text;
 
+using MusselDiagram.Internal;
+
 public sealed class IconImportTests
 {
     [Fact]
@@ -116,6 +118,68 @@ public sealed class IconImportTests
         finally
         {
             Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public void ListedFilesAreNotReadUntilLoaded()
+    {
+        var reads = new List<string>();
+
+        var set = DiagramIconImport.FromFiles(
+            ["b/two.svg", "a\\one.svg", "notes.txt", "c/one.svg"],
+            (path, _) =>
+            {
+                reads.Add(path);
+                return Task.FromResult<string?>(null);
+            },
+            "pack");
+
+        Assert.Equal("pack", set.Prefix);
+        Assert.Equal([("one", "a"), ("two", "b")], set.Icons.Select(static x => (x.Id, x.Category)));
+        Assert.All(set.Icons, static x => Assert.Equal(string.Empty, x.Body));
+        Assert.Empty(reads);
+    }
+
+    [Fact]
+    public async Task LoadedFilesAreCleanedLikeImportedOnes()
+    {
+        var reads = new List<string>();
+        var set = DiagramIconImport.FromFiles(
+            ["Compute/Arch_Amazon-EC2_64.svg"],
+            (path, _) =>
+            {
+                reads.Add(path);
+                return Task.FromResult<string?>("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 48 32\"><script>alert(1)</script><linearGradient id=\"g\"/><rect fill=\"url(#g)\"/></svg>");
+            },
+            "aws");
+
+        var content = await SvgSanitizer.LoadAsync(set, set.Icons[0], CancellationToken.None);
+
+        Assert.Equal(["Compute/Arch_Amazon-EC2_64.svg"], reads);
+        Assert.NotNull(content);
+        Assert.Equal((48, 32), (content.Width, content.Height));
+        Assert.Equal("<linearGradient id=\"aws-Arch_Amazon-EC2_64-g\"/><rect fill=\"url(#aws-Arch_Amazon-EC2_64-g)\"/>", content.Body);
+    }
+
+    [Fact]
+    public async Task UnreadableLoadsGiveNoContent()
+    {
+        var large = $"<svg xmlns=\"http://www.w3.org/2000/svg\"><desc>{new string('x', SvgSanitizer.MaxFileLength)}</desc></svg>";
+        Func<CancellationToken, Task<string?>>[] loads =
+        [
+            static _ => Task.FromResult<string?>(null),
+            static _ => Task.FromResult<string?>("<svg><g></svg>"),
+            static _ => Task.FromException<string?>(new IOException()),
+            static _ => throw new IOException(),
+            static _ => Task.FromCanceled<string?>(new CancellationToken(true)),
+            _ => Task.FromResult<string?>(large)
+        ];
+
+        foreach (var load in loads)
+        {
+            var set = new DiagramIconSet { Prefix = "pack", Icons = [new DiagramIcon { Id = "icon", Load = load }] };
+            Assert.Null(await SvgSanitizer.LoadAsync(set, set.Icons[0], CancellationToken.None));
         }
     }
 

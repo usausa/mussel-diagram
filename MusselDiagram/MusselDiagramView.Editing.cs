@@ -331,7 +331,7 @@ public sealed partial class MusselDiagramView
         }
 
         pastes++;
-        var step = GridSize * 2 * pastes;
+        var step = Diagram.Schema.GridSize * 2 * pastes;
         PasteResult? pasted = null;
         var accepted = await RunCommandAsync(
             DiagramOperation.Paste,

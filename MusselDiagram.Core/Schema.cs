@@ -23,6 +23,8 @@ public sealed record DiagramSchema
 
     public string? DefaultGroupType { get; init; }
 
+    public double GridSize { get; init; } = 10;
+
     public IDiagramRouter? Router { get; init; }
 
     public DiagramAppRules Rules { get; init; } = new();

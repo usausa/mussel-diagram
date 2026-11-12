@@ -110,21 +110,21 @@ body {
     background-color: var(--mussel-tooltip-border, #d0d7de);
 }
 
-.task-band {
-    fill: #7cb342;
+.card-band {
+    fill: var(--example-green-stroke);
 }
 
-.task-title {
+.card-title {
     fill: var(--mussel-diagram-text-color);
     font-weight: 600;
 }
 
-.task-owner {
+.card-note {
     fill: var(--mussel-diagram-text-color);
     font-size: 11px;
 }
 
-.task-empty {
+.card-empty {
     fill: var(--mussel-muted-text, #8c959f);
 }
 
@@ -153,12 +153,16 @@ body {
     --example-aws-cloud: #242f3e;
     --example-aws-text: #000000;
     --example-aws-arrow: #000000;
-    --example-process-fill: #e3f2fd;
-    --example-process-stroke: #1e88e5;
-    --example-task-fill: #f1f8e9;
-    --example-task-stroke: #7cb342;
-    --example-decision-fill: #fff3e0;
-    --example-decision-stroke: #fb8c00;
+    --example-blue-fill: #e3f2fd;
+    --example-blue-stroke: #1e88e5;
+    --example-green-fill: #f1f8e9;
+    --example-green-stroke: #7cb342;
+    --example-orange-fill: #fff3e0;
+    --example-orange-stroke: #fb8c00;
+    --example-purple-fill: #f3e8ff;
+    --example-purple-stroke: #9333ea;
+    --example-teal-fill: #e0f2f1;
+    --example-teal-stroke: #00897b;
     --example-done-fill: #e6f4ea;
     --example-node-fill: #ffffff;
     --example-node-stroke: #94a3b8;
@@ -171,12 +175,16 @@ body {
     --example-aws-cloud: #ffffff;
     --example-aws-text: #ffffff;
     --example-aws-arrow: #8fa7c4;
-    --example-process-fill: #1b3047;
-    --example-process-stroke: #64b5f6;
-    --example-task-fill: #253219;
-    --example-task-stroke: #9ccc65;
-    --example-decision-fill: #3b2a14;
-    --example-decision-stroke: #ffb74d;
+    --example-blue-fill: #1b3047;
+    --example-blue-stroke: #64b5f6;
+    --example-green-fill: #253219;
+    --example-green-stroke: #9ccc65;
+    --example-orange-fill: #3b2a14;
+    --example-orange-stroke: #ffb74d;
+    --example-purple-fill: #2e1f3d;
+    --example-purple-stroke: #c084fc;
+    --example-teal-fill: #13302d;
+    --example-teal-stroke: #4db6ac;
     --example-done-fill: #1e3a26;
     --example-node-fill: #262624;
     --example-node-stroke: #6b7280;

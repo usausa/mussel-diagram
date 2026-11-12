@@ -18,7 +18,6 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
 | `GridVisible` | `bool` | `false` | Shows the grid |
 | `GridStyle` | `DiagramGridStyle` | `Dots` | `Dots` or `Lines` |
-| `GridSize` | `double` | `10` | Grid spacing, also for snapping |
 | `SnapToGrid`, `SnapToElements` | `bool` | `true` | Snapping to the grid, and to other elements with guides |
 | `SnapTolerance` | `double` | `8` | Snapping distance in screen pixels |
 | `ConnectionRadius` | `double` | `20` | Distance in screen pixels within which a port becomes the target of a connection |
@@ -202,6 +201,7 @@ An immutable record.
 | `IconSets` | `DiagramIconSet`; see Icons |
 | `Presets` | `DiagramPreset`: a `Name` and a `DiagramLook` that types refer to |
 | `DefaultLinkType`, `DefaultGroupType` | Type names |
+| `GridSize` | Grid spacing (default 10): the grid of the view, snapping, and the bends of orthogonal routes. `0` turns the rounding off |
 | `Router` | `IDiagramRouter?`; the built-in router when `null` |
 | `Rules` | `DiagramAppRules`; see App rules |
 
@@ -243,19 +243,20 @@ An immutable record.
 ### Routing
 
 `IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
-`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles) and `LinkType`. `DiagramRouteResult`: `Points`, or `Error` with a reason.  
+`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType` and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason.  
 
 ## 🖼️ Icons
 
 | Name | Description |
 |---|---|
 | `DiagramIconSet` | `Prefix` and `Icons` |
-| `DiagramIcon` | `Id`, `Body` (the SVG content), `Width`, `Height`, `Name`, `Category`, `SearchWords` |
+| `DiagramIcon` | `Id`, `Body` (the SVG content), `Load` (a function that reads the SVG file, used in place of `Body` the first time the icon is shown), `Width`, `Height`, `Name`, `Category`, `SearchWords` |
 | `DiagramIconImport.FromIconify(stream)` | Reads Iconify JSON |
 | `DiagramIconImport.FromZip(stream, prefix, map)`, `FromFolder(path, prefix, map)` | Reads SVG files. `map` makes `DiagramIconInfo` (`Id`, `Name`, `Category`) from a relative path, or `null` to skip the file |
+| `DiagramIconImport.FromFiles(paths, read, prefix, map)` | Lists SVG files without reading them and returns a `DiagramIconSet`. `read(path, cancellationToken)` returns the text of a file the first time its icon is shown |
 | `DiagramIconImport.CreateNodeTypes(set, baseType, filter)`, `CreateGroupTypes(set, baseType, filter)` | A type per icon, named `prefix:ID` |
 
-Each import returns a `DiagramIconImportResult` with `IconSet` and `Issues` (what sanitizing removed).  
+`FromIconify`, `FromZip` and `FromFolder` return a `DiagramIconImportResult` with `IconSet` and `Issues` (what sanitizing removed). An icon read later is not drawn when it cannot be read, and is not reported.  
 
 ## 🔎 Issues and reasons
 

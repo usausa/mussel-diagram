@@ -35,7 +35,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await Expect(view.Locator("g.mussel-diagram-node[data-id='reply']")).ToHaveClassAsync(new Regex("mussel-diagram-warning"));
         await Expect(agent.Locator(":scope > title")).ToHaveTextAsync("返信を考える\nポート「model」に線をつないでください\n開始から届きません");
         var badge = view.Locator(".mussel-diagram-badge-set[data-for='agent'] > .mussel-diagram-badge[data-tone='error']");
-        await Expect(badge).ToHaveAttributeAsync("transform", "translate(56,0)");
+        await Expect(badge).ToHaveAttributeAsync("transform", "translate(52,0)");
 
         await view.FocusAsync();
         var first = view.Locator("g.mussel-diagram-node[data-id='agent'][data-selected]");
@@ -89,11 +89,11 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await Expect(view.Locator("g.mussel-diagram-link[data-id='fetch-check']")).ToHaveClassAsync(new Regex("mussel-diagram-state-flowed"));
         await Expect(view.Locator("g.mussel-diagram-link[data-id='check-idle']")).Not.ToHaveClassAsync(new Regex("mussel-diagram-state-flowed"));
         var line = view.Locator(".mussel-diagram-badge-set[data-for='fetch-check'][data-link]");
-        await Expect(line).ToHaveAttributeAsync("transform", "translate(312,152)");
+        await Expect(line).ToHaveAttributeAsync("transform", "translate(310,150)");
         await Expect(line.Locator("text")).ToHaveTextAsync("12 件");
 
         var runs = badges.Locator(".mussel-diagram-badge[data-clickable]");
-        await Expect(runs).ToHaveAttributeAsync("transform", "translate(56,64)");
+        await Expect(runs).ToHaveAttributeAsync("transform", "translate(52,60)");
         await runs.ClickAsync();
         await Expect(runs.Locator("text")).ToHaveTextAsync("2");
         await Expect(view.Locator("[data-selected]")).ToHaveCountAsync(0);

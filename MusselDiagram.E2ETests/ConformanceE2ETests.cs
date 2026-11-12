@@ -30,8 +30,8 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         await Expect(picker).ToBeVisibleAsync();
         var names = await picker.Locator(".mussel-diagram-picker-item").EvaluateAllAsync<string[]>("items => items.map((x) => x.getAttribute('data-type'))");
-        Assert.Equal(["server", "database", "balancer", "cloud", "vpc", "subnet", "process", "task", "decision"], names);
-        await Expect(picker.Locator(".mussel-diagram-picker-item[data-type='decision'] polygon.mussel-diagram-picker-shape")).ToHaveCountAsync(1);
+        Assert.Equal(["rectangle", "ellipse", "diamond", "hexagon", "card", "star", "triangle", "pin", "frame", "group", "dashed"], names);
+        await Expect(picker.Locator(".mussel-diagram-picker-item[data-type='diamond'] polygon.mussel-diagram-picker-shape")).ToHaveCountAsync(1);
 
         await opened.Page.Mouse.ClickAsync(4, 4);
         await Expect(picker).ToHaveCountAsync(0);
@@ -43,18 +43,18 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     {
         opened = await app.OpenAsync(string.Empty, mode);
         var links = opened.View.Locator("g.mussel-diagram-link");
-        await Expect(links).ToHaveCountAsync(5);
+        await Expect(links).ToHaveCountAsync(7);
 
-        await DragAsync(420, 185, -90, 0, async () =>
+        await DragAsync(430, 190, -100, 0, async () =>
         {
-            await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='job'] circle[data-port='in'][data-not-allowed]")).ToHaveCountAsync(1).ConfigureAwait(true);
+            await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='rect'] circle[data-port='in'][data-not-allowed]")).ToHaveCountAsync(1).ConfigureAwait(true);
             await Expect(opened.View).ToHaveClassAsync(new Regex("mussel-diagram-not-allowed")).ConfigureAwait(true);
             await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-link")).ToHaveAttributeAsync("marker-end", new Regex("^url\\(#")).ConfigureAwait(true);
         });
 
         await Expect(opened.View.Locator(".mussel-diagram-reason")).ToBeVisibleAsync();
         await Expect(opened.View).Not.ToHaveClassAsync(new Regex("mussel-diagram-not-allowed"));
-        await Expect(links).ToHaveCountAsync(5);
+        await Expect(links).ToHaveCountAsync(7);
     }
 
     [Theory]
@@ -62,14 +62,14 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     public async Task CommandKeysWaitUntilTheDragEnds(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
-        var web1 = opened.View.Locator("g.mussel-diagram-node[data-id='web1']");
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
 
-        await DragAsync(254, 174, 60, 40, async () => await opened.Page.Keyboard.PressAsync("Delete").ConfigureAwait(true));
+        await DragAsync(250, 170, 60, 40, async () => await opened.Page.Keyboard.PressAsync("Delete").ConfigureAwait(true));
 
-        await Expect(web1).Not.ToHaveAttributeAsync("transform", "translate(230,150)");
-        await Expect(web1).ToHaveCountAsync(1);
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
+        await Expect(star1).ToHaveCountAsync(1);
         await opened.Page.Keyboard.PressAsync("Delete");
-        await Expect(web1).ToHaveCountAsync(0);
+        await Expect(star1).ToHaveCountAsync(0);
     }
 
     [Theory]
@@ -100,23 +100,23 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     {
         opened = await app.OpenAsync(string.Empty, mode);
         var page = opened.Page;
-        var web1 = opened.View.Locator("g.mussel-diagram-node[data-id='web1']");
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
         var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
-        await DragAsync(254, 174, 60, 40, null);
-        await Expect(web1).Not.ToHaveAttributeAsync("transform", "translate(230,150)");
-        var moved = await web1.GetAttributeAsync("transform");
+        await DragAsync(250, 170, 60, 40, null);
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
+        var moved = await star1.GetAttributeAsync("transform");
         await page.Keyboard.PressAsync("Control+Z");
-        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
 
         await page.Keyboard.PressAsync("F2");
         await Expect(editor).ToBeVisibleAsync();
         await page.Keyboard.PressAsync("Control+Shift+Z");
         await page.WaitForTimeoutAsync(500);
-        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
         await page.Keyboard.PressAsync("Escape");
         await Expect(editor).ToHaveCountAsync(0);
         await page.Keyboard.PressAsync("Control+Shift+Z");
-        await Expect(web1).ToHaveAttributeAsync("transform", moved!);
+        await Expect(star1).ToHaveAttributeAsync("transform", moved!);
 
         await page.Keyboard.PressAsync("F2");
         await Expect(editor).ToBeVisibleAsync();
@@ -125,7 +125,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await page.Keyboard.PressAsync("Control+Enter");
         await Expect(editor).ToHaveCountAsync(0);
         await Expect(opened.View.Locator(".mussel-diagram-picker")).ToHaveCountAsync(0);
-        await Expect(web1.Locator("text.mussel-diagram-label[data-label='Web server 1x']")).ToHaveCountAsync(1);
+        await Expect(star1.Locator("text.mussel-diagram-label[data-label='星 1x']")).ToHaveCountAsync(1);
     }
 
     private async Task<(double X, double Y)> OriginAsync()

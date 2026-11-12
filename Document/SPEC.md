@@ -342,7 +342,7 @@ From back to front:
 | Interaction | Selection frame, handles, guides, preview lines, the box selection frame, connection candidates |
 
 - Only the interaction layer is drawn in a separate SVG laid over the diagram SVG
-- Icons and end markers are placed once in `<defs>` and referenced with `<use>`. The grid is one pattern that fills the visible area
+- End markers, and the icons that are shown (by elements, badges, palette items, picker items and dragged types), are placed once in `<defs>` and referenced with `<use>`. The grid is one pattern that fills the visible area
 - The text editor is HTML over the SVG
 
 ### Panning and zooming
@@ -362,7 +362,7 @@ From back to front:
 
 ### Grid
 
-- `GridVisible` shows the grid, with the spacing `GridSize` (default 10). It is drawn as dots or lines, with every fourth line darker
+- `GridVisible` shows the grid, with the spacing `GridSize` of the schema (default 10). It is drawn as dots or lines, with every fourth line darker
 - At zoom levels where the spacing on screen is under 8 px, the spacing is doubled until it is not. The snapping spacing does not change
 
 ### Culling
@@ -540,15 +540,16 @@ JS computes snapping and guides while dragging. They work for moving, resizing a
 
 | Setting | Default | Content |
 |---|---|---|
-| `SnapToGrid` | On | Snaps to the grid |
+| `SnapToGrid` | On | Snaps to the grid (the spacing is `GridSize` of the schema) |
 | `SnapToElements` | On | Snaps to the edges and centers of other elements, and shows guides |
 | `SnapTolerance` | 8 | The snapping distance (screen pixels, divided by the zoom for the distance in the diagram) |
 
 ### Grid
 
-- When moving, the position (top left) of the pressed element is rounded to the grid, and the same offset moves the whole selection. The distances between the selected elements do not change
+- When moving, the center of the pressed node, or the top left of the pressed group, is rounded to the grid, and the same offset moves the whole selection. The distances between the selected elements do not change
 - When resizing, the moving edges are rounded to the grid
-- An element placed from the palette has its top left rounded to the grid
+- An element placed from the palette or by quick add has its center (a node) or its top left (a group) rounded to the grid
+- So the center lines of nodes lie on grid lines whatever their size, and so do the ports in the middle of a side and the ends of links attached to a whole node
 - Rounding the offset instead is added later, when needed
 
 ### Snapping to other elements and guides
@@ -646,6 +647,7 @@ The link type declares the form.
 - A route leaves each end straight out for the stub length of the link type (default 20) before it turns
 - It avoids the nodes as rectangles with a margin (default 10). The two end elements are avoided too, beyond the stubs, with half the stub length as the margin when that is smaller. Groups are not avoided, and routes may cross group frames
 - It takes the route with the lowest length plus a penalty per bend. The same layout always gives the same route
+- Bends lie on the grid of the schema (`GridSize`). The bend between the stubs is on the grid line nearest the middle, or in the middle when no grid line is between the stubs. Turns around nodes are on the grid lines just outside the margin. The ends and the stubs are not rounded. `GridSize` 0 turns this off
 - Points on one straight line are removed
 - When no route avoids the nodes (for example, the end of a stub is inside another node), the simple orthogonal route that does not avoid them is used
 
@@ -660,7 +662,7 @@ The link type declares the form.
 
 ### Replacing the router and reading routes
 
-- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid and the link type, and returns a list of points or the reason it could not route
+- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type and the grid size, and returns a list of points or the reason it could not route
 - With an asynchronous router, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
 - The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo are asked for again
 - A link knows whether its route is provisional or a result of the router, or why it could not be made
@@ -696,7 +698,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 - An item shows the icon of the type (otherwise a small version of its shape) and the display name. A display name that does not fit is shortened, with the full text in `title`
 - Items are grouped under category headers, and a click on a header opens or closes it. The order, the display names and whether a category starts closed are in the category list of the schema. Categories not in the list come after it, and types without a category come first, without a header. Within a category, the order is the order in the schema
 - `Categories` limits the categories shown (for tabs per category in the app, for example)
-- The items of closed categories, and items outside the visible part, are not drawn. Item icons reference the same `<symbol>` as the view
+- The items of closed categories, and items outside the visible part, are not drawn. Item icons reference the same `<symbol>` as the view, and an icon is placed in the view when its item is drawn
 - CSS changes the look. Colors use the same CSS variables as the view (Rendering)
 - Items are disabled when the view is `ReadOnly` or `DropEnabled` is false
 - Item descriptions, large previews, recently used types, and items the user adds are not in the first version
@@ -782,12 +784,13 @@ A small list that opens over the view to find and choose a type. It has a search
 
 ### Importing icon sets
 
-- An icon set is a prefix and its icons (ID, SVG content, width and height, name, category, search words). It is added to the schema, and the icon of a type and the `Icon` of an element refer to an icon as `prefix:ID`
+- An icon set is a prefix and its icons (ID, SVG content or a function that reads the SVG file, width and height, name, category, search words). It is added to the schema, and the icon of a type and the `Icon` of an element refer to an icon as `prefix:ID`
 - The core reads Iconify JSON (the prefix, the content and size of the icons, the categories) and sets of SVG files (a zip or a folder). A function can make the ID, the name and the category from the relative path of a file (by default, the file name is the ID and the name, and the folder name is the category)
+- A set of SVG files can also be taken as a list without reading them (`FromFiles`): the app passes the relative paths and a function that reads a file. An icon is read and sanitized the first time something shows it. An icon that cannot be read (or is longer than 4 MiB) is not drawn and not reported
 - It reads only the streams and files the app passes, never the network. No icon sets are bundled
 - Imported SVG is sanitized (Saving and export). The IDs inside an icon get a prefix per icon
 - When the app passes a base type (shape, default size, label slots, ports, rules), a type is made for each chosen icon. The type name is `prefix:ID` of the icon by default, and the display name, the category and the search words come from the icon. The app adds the types to the schema and replaces it
-- Icons are sent to the view once and placed in the document once. The view and the palette reference the same ones
+- An icon is placed in the document once, the first time something shows it (Rendering). The view, the palette and the picker reference the same one
 - How to read the official AWS package and make its IDs is in AWS architecture diagrams. Replacing a set with a newer version of it is not in the first version
 
 ## 🚦 Commit and validation
@@ -1105,7 +1108,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - The area is the bounds of all the elements plus a margin (default 10). Choosing an area is not in the first version
 - The background is transparent by default, and can be filled with the background color. Colors follow the current light or dark mode
 - The colors, strokes and text formats that CSS variables and classes decide are written to the attributes of the elements as computed values, so the SVG looks the same without CSS
-- Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
+- Export waits for the icons in use that are still being read. Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
 - Fonts are written by name only by default. When chosen, the fonts used among those the page loaded with `@font-face` are embedded as data URLs
 - Tooltips, classes, styles and the hit areas of links are left out. `data-id` and `data-type` are kept
 - PDF, and images with the diagram data embedded, are not in the first version
@@ -1120,7 +1123,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 ### Sending large data
 
 - The results of export go from JS to C# as streams (`IJSStreamReference`), and to the app as streams, because they can be larger than what C# accepts in one message in Interactive Server (32 KB by default)
-- From C# to JS, the schema and the icons are sent only when they change, and elements only as changes
+- From C# to JS, the schema is sent only when it changes, an icon the first time something shows it, and elements only as changes
 
 ## 🏷️ State overlays
 
@@ -1197,8 +1200,9 @@ A group type declares the form of its header.
 
 ### Reading the official package
 
-- The app reads the Icon package zip, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
-- The Example reads the newest zip in `Example/AwsIcons/` when the AWS page opens, and a zip chosen with the file button. Git ignores the folder
+- The app reads the Icon package, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
+- The user extracts the SVG files of the package into `AwsIcons/` at the root of the repository, which Git ignores. The build of the Example copies the files it reads (the table below) to `AwsIcons/` in the output folder
+- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read at once
 - The ID is the file name without the release date and the size, with the prefix `aws`. It stays the same when a new release (three a year) replaces the package
 
 | File | ID | Size read |

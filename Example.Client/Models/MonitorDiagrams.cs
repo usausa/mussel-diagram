@@ -98,7 +98,7 @@ public static class MonitorDiagrams
     {
         Name = name,
         DisplayName = displayName,
-        Size = new DiagramSize(56, 56),
+        Size = new DiagramSize(60, 60),
         Look = new DiagramLook { Icon = $"{Prefix}:{name}", Fill = "var(--example-node-fill)", Stroke = "var(--example-node-stroke)" },
         Slots = [new DiagramLabelSlot { Name = "name", Placement = DiagramLabelPlacement.Below, Width = 120, MaxLines = 2 }],
         DataType = MonitorJsonContext.Default.DeviceData,
@@ -109,7 +109,7 @@ public static class MonitorDiagrams
         new() { Id = id, Body = $"<g transform=\"translate(6 6)\">{body}</g>", Width = 36, Height = 36 };
 
     private static DiagramNode Node(string id, string type, double x, double y, string parent, string label, string address) =>
-        new() { Id = id, Type = type, Bounds = new DiagramRect(x, y, 56, 56), ParentId = parent, Label = label, Data = new DeviceData(address) };
+        new() { Id = id, Type = type, Bounds = new DiagramRect(x, y, 60, 60), ParentId = parent, Label = label, Data = new DeviceData(address) };
 
     private static DiagramLink Cable(string id, string source, string target) =>
         new() { Id = id, Type = "cable", Source = new DiagramLinkEnd(source), Target = new DiagramLinkEnd(target) };

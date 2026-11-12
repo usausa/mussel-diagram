@@ -33,7 +33,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
 
         Assert.Contains($"\"type\":\"{markerType}\"", opened.InitialHtml, StringComparison.Ordinal);
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas, svg.mussel-diagram-overlay")).ToHaveCountAsync(2);
-        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='web1'] text tspan").First).ToHaveTextAsync("Web server 1");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] text tspan").First).ToHaveTextAsync("星 1");
     }
 
     [Theory]
@@ -84,9 +84,9 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     public async Task DraggingANodeMovesItWithItsLinks(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
-        var node = opened.View.Locator("g.mussel-diagram-node[data-id='web1']");
-        var line = opened.View.Locator("g.mussel-diagram-link[data-id='web1-db'] > path.mussel-diagram-link-line");
-        await Expect(node).ToHaveAttributeAsync("transform", "translate(230,150)");
+        var node = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        var line = opened.View.Locator("g.mussel-diagram-link[data-id='star1-triangle'] > path.mussel-diagram-link-line");
+        await Expect(node).ToHaveAttributeAsync("transform", "translate(226,146)");
         var path = await line.GetAttributeAsync("d") ?? string.Empty;
         var version = await opened.View.GetAttributeAsync("data-version") ?? string.Empty;
 
@@ -95,7 +95,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         await opened.Page.Keyboard.UpAsync("Alt");
 
         await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version);
-        await Expect(node).ToHaveAttributeAsync("transform", "translate(290,190)");
+        await Expect(node).ToHaveAttributeAsync("transform", "translate(286,186)");
         await Expect(line).Not.ToHaveAttributeAsync("d", path);
         await Expect(opened.Page.Locator(".mussel-diagram-overlay rect.mussel-diagram-selection")).ToHaveCountAsync(1);
     }
@@ -105,13 +105,13 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     public async Task RejectedMoveGoesBackAndShowsTheReason(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
-        var node = opened.View.Locator("g.mussel-diagram-node[data-id='lb']");
+        var node = opened.View.Locator("g.mussel-diagram-node[data-id='pin']");
         var version = await opened.View.GetAttributeAsync("data-version") ?? string.Empty;
 
         await DragAsync(opened.Page, node.Locator("use"), 80, 0);
 
-        await Expect(opened.View.Locator(".mussel-diagram-reason")).ToHaveTextAsync("この例ではロードバランサーを動かせません");
-        await Expect(node).ToHaveAttributeAsync("transform", "translate(50,160)");
+        await Expect(opened.View.Locator(".mussel-diagram-reason")).ToHaveTextAsync("この例ではピンを動かせません");
+        await Expect(node).ToHaveAttributeAsync("transform", "translate(46,156)");
         await Expect(opened.View).ToHaveAttributeAsync("data-version", version);
     }
 

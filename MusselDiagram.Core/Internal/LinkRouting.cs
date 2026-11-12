@@ -112,22 +112,22 @@ internal static class LinkRouting
         return new LinkAnchor(PortPosition(bounds, side, 0.5, 0), side);
     }
 
-    public static ImmutableArray<DiagramPoint> Simple(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType)
+    public static ImmutableArray<DiagramPoint> Simple(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, double grid)
     {
         var stub = linkType?.StubLength ?? DefaultStubLength;
         return (linkType?.Form ?? DiagramLineForm.Orthogonal) switch
         {
             DiagramLineForm.Straight => [start.Position, end.Position],
             DiagramLineForm.Curved => Curve(start, end, stub),
-            _ => Orthogonal(start, end, stub)
+            _ => Orthogonal(start, end, stub, grid)
         };
     }
 
-    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, ObstacleIndex obstacles, DiagramBox source, DiagramBox target)
+    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, ObstacleIndex obstacles, DiagramBox source, DiagramBox target, double grid)
     {
         if ((linkType?.Form ?? DiagramLineForm.Orthogonal) != DiagramLineForm.Orthogonal)
         {
-            return Simple(start, end, linkType);
+            return Simple(start, end, linkType, grid);
         }
 
         return OrthogonalRouter.Route(
@@ -139,8 +139,26 @@ internal static class LinkRouting
             source.Id,
             target.Id,
             source.Bounds,
-            target.Bounds);
+            target.Bounds,
+            grid);
     }
+
+    public static double Middle(double a, double b, double grid)
+    {
+        var middle = (a + b) / 2;
+        if (!(grid > 0))
+        {
+            return middle;
+        }
+
+        var first = Math.Ceiling(Math.Min(a, b) / grid) * grid;
+        var last = Math.Floor(Math.Max(a, b) / grid) * grid;
+        return first > last ? middle : Math.Min(Math.Max(RoundHalfUp(middle / grid) * grid, first), last);
+    }
+
+    public static double GridDown(double value, double grid) => grid > 0 ? Math.Floor(value / grid) * grid : value;
+
+    public static double GridUp(double value, double grid) => grid > 0 ? Math.Ceiling(value / grid) * grid : value;
 
     public static ImmutableArray<DiagramPoint> Curve(LinkAnchor start, LinkAnchor end, double stub)
     {
@@ -151,7 +169,7 @@ internal static class LinkRouting
         return [start.Position, Step(start.Position, start.Side, reach), Step(end.Position, end.Side, reach), end.Position];
     }
 
-    public static ImmutableArray<DiagramPoint> Orthogonal(LinkAnchor start, LinkAnchor end, double stub)
+    public static ImmutableArray<DiagramPoint> Orthogonal(LinkAnchor start, LinkAnchor end, double stub, double grid)
     {
         var startOut = Step(start.Position, start.Side, stub);
         var endOut = Step(end.Position, end.Side, stub);
@@ -160,13 +178,13 @@ internal static class LinkRouting
         var endHorizontal = IsHorizontal(end.Side);
         if (startHorizontal && endHorizontal)
         {
-            var middle = (startOut.X + endOut.X) / 2;
+            var middle = Middle(startOut.X, endOut.X, grid);
             points.Add(startOut with { X = middle });
             points.Add(endOut with { X = middle });
         }
         else if (!startHorizontal && !endHorizontal)
         {
-            var middle = (startOut.Y + endOut.Y) / 2;
+            var middle = Middle(startOut.Y, endOut.Y, grid);
             points.Add(startOut with { Y = middle });
             points.Add(endOut with { Y = middle });
         }
@@ -290,6 +308,12 @@ internal static class LinkRouting
         builder.Append(buffer[..Write(buffer, point.X)]);
         builder.Append(',');
         builder.Append(buffer[..Write(buffer, point.Y)]);
+    }
+
+    private static double RoundHalfUp(double value)
+    {
+        var floor = Math.Floor(value);
+        return (value - floor) >= 0.5 ? floor + 1 : floor;
     }
 
     private static int Write(Span<char> buffer, double value)

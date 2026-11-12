@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
-    collectLines, snapAxis, matchingLines, gridSnap, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
+    collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
     keyName, nextZoom, stackOffsets,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
@@ -100,6 +100,16 @@ test('links are routed the same way as in C#', () => {
     assert.equal(toPath(routeLink({ ...link('a', 'b'), form: 'straight' }, box('a', 0, 0), box('b', 300, 100))), 'M100,25L300,125');
     assert.equal(toPath(routeLink({ ...link('a', 'b'), form: 'curved' }, box('a', 0, 0), box('b', 400, 0)), 'curved'), 'M100,25C250,25 250,25 400,25');
     assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 300, 0)), 'orthogonal', 10, 10), 'M110,25L290,25');
+    assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 403, 100), 10)), 'M100,25L250,25L250,125L403,125');
+    assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 403, 100))), 'M100,25L251.5,25L251.5,125L403,125');
+});
+
+test('bends go to the grid line nearest the middle between the stubs', () => {
+    assert.equal(gridMiddle(120, 383, 10), 250);
+    assert.equal(gridMiddle(383, 120, 10), 250);
+    assert.equal(gridMiddle(121, 125, 10), 123);
+    assert.equal(gridMiddle(120, 383, 0), 251.5);
+    assert.equal(gridMiddle(-35, -5, 10), -20);
 });
 
 test('the table knows descendants, moving sets and links', () => {
@@ -132,6 +142,8 @@ test('moving edges snap to the nearest line, then to the grid', () => {
     assert.equal(matchingLines(lines.x, [200, 300]).length, 2);
     assert.equal(gridSnap(14, 10), 10);
     assert.equal(gridSnap(15, 10), 20);
+    assert.deepEqual(gridAnchor({ x: 3, y: 4, w: 48, h: 64 }, true), { x: 27, y: 36 });
+    assert.deepEqual(gridAnchor({ x: 3, y: 4, w: 48, h: 64 }, false), { x: 3, y: 4 });
 });
 
 test('resizing keeps the minimum size and the children inside', () => {

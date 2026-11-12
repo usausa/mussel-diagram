@@ -22,6 +22,55 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void BendsOfSimpleRoutesLieOnTheGrid()
+    {
+        var onGrid = new Diagram(Schema);
+        var free = new Diagram(Schema with { GridSize = 0 });
+        foreach (var diagram in new[] { onGrid, free })
+        {
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 403, 100));
+            diagram.Connect(Link("ab", "a", "b"));
+        }
+
+        Assert.Equal([new DiagramPoint(100, 25), new DiagramPoint(250, 25), new DiagramPoint(250, 125), new DiagramPoint(403, 125)], Route(onGrid, "ab"));
+        Assert.Equal([new DiagramPoint(100, 25), new DiagramPoint(251.5, 25), new DiagramPoint(251.5, 125), new DiagramPoint(403, 125)], Route(free, "ab"));
+    }
+
+    [Fact]
+    public void BendsStayInTheMiddleWhenNoGridLineIsBetweenTheStubs()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0) with { Bounds = new DiagramRect(0, 0, 101, 50) });
+        diagram.Add(Node("b", 145, 30));
+
+        diagram.Connect(Link("ab", "a", "b"));
+
+        Assert.Equal([new DiagramPoint(101, 25), new DiagramPoint(123, 25), new DiagramPoint(123, 55), new DiagramPoint(145, 55)], Route(diagram, "ab"));
+    }
+
+    [Fact]
+    public void RoutesAroundNodesTurnOnTheGrid()
+    {
+        var wall = new DiagramRect(183, -37, 94, 121);
+        var onGrid = new Diagram(Schema);
+        var free = new Diagram(Schema with { GridSize = 0 });
+        foreach (var diagram in new[] { onGrid, free })
+        {
+            diagram.Add(Node("a", 0, -5));
+            diagram.Add(Node("b", 400, -5));
+            diagram.Add(Node("wall", 0, 0) with { Bounds = wall });
+            diagram.Connect(Link("ab", "a", "b"));
+        }
+
+        var route = Route(onGrid, "ab");
+        Assert.True(route.Length > 2);
+        Assert.False(OrthogonalRouter.Crosses(route, wall));
+        Assert.All(route, static x => Assert.Equal((0d, 0d), (x.X % 10, x.Y % 10)));
+        Assert.Contains(Route(free, "ab"), static x => (x.Y % 10) != 0);
+    }
+
+    [Fact]
     public void RouteWithoutAWayAroundCrossesTheNodes()
     {
         var diagram = new Diagram(Schema);
@@ -136,6 +185,7 @@ public sealed class RoutingTests
         Assert.Equal(DiagramSide.Right, request.Source.Direction);
         Assert.Equal([new DiagramRect(200, 300, 100, 50)], request.Obstacles);
         Assert.Equal("arrow", request.LinkType!.Name);
+        Assert.Equal(10, request.GridSize);
         var ab = (DiagramLink)diagram.Find("ab")!;
         Assert.Equal(DiagramRouteState.Routed, ab.RouteState);
         Assert.Equal(FixedRouter.Points, ab.Route);

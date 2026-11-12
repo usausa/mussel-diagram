@@ -13,7 +13,7 @@ const schema = {
 const mismatches = [];
 for (const item of data.routes) {
     const { link } = item;
-    const actual = toPath(routeLink(link, table.boxes.get(link.source), table.boxes.get(link.target)), link.form, link.sourceCut, link.targetCut);
+    const actual = toPath(routeLink(link, table.boxes.get(link.source), table.boxes.get(link.target), link.grid), link.form, link.sourceCut, link.targetCut);
     if (actual !== item.expected) {
         mismatches.push({ kind: 'route', item, actual });
     }

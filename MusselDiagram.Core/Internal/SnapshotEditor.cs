@@ -845,11 +845,12 @@ internal sealed class SnapshotEditor
                 Source = new DiagramRouteEnd { Position = start.Position, Direction = start.Side },
                 Target = new DiagramRouteEnd { Position = end.Position, Direction = end.Side },
                 Obstacles = [.. obstacleList],
-                LinkType = type
+                LinkType = type,
+                GridSize = index.Schema.GridSize
             };
         }
 
-        return (start, end, sourceBox, targetBox, type, router, LinkRouting.Simple(start, end, type), request);
+        return (start, end, sourceBox, targetBox, type, router, LinkRouting.Simple(start, end, type, index.Schema.GridSize), request);
     }
 
     private (DiagramLink Link, PendingRoute? Pending) RouteOf(DiagramLink link, bool force = false)
@@ -869,7 +870,8 @@ internal sealed class SnapshotEditor
                     prepared.Source.Id,
                     prepared.Target.Id,
                     prepared.Source.Bounds,
-                    prepared.Target.Bounds);
+                    prepared.Target.Bounds,
+                    index.Schema.GridSize);
                 if (clear is null)
                 {
                     deferred.Add(link.Id);
@@ -881,7 +883,7 @@ internal sealed class SnapshotEditor
             }
 
             deferred.Remove(link.Id);
-            var route = LinkRouting.Route(prepared.Start, prepared.End, type, Obstacles, prepared.Source, prepared.Target);
+            var route = LinkRouting.Route(prepared.Start, prepared.End, type, Obstacles, prepared.Source, prepared.Target, index.Schema.GridSize);
             return (link with { Route = route, RouteState = DiagramRouteState.Routed, RouteError = null }, null);
         }
 
