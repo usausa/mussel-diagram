@@ -76,7 +76,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     private static async Task<(float X, float Y)> CenterAsync(ILocator locator)
     {
         var box = await locator.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The element is not shown.");
-        return ((float)(box.X + (box.Width / 2)), (float)(box.Y + (box.Height / 2)));
+        return (box.X + (box.Width / 2), box.Y + (box.Height / 2));
     }
 
     private static byte[] CreatePackage()
@@ -84,16 +84,16 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
         {
-            const string Root = "Icon-package_07312026/";
-            Add(archive, Root + "Architecture-Service-Icons_07312026/Arch_Compute/64/Arch_Amazon-EC2_64.svg", 80, "#ED7100");
-            Add(archive, Root + "Architecture-Service-Icons_07312026/Arch_Compute/48/Arch_Amazon-EC2_48.svg", 64, "#ED7100");
-            Add(archive, Root + "Architecture-Service-Icons_07312026/Arch_Databases/64/Arch_Amazon-RDS_64.svg", 80, "#C925D1");
-            Add(archive, Root + "Architecture-Service-Icons_07312026/Arch_Networking-Content-Delivery/64/Arch_Elastic-Load-Balancing_64.svg", 80, "#8C4FFF");
-            Add(archive, Root + "Resource-Icons_07312026/Res_Compute/Res_Amazon-EC2_Instance_48.svg", 48, "#ED7100");
-            Add(archive, Root + "Category-Icons_07312026/Arch-Category_64/Arch-Category_Compute_64.svg", 90, "#ED7100");
-            Add(archive, Root + "Architecture-Group-Icons_07312026/Virtual-private-cloud-VPC_32.svg", 40, "#8C4FFF");
-            Add(archive, Root + "Architecture-Group-Icons_07312026/AWS-Cloud-logo_32.svg", 40, "#242F3E");
-            Add(archive, Root + "Architecture-Group-Icons_07312026/AWS-Cloud-logo_32_Dark.svg", 40, "#FFFFFF");
+            const string root = "Icon-package_07312026/";
+            Add(archive, root + "Architecture-Service-Icons_07312026/Arch_Compute/64/Arch_Amazon-EC2_64.svg", 80, "#ED7100");
+            Add(archive, root + "Architecture-Service-Icons_07312026/Arch_Compute/48/Arch_Amazon-EC2_48.svg", 64, "#ED7100");
+            Add(archive, root + "Architecture-Service-Icons_07312026/Arch_Databases/64/Arch_Amazon-RDS_64.svg", 80, "#C925D1");
+            Add(archive, root + "Architecture-Service-Icons_07312026/Arch_Networking-Content-Delivery/64/Arch_Elastic-Load-Balancing_64.svg", 80, "#8C4FFF");
+            Add(archive, root + "Resource-Icons_07312026/Res_Compute/Res_Amazon-EC2_Instance_48.svg", 48, "#ED7100");
+            Add(archive, root + "Category-Icons_07312026/Arch-Category_64/Arch-Category_Compute_64.svg", 90, "#ED7100");
+            Add(archive, root + "Architecture-Group-Icons_07312026/Virtual-private-cloud-VPC_32.svg", 40, "#8C4FFF");
+            Add(archive, root + "Architecture-Group-Icons_07312026/AWS-Cloud-logo_32.svg", 40, "#242F3E");
+            Add(archive, root + "Architecture-Group-Icons_07312026/AWS-Cloud-logo_32_Dark.svg", 40, "#FFFFFF");
             Add(archive, "__MACOSX/Icon-package_07312026/._Arch_Amazon-EC2_64.svg", 80, "#000000");
         }
 

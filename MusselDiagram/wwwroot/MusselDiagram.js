@@ -317,7 +317,7 @@ const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .m
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: true, form: 'orthogonal', stub: 20, sourceCut: 0, targetCut: 10 };
-const TYPING_KEYS = new Set(['Ctrl+Z', 'Ctrl+Y', 'Ctrl+A', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V']);
+const TYPING_KEYS = new Set(['Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+A', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V']);
 const ZOOM_STEP = 1.2;
 const controllers = new WeakMap();
 
@@ -3844,7 +3844,7 @@ class DiagramController {
         if (!editor || event.isComposing || (event.keyCode === 229)) {
             return;
         }
-        const key = event.key === 'Escape' ? null : keyName(event, this.mac);
+        const key = (event.key === 'Escape') || (event.key === 'Enter') ? null : keyName(event, this.mac);
         if (key && this.commandMap.has(key) && !this.isTyping(event, key)) {
             return;
         }
@@ -3870,6 +3870,9 @@ class DiagramController {
         event.preventDefault();
         if (!newline) {
             this.finishEdit(true);
+            if (!this.editor) {
+                this.root.focus({ preventScroll: true });
+            }
         }
     }
 
@@ -3995,7 +3998,7 @@ class DiagramController {
             ghost.append(icon);
         }
         document.body.append(ghost);
-        this.external = { type, value: value ?? null, ghost, lines: this.snapLines(new Set()), inside: false, point: null, client: null, alt: false, bounds: null, parent: undefined, allowed: false, split: null, snappedX: false, snappedY: false };
+        this.external = { type, value: value ?? null, ghost, lines: this.snapLines(new Set()), inside: false, point: null, client: null, alt: false, bounds: null, parent: undefined, allowed: false, split: null, snappedX: false, snappedY: false, panReady: false };
         this.root.classList.add('mussel-diagram-dropping');
         return this.external;
     }
@@ -4018,6 +4021,10 @@ class DiagramController {
             this.clearExternalMarks();
             return;
         }
+        if (!external.panReady) {
+            const speed = this.edgeSpeed(external.point);
+            external.panReady = (speed.x === 0) && (speed.y === 0);
+        }
         this.updateExternal();
         if (!this.externalFrame) {
             this.externalFrame = requestAnimationFrame(() => this.externalTick());
@@ -4027,7 +4034,7 @@ class DiagramController {
     externalTick() {
         this.externalFrame = 0;
         const external = this.external;
-        if (!external?.inside) {
+        if (!external?.inside || !external.panReady) {
             return;
         }
         const speed = this.edgeSpeed(external.point);
@@ -4266,6 +4273,7 @@ class DragSource {
         };
         element.addEventListener('pointerdown', this.onDown);
         element.addEventListener('touchmove', this.onTouchMove, { passive: false });
+        element.dataset.attached = '';
     }
 
     down(event) {
@@ -4372,6 +4380,7 @@ class DragSource {
     dispose() {
         this.element.removeEventListener('pointerdown', this.onDown);
         this.element.removeEventListener('touchmove', this.onTouchMove);
+        delete this.element.dataset.attached;
     }
 }
 

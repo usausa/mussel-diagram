@@ -52,6 +52,31 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await DragInAsync(opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='server']"), 130, 184);
 
         await Expect(links).ToHaveCountAsync(6);
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task PaletteDragsScrollOnlyFromInsideTheView(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        var source = page.Locator(".mussel-diagram-palette-item[data-mussel-type='server']");
+        await page.Locator(".mussel-diagram-palette[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        var from = await source.BoundingBoxAsync() ?? throw new InvalidOperationException("The source is not shown.");
+        var view = await opened.View.BoundingBoxAsync() ?? throw new InvalidOperationException("The view is not shown.");
+
+        await page.Mouse.MoveAsync(from.X + (from.Width / 2), from.Y + (from.Height / 2));
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(view.X + 10, view.Y + 500, new() { Steps = 8 });
+        await page.WaitForTimeoutAsync(300);
+        await Expect(viewport).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+
+        await page.Mouse.MoveAsync(view.X + 300, view.Y + 500, new() { Steps = 4 });
+        await page.Mouse.MoveAsync(view.X + 10, view.Y + 500, new() { Steps = 4 });
+        await Expect(viewport).Not.ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+        await page.Mouse.UpAsync();
     }
 
     [Theory]
@@ -244,6 +269,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     private async Task DragInAsync(Microsoft.Playwright.ILocator source, float x, float y)
     {
         var page = opened!.Page;
+        await source.Locator("xpath=ancestor-or-self::*[@data-attached][1]").WaitForAsync(new() { State = WaitForSelectorState.Attached }).ConfigureAwait(true);
         var from = await source.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The source is not shown.");
         var (left, top) = await OriginAsync().ConfigureAwait(true);
         await page.Mouse.MoveAsync(from.X + (from.Width / 2), from.Y + (from.Height / 2)).ConfigureAwait(true);

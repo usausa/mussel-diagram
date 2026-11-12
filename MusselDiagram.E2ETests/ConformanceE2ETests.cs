@@ -82,13 +82,47 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(view.Locator("g.mussel-diagram-node[data-id='archive']")).ToHaveClassAsync(new Regex("mussel-diagram-error"));
         var label = await view.Locator("g.mussel-diagram-node[data-id='notify'] > text.mussel-diagram-label").BoundingBoxAsync() ?? throw new InvalidOperationException("The label is not shown.");
 
-        await opened.Page.Mouse.DblClickAsync((float)(label.X + (label.Width / 2)), (float)(label.Y + (label.Height / 2)));
+        await opened.Page.Mouse.DblClickAsync(label.X + (label.Width / 2), label.Y + (label.Height / 2));
         var editor = view.Locator("textarea.mussel-diagram-text-editor");
         await Expect(editor).ToBeVisibleAsync();
         await opened.Page.Keyboard.PressAsync("F8");
 
         await Expect(view.Locator("g.mussel-diagram-node[data-selected]:is([data-id='legacy'], [data-id='archive'])")).ToHaveCountAsync(1);
         await Expect(view.Locator("g.mussel-diagram-node[data-id='notify'][data-selected]")).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheTextEditorKeepsItsOwnKeys(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var web1 = opened.View.Locator("g.mussel-diagram-node[data-id='web1']");
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        await DragAsync(254, 174, 60, 40, null);
+        await Expect(web1).Not.ToHaveAttributeAsync("transform", "translate(230,150)");
+        var moved = await web1.GetAttributeAsync("transform");
+        await page.Keyboard.PressAsync("Control+Z");
+        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+
+        await page.Keyboard.PressAsync("F2");
+        await Expect(editor).ToBeVisibleAsync();
+        await page.Keyboard.PressAsync("Control+Shift+Z");
+        await page.WaitForTimeoutAsync(500);
+        await Expect(web1).ToHaveAttributeAsync("transform", "translate(230,150)");
+        await page.Keyboard.PressAsync("Escape");
+        await Expect(editor).ToHaveCountAsync(0);
+        await page.Keyboard.PressAsync("Control+Shift+Z");
+        await Expect(web1).ToHaveAttributeAsync("transform", moved!);
+
+        await page.Keyboard.PressAsync("F2");
+        await Expect(editor).ToBeVisibleAsync();
+        await page.Keyboard.PressAsync("End");
+        await page.Keyboard.TypeAsync("x");
+        await page.Keyboard.PressAsync("Control+Enter");
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator(".mussel-diagram-picker")).ToHaveCountAsync(0);
+        await Expect(web1.Locator("text.mussel-diagram-label[data-label='Web server 1x']")).ToHaveCountAsync(1);
     }
 
     private async Task<(double X, double Y)> OriginAsync()

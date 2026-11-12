@@ -195,15 +195,29 @@ public sealed class ViewConformanceTests : BunitContext
     {
         var diagram = CreateDiagram();
         IReadOnlyList<string>? seen = null;
-        IRenderedComponent<MusselDiagramView>? cut = null;
-        cut = Render<MusselDiagramView>(parameters => parameters
+        var views = new List<MusselDiagramView>();
+        var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
-            .Add(p => p.Moving, _ => seen = cut!.Instance.SelectedIds));
+            .Add(p => p.Moving, _ => seen = views[0].SelectedIds));
+        views.Add(cut.Instance);
 
         await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, diagram.Snapshot.Version, 0, ["p1", "p2", "settings"]));
 
         Assert.Equal(["p1", "p2"], seen);
         Assert.Equal(["p1", "p2"], cut.Instance.SelectedIds);
+    }
+
+    [Fact]
+    public void ElementIconsDrawOnlyImageUrls()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(new DiagramNode { Id = "bad", Type = "server", Bounds = new DiagramRect(0, 0, 48, 48), Icon = "javascript:alert(1)/x" });
+        diagram.Add(new DiagramNode { Id = "good", Type = "server", Bounds = new DiagramRect(100, 0, 48, 48), Icon = "images/server.png" });
+
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+
+        Assert.Empty(cut.FindAll("g[data-id='bad'] image"));
+        Assert.Equal("images/server.png", cut.Find("g[data-id='good'] image").GetAttribute("href"));
     }
 
     [Fact]

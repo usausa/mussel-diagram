@@ -88,7 +88,7 @@ internal sealed class DiagramBoxView : ComponentBase
         var form = header?.Form ?? DiagramHeaderForm.TopLeft;
         var icon = isGroup && (form == DiagramHeaderForm.NameOnly) ? null : box.Icon ?? look?.Icon;
         var iconId = icon is null ? null : Context.FindIconId(icon);
-        var iconUrl = (icon is not null) && (iconId is null) && IsUrl(icon) ? icon : null;
+        var iconUrl = (icon is not null) && (iconId is null) && IconUrls.IsAllowed(icon) ? icon : null;
         var iconSize = isGroup ? header?.IconSize ?? LabelLayout.HeaderIconSize : 0;
         var (iconX, iconY) = isGroup && (form == DiagramHeaderForm.TopCenter) ? ((width - iconSize) / 2, -iconSize / 2) : (0, 0);
         if (iconId is not null)
@@ -345,7 +345,4 @@ internal sealed class DiagramBoxView : ComponentBase
 
         builder.Append(name).Append(": ").Append(value).Append(';');
     }
-
-    private static bool IsUrl(string value) =>
-        value.Contains('/', StringComparison.Ordinal) || value.StartsWith("data:", StringComparison.OrdinalIgnoreCase);
 }

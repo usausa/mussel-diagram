@@ -12,7 +12,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `ReadOnly` | `bool` | `false` | Takes no editing operations |
 | `PanEnabled`, `ZoomEnabled`, `SelectionEnabled`, `BoxSelectionEnabled`, `MoveEnabled`, `ResizeEnabled`, `ConnectEnabled`, `DropEnabled`, `TextEditEnabled`, `TooltipEnabled` | `bool` | `true` | Turn each built-in operation off |
 | `CommitMode` | `DiagramCommitMode` | `Optimistic` | `Optimistic` shows the result without waiting for C#; `Wait` waits for the answer |
-| `LinkType` | `string?` | `null` | The type of links drawn from ports that declare none; `null` uses `DefaultLinkType` of the schema |
+| `LinkType` | `string?` | `null` | The type of links drawn from ports that declare none; `null` uses `DefaultLinkType` of the schema, then the first link type |
 | `WheelMode` | `DiagramWheelMode` | `Pan` | What the plain wheel does: `Pan` or `Zoom` |
 | `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
 | `GridVisible` | `bool` | `false` | Shows the grid |
@@ -57,7 +57,7 @@ The arguments of the before events (`…ing`) have `Cancel` and `Reason` (`strin
 | Name | Description |
 |---|---|
 | `SelectedIds`, `SelectAsync(ids)`, `ClearSelectionAsync()` | The selection |
-| `Zoom`, `Center`, `SetViewportAsync(zoom, center)` | The zoom and the center of the visible area |
+| `Viewport`, `Zoom`, `Center`, `SetViewportAsync(zoom, center)` | The visible area (`DiagramViewport`, `null` until the view reports it), the zoom and the center |
 | `ZoomToFitAsync()`, `ZoomToSelectionAsync()`, `CenterOnAsync(id)` | Fitting and centering |
 | `OpenTypePickerAsync(position)` | Opens the type picker for quick add at a position, or at the pointer when `null` |
 | `Commands` | The `DiagramCommandRegistry` of the view |
@@ -188,7 +188,7 @@ All elements are records, and an ID is created when none is given.
 
 `Texts` is an `ImmutableDictionary<string, string>` by slot name. `Icon` is `prefix:ID` of an imported icon or an image URL. `Data` is the registered data type, a `JsonElement`, or `null`.  
 `Permissions` is a `DiagramPermissions?` with the flags `Select`, `Move`, `Resize`, `Delete`, `Connect` and `EditText`; when set, it replaces the permissions of the type. `Locked` stops everything except `Select`.  
-`DiagramPoint` (`X`, `Y`), `DiagramSize` (`Width`, `Height`), `DiagramRect` (`X`, `Y`, `Width`, `Height`) and `DiagramThickness` (`Left`, `Top`, `Right`, `Bottom`) are value types.  
+`DiagramPoint` (`X`, `Y`), `DiagramSize` (`Width`, `Height`), `DiagramRect` (`X`, `Y`, `Width`, `Height`, with `Right`, `Bottom`, `Center`, `Offset` and `Intersects`) and `DiagramThickness` (`Left`, `Top`, `Right`, `Bottom`) are value types.  
 
 ## 🧾 DiagramSchema
 
@@ -209,7 +209,7 @@ An immutable record.
 | Type | Members |
 |---|---|
 | `DiagramType` | The abstract base of the types: `Name`, `DisplayName`, `Category`, `SearchWords`, `DataType` (`JsonTypeInfo?`), `DefaultData`, `GetReferences` (the shared item IDs in the data), `Permissions` (all by default) |
-| `DiagramBoxType` | The abstract base of node and group types: `Look`, `Size`, `MinSize`, `Slots`, `Ports`, `GetPorts` (ports from the data), `ConnectsAsWhole`, `InPalette`, `CreateContent`, `AllowedParents`, `TopLevel`, `StayInParent`, `MaxCount`, `Required`, `Undeletable`, `Start`, `GetTooltip` |
+| `DiagramBoxType` | The abstract base of node and group types: `Look`, `Size`, `MinSize`, `Slots`, `Ports`, `RowHeaderHeight` and `RowHeight` (20) for port rows, `GetPorts` (ports from the data), `ConnectsAsWhole`, `InPalette`, `CreateContent`, `AllowedParents`, `TopLevel`, `StayInParent`, `MaxCount`, `Required`, `Undeletable`, `Start`, `GetTooltip` |
 | `DiagramNodeType` | A `DiagramBoxType` |
 | `DiagramGroupType` | A `DiagramBoxType` with `Kind`, `Sizing` (`DiagramGroupSizing`: `Manual` or `Content`), `Padding` (20, 40, 20, 20), `Header`, `AllowedChildren`, `AllowedMembers` and `FillHitTest` |
 | `DiagramLinkType` | A `DiagramType` with `Look`, `Form` (`DiagramLineForm`: `Orthogonal`, `Straight` or `Curved`), `StubLength` (20), `ObstacleMargin` (10), `SourceMarker`, `TargetMarker` (`DiagramMarker`: `None`, `Arrow`, `OpenArrow`, `Circle` or `Diamond`), `Router`, `AllowSelf`, `AllowDuplicate` (`false`), `AllowCrossParent`, `AllowCycles` (`true`), `GetTooltip` |
@@ -221,15 +221,15 @@ An immutable record.
 |---|---|
 | `DiagramLook` | `Shape` (`DiagramShape`: `Rectangle`, `Ellipse`, `Diamond` or `Path`), `Path` (in a 0–1 box), `Icon`, `Fill`, `Stroke`, `StrokeWidth`, `Dash` (`DiagramDash`: `Solid`, `Dashed` or `Dotted`), `Preset`. Colors are CSS colors or `var(…)` |
 | `DiagramLabelSlot` | `Name`, `Placement` (`DiagramLabelPlacement`), `Format`, `Width`, `MaxLines`, `Editable`, `DefaultText` |
-| `DiagramTextFormat` | `FontFamily`, `FontSize`, `FontWeight`, `Color`, `Alignment` |
+| `DiagramTextFormat` | `FontFamily`, `FontSize`, `FontWeight`, `Color`, `Alignment` (`DiagramTextAlignment`: `Start`, `Center` or `End`) |
 | `DiagramPortDefinition` | `Id`, `Direction`, `Kind`, `Side`, `Ratio`, `Row`, `Offset`, `MaxLinks`, `Required`, `Accepts`, `Rejects`, `LinkType`, `Label`, `Visibility` (`DiagramPortVisibility`: `Always` or `WhileConnecting`) |
 | `DiagramGroupHeader` | `Form` (`DiagramHeaderForm`: `TopLeft`, `TopCenter` or `NameOnly`), `IconSize`, `NameLeft`, `NameTop`, `NameAlignment` |
 
-`DiagramLabelPlacement`: inside `TopLeft`, `Top`, `TopRight`, `Left`, `Center`, `Right`, `BottomLeft`, `Bottom`, `BottomRight`; outside `Above`, `Below`, `Before`, `After`; and `Header`. `DiagramSide`: `Top`, `Right`, `Bottom` or `Left`. `Row` and the header and row heights apply to the left and right sides.  
+`DiagramLabelPlacement`: inside `TopLeft`, `Top`, `TopRight`, `Left`, `Center`, `Right`, `BottomLeft`, `Bottom`, `BottomRight`; outside `Above`, `Below`, `Before`, `After`; and `Header`. `DiagramSide`: `Top`, `Right`, `Bottom` or `Left`. `Row` places a port on the left or right side by the rows of the type.  
 
 ### App rules
 
-`DiagramAppRules` holds synchronous functions. Each returns `DiagramRuleResult.Allow` or `DiagramRuleResult.Reject(text)`.  
+`DiagramAppRules` holds synchronous functions. Each returns `DiagramRuleResult.Allow` or `DiagramRuleResult.Reject(text)` (`Allowed` and `Reason`).  
 
 | Name | Receives | Decides |
 |---|---|---|
@@ -341,7 +341,7 @@ DiagramCultures.Texts["ja"] = JapaneseLanguage.Texts with { NoMatches = "該当�
 
 ## 🎨 Theme
 
-Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables; an app changes them from any selector. `.mussel-dark` on an ancestor switches to the dark values.  
+Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables; an app changes them from any selector. `.mussel-dark` on an ancestor switches to the dark values, including those of the shared variables (the same class as MusselChart and MusselCalendar).  
 
 These are shared with the other Mussel libraries.  
 

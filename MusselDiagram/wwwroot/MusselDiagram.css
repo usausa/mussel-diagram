@@ -29,6 +29,16 @@
     --mussel-diagram-font: 12px var(--mussel-font-family, "Segoe UI", system-ui, sans-serif);
 }
 
+.mussel-dark {
+    --mussel-primary-text: #F0EFEC;
+    --mussel-secondary-text: #C3C2B7;
+    --mussel-muted-text: #8E8C86;
+    --mussel-grid-line: #2C2C2A;
+    --mussel-tooltip-background: #1F1F1D;
+    --mussel-tooltip-border: rgba(240, 239, 236, 0.1);
+    --mussel-tooltip-text: #F0EFEC;
+}
+
 :where(.mussel-dark) :where(.mussel-diagram),
 :where(.mussel-diagram.mussel-dark) {
     --mussel-diagram-background: #1f1f1d;

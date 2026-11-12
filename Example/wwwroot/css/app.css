@@ -114,7 +114,7 @@ body {
 }
 
 .mussel-diagram-state-done > .mussel-diagram-shape {
-    fill: #e6f4ea;
+    fill: var(--example-done-fill);
 }
 
 .mussel-diagram-state-flowed > .mussel-diagram-link-line {
@@ -126,12 +126,31 @@ body {
     --example-aws-cloud: #242f3e;
     --example-aws-text: #000000;
     --example-aws-arrow: #000000;
+    --example-process-fill: #e3f2fd;
+    --example-process-stroke: #1e88e5;
+    --example-task-fill: #f1f8e9;
+    --example-task-stroke: #7cb342;
+    --example-decision-fill: #fff3e0;
+    --example-decision-stroke: #fb8c00;
+    --example-done-fill: #e6f4ea;
 }
 
 .layout.mussel-dark {
     --example-aws-cloud: #ffffff;
     --example-aws-text: #ffffff;
     --example-aws-arrow: #8fa7c4;
+    --example-process-fill: #1b3047;
+    --example-process-stroke: #64b5f6;
+    --example-task-fill: #253219;
+    --example-task-stroke: #9ccc65;
+    --example-decision-fill: #3b2a14;
+    --example-decision-stroke: #ffb74d;
+    --example-done-fill: #1e3a26;
+}
+
+.layout .mussel-diagram-icon,
+.layout .mussel-diagram-palette-icon {
+    color: var(--example-aws-cloud);
 }
 
 .diagram-import {

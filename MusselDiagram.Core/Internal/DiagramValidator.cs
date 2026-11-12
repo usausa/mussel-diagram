@@ -14,6 +14,7 @@ internal static class DiagramValidator
         CheckRequiredPorts(snapshot, index, issues);
         CheckSharedItems(snapshot, index, issues);
         CheckTypes(snapshot, index, issues);
+        CheckIcons(snapshot, index, issues);
         if (index.Schema.Rules.Check is { } check)
         {
             issues.AddRange(check(snapshot));
@@ -116,12 +117,12 @@ internal static class DiagramValidator
             var ids = counts.GetValueOrDefault(type);
             if ((maxCount is { } max) && (ids is not null) && (ids.Count > max))
             {
-                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.MaxCount, [.. ids], [type.Name, max.ToString(CultureInfo.InvariantCulture)]));
+                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.MaxCount, [.. ids], [type.DisplayName ?? type.Name, max.ToString(CultureInfo.InvariantCulture)]));
             }
 
             if (required && (ids is null))
             {
-                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.RequiredType, [], [type.Name]));
+                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.RequiredType, [], [type.DisplayName ?? type.Name]));
             }
         }
     }
@@ -166,6 +167,17 @@ internal static class DiagramValidator
             if (index.FindType(element) is null)
             {
                 issues.Add(Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.UnregisteredType, [element.Id], [element.Type]));
+            }
+        }
+    }
+
+    private static void CheckIcons(DiagramSnapshot snapshot, SchemaIndex index, ImmutableArray<DiagramIssue>.Builder issues)
+    {
+        foreach (var box in snapshot.Groups.Cast<DiagramBox>().Concat(snapshot.Nodes))
+        {
+            if ((box.Icon is { } icon) && !IconUrls.IsAllowed(icon) && !IconUrls.IsReference(icon, index.Schema))
+            {
+                issues.Add(Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.RejectedUrl, [box.Id], [box.Id, icon]));
             }
         }
     }

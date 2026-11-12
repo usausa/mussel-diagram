@@ -158,6 +158,42 @@ public sealed class SpecConformanceTests
     }
 
     [Fact]
+    public void ElementIconsUseOnlyImageUrls()
+    {
+        var schema = Schema with { IconSets = [new DiagramIconSet { Prefix = "app", Icons = [] }] };
+        var diagram = new Diagram(schema);
+        diagram.Add(new DiagramNode { Id = "script", Type = "step", Bounds = new DiagramRect(0, 0, 80, 40), Icon = "javascript:alert(1)/x" });
+        diagram.Add(new DiagramNode { Id = "html", Type = "step", Bounds = new DiagramRect(0, 100, 80, 40), Icon = "data:text/html,<b>x</b>" });
+        diagram.Add(new DiagramNode { Id = "web", Type = "step", Bounds = new DiagramRect(0, 200, 80, 40), Icon = "https://example.com/a.png" });
+        diagram.Add(new DiagramNode { Id = "local", Type = "step", Bounds = new DiagramRect(0, 300, 80, 40), Icon = "images/a.png" });
+        diagram.Add(new DiagramNode { Id = "inline", Type = "step", Bounds = new DiagramRect(0, 400, 80, 40), Icon = "data:image/png;base64,AA==" });
+        diagram.Add(new DiagramNode { Id = "set", Type = "step", Bounds = new DiagramRect(0, 500, 80, 40), Icon = "app:missing" });
+
+        var rejected = diagram.Validate().Where(static x => x.Kind == DiagramIssueKind.RejectedUrl).ToList();
+
+        Assert.Equal(["script", "html"], rejected.Select(static x => x.ElementIds.Single()));
+        Assert.All(rejected, static x => Assert.Equal(DiagramIssueSeverity.Warning, x.Severity));
+        Assert.True(IconUrls.IsAllowed("a.png"));
+        Assert.True(IconUrls.IsAllowed("/a.png?x=1:2"));
+        Assert.False(IconUrls.IsAllowed("ftp://example.com/a.png"));
+    }
+
+    [Fact]
+    public void IssueTextsNameTypesByTheirDisplayNames()
+    {
+        var schema = Schema with { NodeTypes = [.. Schema.NodeTypes, new DiagramNodeType { Name = "gate", DisplayName = "Approval gate", Required = true, MaxCount = 1 }] };
+        var diagram = new Diagram(schema);
+
+        var required = Assert.Single(diagram.Validate(), static x => x.Kind == DiagramIssueKind.RequiredType);
+        diagram.Add(new DiagramNode { Id = "g1", Type = "gate", Bounds = new DiagramRect(0, 0, 80, 40) });
+        diagram.Add(new DiagramNode { Id = "g2", Type = "gate", Bounds = new DiagramRect(0, 100, 80, 40) });
+        var max = Assert.Single(diagram.Validate(), static x => x.Kind == DiagramIssueKind.MaxCount);
+
+        Assert.Equal("The diagram needs an element of the type 'Approval gate'.", required.Message);
+        Assert.Equal("There are more elements of the type 'Approval gate' than 1.", max.Message);
+    }
+
+    [Fact]
     public void IconsWrittenInCodeAreSanitized()
     {
         var set = new DiagramIconSet { Prefix = "app", Icons = [new DiagramIcon { Id = "bad", Body = "<script>alert(1)</script><rect id=\"r\" width=\"4\" height=\"4\" onclick=\"x()\" />" }] };

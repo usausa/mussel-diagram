@@ -10,7 +10,7 @@ public static class SampleDiagrams
 
     private const string BalancerIcon = "<circle cx=\"12\" cy=\"12\" r=\"9\" fill=\"#8C4FFF\" /><path d=\"M7 12h10M12 7l5 5-5 5\" stroke=\"#fff\" stroke-width=\"2\" fill=\"none\" />";
 
-    private const string CloudIcon = "<path d=\"M7 18h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6-1.5A3.5 3.5 0 0 0 7 18z\" fill=\"#232F3E\" />";
+    private const string CloudIcon = "<path d=\"M7 18h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6-1.5A3.5 3.5 0 0 0 7 18z\" fill=\"currentColor\" />";
 
     public static DiagramSchema Schema { get; } = new()
     {
@@ -28,7 +28,7 @@ public static class SampleDiagrams
                 DisplayName = "Process",
                 Category = "flow",
                 Size = new DiagramSize(140, 60),
-                Look = new DiagramLook { Fill = "#E3F2FD", Stroke = "#1E88E5" },
+                Look = new DiagramLook { Fill = "var(--example-process-fill)", Stroke = "var(--example-process-stroke)" },
                 Ports =
                 [
                     new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Side = DiagramSide.Left },
@@ -41,7 +41,7 @@ public static class SampleDiagrams
                 DisplayName = "Task",
                 Category = "flow",
                 Size = new DiagramSize(160, 60),
-                Look = new DiagramLook { Fill = "#F1F8E9", Stroke = "#7CB342" },
+                Look = new DiagramLook { Fill = "var(--example-task-fill)", Stroke = "var(--example-task-stroke)" },
                 Slots = [new DiagramLabelSlot { Name = "title" }, new DiagramLabelSlot { Name = "owner", DefaultText = "Owner" }],
                 Ports =
                 [
@@ -56,12 +56,12 @@ public static class SampleDiagrams
                 DisplayName = "Decision",
                 Category = "flow",
                 Size = new DiagramSize(120, 80),
-                Look = new DiagramLook { Shape = DiagramShape.Diamond, Fill = "#FFF3E0", Stroke = "#FB8C00" }
+                Look = new DiagramLook { Shape = DiagramShape.Diamond, Fill = "var(--example-decision-fill)", Stroke = "var(--example-decision-stroke)" }
             }
         ],
         GroupTypes =
         [
-            new DiagramGroupType { Name = "cloud", DisplayName = "Cloud", Category = "network", Look = new DiagramLook { Icon = "sample:cloud", Stroke = "#232F3E" } },
+            new DiagramGroupType { Name = "cloud", DisplayName = "Cloud", Category = "network", Look = new DiagramLook { Icon = "sample:cloud", Stroke = "var(--example-aws-cloud)" } },
             new DiagramGroupType { Name = "vpc", DisplayName = "VPC", Category = "network", Look = new DiagramLook { Stroke = "#8C4FFF" } },
             new DiagramGroupType { Name = "subnet", DisplayName = "Subnet", Category = "network", Look = new DiagramLook { Stroke = "#7AA116", Fill = "rgba(122, 161, 22, 0.06)", Dash = DiagramDash.Dashed } }
         ],

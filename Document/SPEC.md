@@ -96,7 +96,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 
 - An element has the main label (`Label`) and the text of the other slots (`Texts`, by slot name). Line breaks split the lines
 - The type declares the slots: name, placement, format, maximum lines, whether it is editable in place, and the default text when empty. The first slot shows the main label, the others the `Texts` entry of the same name
-- A type without slots draws the main label at the center of the shape
+- A node type without slots draws the main label at the center of the shape, and a group type in the header
 - An empty slot shows the default text of the type, which is not saved. Without default text it shows nothing
 - Text for slots the type does not have is kept and not drawn
 - In-place editing works on editable slots only (Commands and keys)
@@ -249,7 +249,7 @@ A schema (`DiagramSchema`) is an immutable record of the node, group, link and s
 
 - A type without ports makes the whole element one connection point, in both directions and without a kind. A type with ports declares whether the whole element connects too
 - A type that derives its ports from the data (an output per branch) registers a function that returns the ports from the data. The diagram computes them per snapshot
-- The type of a new link is the declaration of the starting port, otherwise the `LinkType` of the view (which the app switches from its toolbar), otherwise the default link type of the schema
+- The type of a new link is the declaration of the starting port, otherwise the `LinkType` of the view (which the app switches from its toolbar), otherwise the default link type of the schema, otherwise the first link type
 
 ### Connection rules
 
@@ -305,7 +305,7 @@ The permissions are select, move, resize, delete, connect and edit text. Counts,
 
 ### Palette filtering
 
-- The palette shows the node and group types that are set to appear in it and are below their maximum count. App rules can hide more. This is checked again whenever the diagram changes
+- The palette shows the node and tree group types that are set to appear in it and are below their maximum count. App rules can hide more. This is checked again whenever the diagram changes
 - The type picker (Palette) shows the same types, limited to those that can be placed at its position. When it opens from a link, an arrow or a port, it also includes the types not shown in the palette, limited to those with a connection point that can connect there
 
 ### App rules
@@ -354,7 +354,7 @@ From back to front:
 - `WheelMode` makes the plain wheel zoom instead
 - The zoom goes from `MinZoom` (default 0.05) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
-- The API of the view reads and writes the zoom and the center (`Zoom`, `Center`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
+- The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
 - The position and zoom of the view are not in the diagram. To keep them, the app saves the values of `ViewportChanged`
 - The view has no edges. Page frames and limits on the visible area are not in the first version
 
@@ -545,14 +545,14 @@ JS computes snapping and guides while dragging. They work for moving, resizing a
 - When moving, the position (top left) of the pressed element is rounded to the grid, and the same offset moves the whole selection. The distances between the selected elements do not change
 - When resizing, the moving edges are rounded to the grid
 - An element placed from the palette has its top left rounded to the grid
-- Rounding the offset instead is not in the first version
+- Rounding the offset instead is added later, when needed
 
 ### Snapping to other elements and guides
 
 - The left, horizontal center and right, and the top, vertical center and bottom of the bounds of the moving elements snap to the same three lines of other elements. On each axis, the nearest line within the tolerance wins
 - Every line that matches exactly at the snapped position shows as a guide. A guide spans both the moving rectangle and the other one, and keeps its width on screen. Guides are never saved or exported
 - When resizing, only the moving edges snap
-- Only the nodes and groups in the visible area count. The moving elements, their descendants and ancestors, and links do not
+- Only the nodes and tree groups in the visible area count. The moving elements, their descendants and ancestors, and links do not
 - The candidates are collected once, when the drag passes the threshold, and looked up through indexes sorted per axis
 - Snapping to equal spacing and to equal sizes is not in the first version
 
@@ -583,7 +583,7 @@ While dragging, the target is searched in this order. Targets the rules reject a
 | 2 | Whole element | The innermost element under the pointer that connects as a whole |
 
 - Once a target is found, the end of the preview line snaps to it
-- Links do not connect to links
+- Links do not connect to links in the first version
 
 ### While drawing
 
@@ -678,7 +678,7 @@ The link type declares the form.
 
 ### Geometry
 
-- The core computes bounds, intersections, distances, intersections with outlines and whether a point is inside a shape for the routing and checks of C#. In the first version, only the geometry of links is public (`GetLinkGeometry`)
+- The core computes bounds, intersections and distances of rectangles and segments for the routing and checks of C#. In the first version, only the geometry of links is public (`GetLinkGeometry`)
 - JS has the same formulas for the simple route while dragging and for cutting the ends
 
 ## 🧰 Palette
@@ -688,7 +688,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 ### List and categories
 
 - The items come from the schema of the diagram of the view passed as a parameter (`View`), and are built again when the schema changes
-- There is one item per type, for node and group types. Which types appear is in Palette filtering (Types and rules). Link types are chosen with the `LinkType` of the view, and shared item types never appear
+- There is one item per type, for node and tree group types. Which types appear is in Palette filtering (Types and rules). Link types are chosen with the `LinkType` of the view, and shared item types never appear
 - An item shows the icon of the type (otherwise a small version of its shape) and the display name. A display name that does not fit is shortened, with the full text in `title`
 - Items are grouped under category headers, and a click on a header opens or closes it. The order, the display names and whether a category starts closed are in the category list of the schema. Categories not in the list come after it, and types without a category come first, without a header. Within a category, the order is the order in the schema
 - `Categories` limits the categories shown (for tabs per category in the app, for example)
@@ -719,7 +719,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 - The new element is selected, and the view gets the focus
 - Adding is one change, which includes splicing into a link. `Dropping` and `Dropped` report the type, the position, the parent, the value and the link spliced into, before and after. Before, `Cancel` stops it and a reason can be returned (Commit and validation)
 - A placed group does not take the elements under it as children
-- Auto-scrolling at the edges, Esc and a second finger work as for moving (Selection and moving)
+- Auto-scrolling at the edges, Esc and a second finger work as for moving (Selection and moving). Auto-scrolling starts once the pointer has been inside the view away from its edges
 - Placing by click, placing repeatedly, an animation back after a rejected drop, and dropping files, images and text from the OS are not in the first version
 
 ### Parent and where an element can be placed
@@ -768,7 +768,7 @@ A small list that opens over the view to find and choose a type. It has a search
 - A click on a connect arrow (Connecting), or on a port that can start a link, opens the type picker from that connection point. A click on a port does not change the selection
 - The element of the chosen type is placed in the direction of the arrow or the port, `QuickAddSpacing` (default 80) away from the bounds of the original element. On the other axis, its center lines up with the center of the original element for an arrow, and with the port for a port
 - The parent is that of the original element. When the nesting rules do not allow it, the position decides (Parent and where an element can be placed)
-- The element stays where it is placed, even over other elements. Looking for free space is not in the first version
+- The element stays where it is placed, even over other elements. Looking for free space is added later, when needed
 
 ### External drag sources
 
@@ -861,6 +861,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 | Required ports without links, and links to ports that no longer exist | Error |
 | Shared item IDs with no target | Error |
 | Elements of unregistered types | Warning |
+| Icon URLs of elements that are not used (Saving and export) | Warning |
 | The whole-diagram check of the app | Decided by the app |
 
 - The app decides when to check (on every change, before saving and so on)
@@ -914,8 +915,8 @@ A `Skip` change is not undone. It is applied to the snapshots of every step in t
 - When a command of a view runs them, that view selects the elements the step worked on that still exist (not those that changed along with them, such as descendants, routes and group sizes)
 - The app can call `Undo` and `Redo` too. `CanUndo` and `CanRedo` tell whether they can run (for enabling commands)
 - They are not taken during a drag, or while a commit is awaited with `Wait`. With `Optimistic`, they run after the commits that wait for an answer
-- The keys are in Commands and keys. During text editing, they undo inside the editor
-- Names for steps and saving the history are not in the first version
+- The keys are in Commands and keys. During text editing, they undo and redo inside the editor
+- Names for steps and saving the history are added later, when needed
 
 ### Snapshots in the history
 
@@ -944,7 +945,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - JS matches the keys, and stops (`preventDefault`) and runs only the keys of enabled commands. The keys of disabled commands go to the browser
 - While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then
 - Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them, unless the app changed what they do or when they are enabled. For the others, JS sends the name and the selection of that moment to C#
-- During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input. During IME composition, no key is a command
+- During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input, and the text editor keeps Enter with any modifier. During IME composition, no key is a command
 - Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving)
 - Moving elements with the arrow keys, and moving between elements with Tab, are not in the first version
 
@@ -1036,7 +1037,7 @@ The core saves and loads diagrams as JSON. The view exports SVG, PNG and JPEG, b
 
 ### Saving and loading JSON
 
-- `Save` writes the current snapshot as JSON, and `Load` reads JSON and replaces the contents of the diagram (with the origin `Load`; the undo history is cleared). Both take streams and strings
+- `Save` writes the current snapshot as JSON, and `Load` reads JSON and replaces the contents of the diagram (with the origin `Load`; the undo history is cleared). Both take streams; `ToJson` and `LoadJson` use strings
 - The schema is not in the JSON (the code of the app holds it)
 - Reading and writing are source generated, and work with trimming and Native AOT
 
@@ -1090,11 +1091,11 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - Labels, slot texts and tooltips are always drawn as text, never parsed as HTML
 - The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject` and references to external URLs are removed (the prefixes of the IDs inside are in Palette)
 - The `Icon` URL of an element is used only when it is an http, https or relative URL, or a data URL of an image. Other URLs are not drawn
-- What was removed, and the URLs not used, come back as issues (warnings)
+- What was removed from icons, and the URLs they do not use, come back as issues (warnings) of the import. The URLs of elements that are not used come back from the whole-diagram check
 
 ### SVG export
 
-- `ExportSvgAsync` of the view returns the whole diagram as one SVG. Export without a view is not in the first version
+- `ExportSvgAsync` of the view returns the whole diagram as one SVG. Export without a view is added later, when needed
 - It has the groups, links and nodes, and the wrapped labels. Culled elements are drawn before writing. The selection frame, handles, guides, preview lines and the grid are left out
 - State overlays (states, render overrides, badges) and issue badges are included when chosen (not by default)
 - The area is the bounds of all the elements plus a margin (default 10). Choosing an area is not in the first version
@@ -1124,7 +1125,7 @@ The app can draw states over elements without changing the model (run states, ch
 ### Passing overlays
 
 - `Overlays` of the view takes a dictionary from element IDs to overlays (`DiagramOverlay`). To change them, pass a new dictionary
-- The view compares it with the previous dictionary, and draws again only the overlays of the elements that changed. Elements and templates do not render again
+- The view compares it with the previous dictionary, and draws again only the overlays of the elements that changed. Only the elements whose overlays changed render again, and the contents of templates do not
 - Nodes, groups and links can have overlays. IDs of elements that do not exist are ignored
 
 | Overlay | Content |
@@ -1143,7 +1144,7 @@ The app can draw states over elements without changing the model (run states, ch
 - A badge has a kind, text, an icon, a tone and a tooltip
 - Kinds are registered in `BadgeKinds` of the view, with a name, a corner (top left, top right, bottom left, bottom right), an order and whether they can be clicked. Unregistered kinds go last in the top right
 - Badges are packed from their corner along the top or bottom side, in order, 4 px apart. The first one is centered on the corner. They are 16 high and scale with the diagram
-- On links, badges line up in order at the middle of the route, and the corner of the kind is not used
+- On links, badges line up side by side in order at the middle of the length of the route, and the corner of the kind is not used
 - The tones are default, info, success, warning and error. Their colors are CSS variables (Rendering)
 - A badge without text is a dot. The tooltip uses `<title>`
 - A click on a badge of a clickable kind does not change the selection, and `BadgeClicked` reports it. Clicks on other badges go through to the element
