@@ -223,7 +223,7 @@ internal static class DiagramJsonFormat
             FixParents(boxes, byId);
             FixMembers(boxes, byId);
 
-            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, Budget = budget };
+            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, KeepMissingPorts = true, Budget = budget };
             foreach (var group in ParentsFirst(boxes, byId))
             {
                 editor.Add(group);

@@ -42,7 +42,7 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.AddAttribute(1, "class", classes.ToString());
         builder.AddAttribute(2, "data-id", link.Id);
         builder.AddAttribute(3, "data-type", link.Type);
-        if (StyleOf(type?.Look, Look?.Style) is { } style)
+        if (StyleOf(type is null ? null : Context.Index.LookOf(type), Look?.Style) is { } style)
         {
             builder.AddAttribute(4, "style", style);
         }
@@ -78,7 +78,7 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.CloseElement();
     }
 
-    private static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
+    internal static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
     {
         var builder = new StringBuilder();
         if (look?.Stroke is not null)

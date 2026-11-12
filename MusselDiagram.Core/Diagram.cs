@@ -126,23 +126,9 @@ public sealed class Diagram
 
     public IDisposable BeginUpdate(DiagramWriteOptions? options = null) => BeginUpdate(options, DiagramChangeOrigin.Api);
 
-    public void Undo()
-    {
-        if (CanUndo)
-        {
-            var step = history.Undo();
-            Restore(step.Before, step.Changes, DiagramChangeOrigin.Undo);
-        }
-    }
+    public void Undo() => UndoStep();
 
-    public void Redo()
-    {
-        if (CanRedo)
-        {
-            var step = history.Redo();
-            Restore(step.After, step.Changes, DiagramChangeOrigin.Redo);
-        }
-    }
+    public void Redo() => RedoStep();
 
     public void ClearHistory() => history.Clear();
 
@@ -188,6 +174,30 @@ public sealed class Diagram
             TargetAngle = LinkRouting.Angle(route[^2], route[^1]),
             Path = LinkRouting.ToPath(route, type?.Form ?? DiagramLineForm.Orthogonal, sourceCut, targetCut)
         };
+    }
+
+    internal IReadOnlyCollection<string>? UndoStep()
+    {
+        if (!CanUndo)
+        {
+            return null;
+        }
+
+        var step = history.Undo();
+        Restore(step.Before, step.Changes, DiagramChangeOrigin.Undo);
+        return step.Changes.Targets;
+    }
+
+    internal IReadOnlyCollection<string>? RedoStep()
+    {
+        if (!CanRedo)
+        {
+            return null;
+        }
+
+        var step = history.Redo();
+        Restore(step.After, step.Changes, DiagramChangeOrigin.Redo);
+        return step.Changes.Targets;
     }
 
     internal void Move(IEnumerable<string> ids, DiagramPoint offset, DiagramWriteOptions? options, DiagramChangeOrigin origin) =>
@@ -259,10 +269,19 @@ public sealed class Diagram
         updateChanges = null;
         updateOptions = null;
         updateBudget = null;
-        if (changes.HasChanges)
+        if (!changes.HasChanges)
         {
-            Commit(before, Snapshot, changes, updateOrigin, options);
+            return;
         }
+
+        var net = ChangeSet.Between(before, Snapshot, changes);
+        if (!net.HasChanges)
+        {
+            Snapshot = before;
+            return;
+        }
+
+        Commit(before, Snapshot, net, updateOrigin, options);
     }
 
     private void Track(IReadOnlyList<PendingRoute> pending)

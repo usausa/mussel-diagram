@@ -42,7 +42,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `Moving`, `Moved` | `DiagramMovingEventArgs`, `DiagramMovedEventArgs` | `ElementIds`, `Offset`, `ParentChanged` and `NewParentId` (`null` for the top level) |
 | `Resizing`, `Resized` | `DiagramResizingEventArgs`, `DiagramResizedEventArgs` | `ElementId` and `Bounds` |
 | `Connecting`, `Connected` | `DiagramConnectingEventArgs`, `DiagramConnectedEventArgs` | `Source`, `Target`, `LinkType` and `PlacedElement` (from the type picker); `Connected` also has `LinkId` |
-| `Reconnecting`, `Reconnected` | `DiagramReconnectingEventArgs`, `DiagramReconnectedEventArgs` | `LinkId`, `End` (`DiagramLinkEndSide`) and `NewEnd` |
+| `Reconnecting`, `Reconnected` | `DiagramReconnectingEventArgs`, `DiagramReconnectedEventArgs` | `LinkId`, `End` (`DiagramLinkEndSide`), `NewEnd`, and `Source`, `Target` and `LinkType` after the change |
 | `Dropping`, `Dropped` | `DiagramDroppingEventArgs`, `DiagramDroppedEventArgs` | `ElementId` (of the new element), `Type`, `Bounds`, `ParentId`, `Value` and `SplitLinkId` |
 | `Deleting`, `Deleted` | `DiagramDeletingEventArgs`, `DiagramDeletedEventArgs` | `ElementIds`, including the elements deleted along with them, and `IsCut` |
 | `TextCommitting`, `TextCommitted` | `DiagramTextCommittingEventArgs`, `DiagramTextCommittedEventArgs` | `ElementId`, `Slot`, `OldText` and `NewText` |
@@ -166,7 +166,7 @@ An immutable state of the diagram, readable from any thread.
 | `GetLinks(id, direction, portId)` | The links of an element (`DiagramLinkDirection`: `In`, `Out` or `Both`), optionally of one port |
 | `GetPredecessors(id)`, `GetSuccessors(id)` | The elements one link before and after |
 | `GetUpstream(id)`, `GetDownstream(id)` | The elements reached against and along the links |
-| `Cycles`, `GetUnreachable(startIds)` | The elements in cycles, and the nodes and linked groups not reachable from the given ones |
+| `Cycles`, `GetUnreachable(startIds)`, `GetUnreachable(schema)` | The elements in cycles, and the nodes and linked groups not reachable from the given ones (or from the elements of `Start` types) |
 | `GetParent(id)`, `GetChildren(id)`, `GetAncestors(id)`, `GetDescendants(id)`, `TopLevel` | The tree |
 | `GetMembers(groupId)`, `GetOverlayGroups(id)` | Overlay groups |
 | `GetReferrers(sharedItemId, schema)`, `GetUnusedSharedItems(schema)` | Shared items and the elements that refer to them |
@@ -192,7 +192,7 @@ All elements are records, and an ID is created when none is given.
 
 ## 🧾 DiagramSchema
 
-An immutable record. The declarative parts can also be read with `DiagramSchemaJson.Read(stream)` and given functions afterwards with `with`.  
+An immutable record.  
 
 | Name | Description |
 |---|---|
@@ -368,7 +368,7 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 | `--mussel-diagram-pending-opacity` | Elements awaiting a commit |
 | `--mussel-diagram-error-color`, `--mussel-diagram-warning-color` | Elements with issues |
 | `--mussel-diagram-badge-default`, `--mussel-diagram-badge-info`, `--mussel-diagram-badge-success`, `--mussel-diagram-badge-warning`, `--mussel-diagram-badge-error`, `--mussel-diagram-badge-text` | Badge tones and their text |
-| `--mussel-diagram-palette-background`, `--mussel-diagram-palette-hover` | The palette |
+| `--mussel-diagram-palette-background`, `--mussel-diagram-palette-hover`, `--mussel-diagram-palette-shape-fill`, `--mussel-diagram-palette-shape-stroke` | The palette |
 
 | Class or attribute | Use |
 |---|---|
@@ -377,6 +377,8 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 | `data-template` | Nodes drawn by a template |
 | `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending` | Built-in states that the view sets while editing; hover is `:hover` |
 | `mussel-diagram-error`, `mussel-diagram-warning`, `mussel-diagram-locked`, `mussel-diagram-unregistered` | Built-in states from issues, locks and unregistered types |
+| `mussel-diagram-fixed`, `mussel-diagram-unconnectable`, `mussel-diagram-fill-hit` | Elements that cannot move or connect, and groups whose fill is hit-tested |
+| `data-direction` (`in`, `out` or `both`) and `data-kind` on ports | Ports by direction and kind |
 | `mussel-diagram-state-<name>` | States of overlays |
 | `--mussel-diagram-override-fill`, `--mussel-diagram-override-stroke`, `--mussel-diagram-override-stroke-width`, `--mussel-diagram-override-dash`, `--mussel-diagram-override-opacity` | Render overrides, set on the element |
 | `mussel-diagram-badge` and `data-tone` | Badges and their tones |

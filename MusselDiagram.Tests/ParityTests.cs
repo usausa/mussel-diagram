@@ -26,7 +26,18 @@ public sealed class ParityTests
                     new DiagramPortDefinition { Id = "top", Side = DiagramSide.Top, Ratio = 0.25, Offset = 4, Rejects = ["box"] }
                 ]
             },
-            new DiagramNodeType { Name = "db", Ports = [new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Kind = "sql", Side = DiagramSide.Left }], ConnectsAsWhole = true }
+            new DiagramNodeType { Name = "db", Ports = [new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Kind = "sql", Side = DiagramSide.Left }], ConnectsAsWhole = true },
+            new DiagramNodeType
+            {
+                Name = "table",
+                RowHeaderHeight = 30,
+                RowHeight = 24,
+                Ports =
+                [
+                    new DiagramPortDefinition { Id = "id", Side = DiagramSide.Left, Row = 0 },
+                    new DiagramPortDefinition { Id = "owner", Side = DiagramSide.Right, Row = 2, Offset = 3 }
+                ]
+            }
         ],
         GroupTypes = [new DiagramGroupType { Name = "zone", DisplayName = "Availability zone", Category = "network" }],
         Categories = [new DiagramCategory { Name = "compute", DisplayName = "Compute" }, new DiagramCategory { Name = "network", DisplayName = "Network" }],
@@ -53,6 +64,7 @@ public sealed class ParityTests
         diagram.Add(new DiagramNode { Id = "z", Type = "box", Bounds = new DiagramRect(640, 660, 100, 50), ParentId = "zone" });
         diagram.Add(new DiagramNode { Id = "l", Type = "locked", Bounds = new DiagramRect(-200, -300, 100, 50), Locked = true });
         diagram.Add(new DiagramNode { Id = "u", Type = "unknown", Bounds = new DiagramRect(200, -300, 100, 50) });
+        diagram.Add(new DiagramNode { Id = "t", Type = "table", Bounds = new DiagramRect(-500.5, 400.25, 160, 130) });
         diagram.Connect(new DiagramLink { Id = "taken", Type = "ortho", Source = new DiagramLinkEnd("s2", "out"), Target = new DiagramLinkEnd("s1", "in") });
         diagram.Connect(new DiagramLink { Id = "ab", Type = "flow", Source = new DiagramLinkEnd("a"), Target = new DiagramLinkEnd("b") });
         diagram.Connect(new DiagramLink { Id = "dup", Type = "ortho", Source = new DiagramLinkEnd("a"), Target = new DiagramLinkEnd("b") });

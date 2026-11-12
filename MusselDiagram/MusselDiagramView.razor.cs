@@ -38,6 +38,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private Func<IJSObjectReference, ValueTask>? pendingView;
 
+    private ShownSet? shown;
+
     private bool disposed;
 
     [Parameter]
@@ -168,7 +170,6 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         await ReleaseAsync().ConfigureAwait(true);
         self?.Dispose();
         self = null;
-        commitLock.Dispose();
     }
 
     internal void SetTemplate(DiagramTemplate template)
@@ -284,7 +285,56 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     }
 
     private bool IsShown(string id, DiagramRect bounds) =>
-        exporting || (area is not { } visible) || bounds.Intersects(visible) || SelectedIds.Contains(id, StringComparer.Ordinal);
+        exporting || (area is not { } visible) || bounds.Intersects(visible) || AlwaysShown().Contains(id);
+
+    private bool HasCulledShown() =>
+        (area is { } visible) && AlwaysShown().Any(id => Snapshot.Find(id) switch
+        {
+            DiagramBox box => !box.Bounds.Intersects(visible),
+            DiagramLink link => !RouteBounds(link).Intersects(visible),
+            _ => false
+        });
+
+    private HashSet<string> AlwaysShown()
+    {
+        if ((shown is { } cached) && ReferenceEquals(cached.Snapshot, Snapshot) && ReferenceEquals(cached.Selection, SelectedIds))
+        {
+            return cached.Ids;
+        }
+
+        var snapshot = Snapshot;
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in SelectedIds)
+        {
+            Add(id);
+        }
+
+        shown = new ShownSet(snapshot, SelectedIds, ids);
+        return ids;
+
+        void Add(string id)
+        {
+            if (!ids.Add(id))
+            {
+                return;
+            }
+
+            if (snapshot.Find(id) is DiagramGroup { Kind: DiagramGroupKind.Overlay } overlay)
+            {
+                foreach (var member in overlay.MemberIds)
+                {
+                    Add(member);
+                }
+
+                return;
+            }
+
+            foreach (var descendant in snapshot.GetDescendants(id))
+            {
+                ids.Add(descendant.Id);
+            }
+        }
+    }
 
     private async ValueTask RunViewAsync(Func<IJSObjectReference, ValueTask> command)
     {
@@ -393,6 +443,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         SnapToElements = SnapToElements,
         SnapTolerance = SnapTolerance,
         ConnectionRadius = ConnectionRadius,
+        LinkHitWidth = LinkHitWidth,
         QuickAddSpacing = QuickAddSpacing,
         LinkType = LinkType,
         DropEnabled = DropEnabled && !ReadOnly,
@@ -424,4 +475,6 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         {
         }
     }
+
+    private sealed record ShownSet(DiagramSnapshot Snapshot, IReadOnlyList<string> Selection, HashSet<string> Ids);
 }

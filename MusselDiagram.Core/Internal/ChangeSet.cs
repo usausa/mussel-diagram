@@ -18,11 +18,14 @@ internal sealed class ChangeSet
 
     public Dictionary<string, DiagramChangeParts> Updated { get; } = new(StringComparer.Ordinal);
 
+    public HashSet<string> Targets { get; } = new(StringComparer.Ordinal);
+
     public bool HasChanges => (Added.Count > 0) || (Deleted.Count > 0) || (Updated.Count > 0);
 
     public static ChangeSet Between(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded)
     {
         var result = new ChangeSet();
+        result.Targets.UnionWith(recorded.Targets);
         foreach (var id in recorded.Added.Concat(recorded.Deleted).Concat(recorded.Updated.Keys).Distinct(StringComparer.Ordinal))
         {
             var before = from.Find(id);
@@ -100,6 +103,7 @@ internal sealed class ChangeSet
 
     public void Merge(ChangeSet next)
     {
+        Targets.UnionWith(next.Targets);
         foreach (var id in next.Deleted)
         {
             MarkDeleted(id);

@@ -60,7 +60,7 @@ Each is used on its own.
 - A view works alone. Without a palette, the app adds elements through the API
 - A palette places into the one view passed as its parameter. It can be anywhere on the page, and drags start outside the view
 - Each view has a command registry. The keys of the view and the toolbar and menus of the app run the same commands. There are no toolbar, menu or property panel components
-- A `ReadOnly` view takes no editing operations (move, resize, connect, delete, drop, text editing). Panning, zooming, selection, hover and tooltips stay, and each can be turned off with its `…Enabled`
+- A `ReadOnly` view takes no editing operations (move, resize, connect, delete, drop, text editing). Panning, zooming, selection, hover and tooltips stay. All but hover can be turned off with their `…Enabled`
 
 The view takes its size from its parent element. When the parent is resized, it redraws and keeps the center and the zoom.
 
@@ -201,7 +201,7 @@ There is no analysis such as shortest paths or centrality.
 
 ## 🧾 Types and rules
 
-A schema (`DiagramSchema`) is an immutable record of the node, group, link and shared item types, the palette categories, the icon sets (Palette) and the app rules. The app builds it in code (the declarative parts can also be read from JSON) and passes it to the diagram (`Diagram.Schema`).
+A schema (`DiagramSchema`) is an immutable record of the node, group, link and shared item types, the palette categories, the icon sets (Palette) and the app rules. The app builds it in code and passes it to the diagram (`Diagram.Schema`).
 
 ### Schema
 
@@ -227,7 +227,7 @@ A schema (`DiagramSchema`) is an immutable record of the node, group, link and s
 
 ### Unregistered types
 
-- An element whose type is not in the schema is drawn as a placeholder: a dashed frame with the type name. It can be selected, moved and deleted, but not connected, nested or text-edited
+- An element whose type is not in the schema is drawn as a placeholder: a dashed frame with its label, or the type name without one. It can be selected, moved and deleted, but not connected, nested or text-edited
 - Its label, data and links are kept and saved as they are. Ports are not checked on writing
 - Its links are drawn towards its outline
 - Once the type is registered, it is drawn as a normal element
@@ -288,7 +288,7 @@ When reconnecting, the link being moved does not count for limits, duplicates or
 
 | Declaration | Content |
 |---|---|
-| Maximum count | How many the diagram can have. At the limit, the type leaves the palette, and duplicating and pasting are rejected |
+| Maximum count | How many the diagram can have. At the limit, the type leaves the palette, and pasting is rejected |
 | Required | An error in the whole-diagram check when the diagram has none |
 | Undeletable | The user cannot delete it |
 | Start | Marks start elements. Queries use them to find unreachable elements |
@@ -571,7 +571,7 @@ Creating links and reconnecting their ends. The connection rules in Types and ru
 - Dragging an out or both port draws a link from it. A click on it is in Palette (adding a connected element). Links cannot be drawn from in ports in the first version
 - For a type that connects as a whole, resting the pointer on the element for 140 ms (on touch, selecting only that element) shows "connect arrows" above, below, left and right of it. Dragging an arrow draws a link from the whole element. A click on an arrow is in Palette (adding a connected element)
 - Ports are always shown. A type can declare ports that show only while a connection is dragged (the way draw.io uses its connection points)
-- The type of the new link is in Types and rules: the declaration of the port, then the `LinkType` of the view, then the default of the schema
+- The type of the new link is in Types and rules: the declaration of the port, then the `LinkType` of the view, then the default of the schema, then the first link type
 
 ### Targets
 
@@ -678,7 +678,7 @@ The link type declares the form.
 
 ### Geometry
 
-- The core computes bounds, intersections, distances, intersections with outlines and whether a point is inside a shape. The routing and checks of C# use them, and so can the app
+- The core computes bounds, intersections, distances, intersections with outlines and whether a point is inside a shape for the routing and checks of C#. In the first version, only the geometry of links is public (`GetLinkGeometry`)
 - JS has the same formulas for the simple route while dragging and for cutting the ends
 
 ## 🧰 Palette
@@ -818,7 +818,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 | Place (palette, external drag sources, quick add, splicing into a link included) | `Dropping` | `Dropped` |
 | Delete, cut | `Deleting` | `Deleted` |
 | Text editing | `TextCommitting` | `TextCommitted` |
-| Paste, duplicate | `Pasting` | `Pasted` |
+| Paste | `Pasting` | `Pasted` |
 
 - The before events carry what will be written, and the after events what was written and the snapshot. Elements deleted along with it are included
 - Align, distribute, order, lock, group and ungroup, and changing members raise no before or after events, but still pass the rules. To stop them, disable the command (Commands and keys)
@@ -911,7 +911,7 @@ A `Skip` change is not undone. It is applied to the snapshots of every step in t
 
 - Undo replaces the snapshot with the one before the step, redo with the one after. Both get a new snapshot number, and `Diagram.Changed` reports them with the origin `Undo` or `Redo`, listing the changed elements
 - They pass neither the rules nor the before and after events (Commit and validation)
-- When a command of a view runs them, that view selects the changed elements of the step that still exist
+- When a command of a view runs them, that view selects the elements the step worked on that still exist (not those that changed along with them, such as descendants, routes and group sizes)
 - The app can call `Undo` and `Redo` too. `CanUndo` and `CanRedo` tell whether they can run (for enabling commands)
 - They are not taken during a drag, or while a commit is awaited with `Wait`. With `Optimistic`, they run after the commits that wait for an answer
 - The keys are in Commands and keys. During text editing, they undo inside the editor

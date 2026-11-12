@@ -37,8 +37,8 @@ public sealed partial class MusselDiagramView
     private DiagramCommandRegistry CreateCommands()
     {
         commands = new DiagramCommandRegistry(argument => new DiagramCommandContext(this, SelectedIds, argument));
-        Register(DiagramCommands.Undo, ["Ctrl+Z"], _ => Editable && Diagram.CanUndo, _ => WriteAsync(() => Diagram.Undo()));
-        Register(DiagramCommands.Redo, ["Ctrl+Y", "Ctrl+Shift+Z"], _ => Editable && Diagram.CanRedo, _ => WriteAsync(() => Diagram.Redo()));
+        Register(DiagramCommands.Undo, ["Ctrl+Z"], _ => Editable && Diagram.CanUndo, _ => RestoreAsync(true));
+        Register(DiagramCommands.Redo, ["Ctrl+Y", "Ctrl+Shift+Z"], _ => Editable && Diagram.CanRedo, _ => RestoreAsync(false));
         Register(DiagramCommands.Delete, ["Delete", "Backspace"], c => Editable && (Deletion.Deletable(Snapshot, Diagram.Index, c.SelectedIds).Count > 0), c => DeleteAsync(c.SelectedIds, false));
         Register(DiagramCommands.Cut, ["Ctrl+X"], c => Editable && (Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null) && (Deletion.Deletable(Snapshot, Diagram.Index, c.SelectedIds).Count > 0), CutAsync);
         Register(DiagramCommands.Copy, ["Ctrl+C"], c => Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null, CopyAsync);
@@ -47,11 +47,11 @@ public sealed partial class MusselDiagramView
         Register(DiagramCommands.ClearSelection, ["Ctrl+Shift+A"], c => c.SelectedIds.Count > 0, _ => ClearSelectionAsync().AsTask(), true);
         Register(DiagramCommands.EditText, ["F2", "Enter"], c => Editable && TextEditEnabled && (FirstEditableSlot(c.SelectedIds) is not null), c => RunViewAsync(current => current.InvokeVoidAsync("editText", c.SelectedIds[0], FirstEditableSlot(c.SelectedIds))).AsTask());
         Register(DiagramCommands.QuickAdd, ["Ctrl+Enter"], c => Editable && DropEnabled && (c.SelectedIds.Count == 0), c => OpenTypePickerAsync(c.Argument as DiagramPoint?).AsTask());
-        Register(DiagramCommands.Group, ["Ctrl+G"], c => Editable && Grouping.CanGroup(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string), c => GroupAsync(Grouping.Group(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string)));
-        Register(DiagramCommands.Ungroup, ["Ctrl+Shift+U"], c => Editable && Grouping.CanUngroup(Snapshot, Diagram.Index, c.SelectedIds), c => GroupAsync(Grouping.Ungroup(Snapshot, Diagram.Index, c.SelectedIds)));
-        Register(DiagramCommands.CreateOverlayGroup, [], c => Editable && Grouping.CanCreateOverlay(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string), c => GroupAsync(Grouping.CreateOverlay(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string)));
-        Register(DiagramCommands.AddMembers, [], c => Editable && Grouping.CanAddMembers(Snapshot, c.SelectedIds), c => GroupAsync(Grouping.AddMembers(Snapshot, Diagram.Index, c.SelectedIds)));
-        Register(DiagramCommands.RemoveMembers, [], c => Editable && Grouping.CanRemoveMembers(Snapshot, c.SelectedIds), c => GroupAsync(Grouping.RemoveMembers(Snapshot, c.SelectedIds)));
+        Register(DiagramCommands.Group, ["Ctrl+G"], c => Editable && Grouping.CanGroup(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string), c => GroupAsync(() => Grouping.Group(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string)));
+        Register(DiagramCommands.Ungroup, ["Ctrl+Shift+U"], c => Editable && Grouping.CanUngroup(Snapshot, Diagram.Index, c.SelectedIds), c => GroupAsync(() => Grouping.Ungroup(Snapshot, Diagram.Index, c.SelectedIds)));
+        Register(DiagramCommands.CreateOverlayGroup, [], c => Editable && Grouping.CanCreateOverlay(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string), c => GroupAsync(() => Grouping.CreateOverlay(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string)));
+        Register(DiagramCommands.AddMembers, [], c => Editable && Grouping.CanAddMembers(Snapshot, c.SelectedIds), c => GroupAsync(() => Grouping.AddMembers(Snapshot, Diagram.Index, c.SelectedIds)));
+        Register(DiagramCommands.RemoveMembers, [], c => Editable && Grouping.CanRemoveMembers(Snapshot, c.SelectedIds), c => GroupAsync(() => Grouping.RemoveMembers(Snapshot, Diagram.Index, c.SelectedIds)));
         Register(DiagramCommands.BringToFront, ["Ctrl+Shift+F"], c => CanReorder(c.SelectedIds), c => ReorderAsync(c.SelectedIds, OrderMove.Front));
         Register(DiagramCommands.SendToBack, ["Ctrl+Shift+B"], c => CanReorder(c.SelectedIds), c => ReorderAsync(c.SelectedIds, OrderMove.Back));
         Register(DiagramCommands.BringForward, ["Ctrl+Alt+Shift+F"], c => CanReorder(c.SelectedIds), c => ReorderAsync(c.SelectedIds, OrderMove.Forward));
@@ -62,8 +62,8 @@ public sealed partial class MusselDiagramView
         RegisterAlign(DiagramCommands.AlignTop, AlignEdge.Top);
         RegisterAlign(DiagramCommands.AlignMiddle, AlignEdge.Middle);
         RegisterAlign(DiagramCommands.AlignBottom, AlignEdge.Bottom);
-        Register(DiagramCommands.DistributeHorizontally, [], c => CanArrange(c.SelectedIds, 3), c => ArrangeAsync(Arrangement.Distribute(Snapshot, Diagram.Index, c.SelectedIds, true)));
-        Register(DiagramCommands.DistributeVertically, [], c => CanArrange(c.SelectedIds, 3), c => ArrangeAsync(Arrangement.Distribute(Snapshot, Diagram.Index, c.SelectedIds, false)));
+        Register(DiagramCommands.DistributeHorizontally, [], c => CanArrange(c.SelectedIds, 3), c => ArrangeAsync(() => Arrangement.Distribute(Snapshot, Diagram.Index, c.SelectedIds, true)));
+        Register(DiagramCommands.DistributeVertically, [], c => CanArrange(c.SelectedIds, 3), c => ArrangeAsync(() => Arrangement.Distribute(Snapshot, Diagram.Index, c.SelectedIds, false)));
         commands.Register(new DiagramCommand
         {
             Name = DiagramCommands.ToggleLock,
@@ -88,7 +88,7 @@ public sealed partial class MusselDiagramView
         commands!.Register(new DiagramCommand { Name = name, DisplayName = DiagramCultures.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
 
     private void RegisterAlign(string name, AlignEdge edge) =>
-        Register(name, [], c => CanArrange(c.SelectedIds, 2), c => ArrangeAsync(Arrangement.Align(Snapshot, Diagram.Index, c.SelectedIds, edge)));
+        Register(name, [], c => CanArrange(c.SelectedIds, 2), c => ArrangeAsync(() => Arrangement.Align(Snapshot, Diagram.Index, c.SelectedIds, edge)));
 
     private bool CanArrange(IEnumerable<string> selection, int minimum) =>
         Editable && MoveEnabled && Arrangement.CanAlign(Snapshot, Diagram.Index, selection, minimum);
@@ -156,22 +156,34 @@ public sealed partial class MusselDiagramView
         }
     }
 
+    private async Task RestoreAsync(bool undo)
+    {
+        IReadOnlyCollection<string>? targets = null;
+        await WriteAsync(() => targets = undo ? Diagram.UndoStep() : Diagram.RedoStep()).ConfigureAwait(true);
+        if (targets is not null)
+        {
+            await SelectAsync(targets).ConfigureAwait(true);
+        }
+    }
+
     private async Task WriteAsync(Action write)
     {
-        await commitLock.WaitAsync().ConfigureAwait(true);
+        var gate = Gate;
+        await gate.WaitAsync().ConfigureAwait(true);
         try
         {
             write();
         }
         finally
         {
-            commitLock.Release();
+            gate.Release();
         }
     }
 
     private async Task<bool> RunCommandAsync(DiagramOperation operation, Func<DiagramReason?> check, Func<Task<DiagramReason?>>? before, Action write, Func<DiagramSnapshot, Task>? after)
     {
-        await commitLock.WaitAsync().ConfigureAwait(true);
+        var gate = Gate;
+        await gate.WaitAsync().ConfigureAwait(true);
         DiagramReason? reason;
         try
         {
@@ -199,7 +211,7 @@ public sealed partial class MusselDiagramView
         }
         finally
         {
-            commitLock.Release();
+            gate.Release();
         }
 
         await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
@@ -207,14 +219,26 @@ public sealed partial class MusselDiagramView
         return false;
     }
 
-    private async Task GroupAsync(GroupingResult result)
+    private async Task GroupAsync(Func<GroupingResult> create)
     {
-        if ((result.Edit is null) && (result.Reason is null))
-        {
-            return;
-        }
-
-        if (await RunCommandAsync(DiagramOperation.Command, () => result.Reason, null, () => Diagram.Write(null, DiagramChangeOrigin.User, result.Edit!), null).ConfigureAwait(true))
+        var result = GroupingResult.None;
+        var accepted = await RunCommandAsync(
+            DiagramOperation.Command,
+            () =>
+            {
+                result = create();
+                return result.Reason;
+            },
+            null,
+            () =>
+            {
+                if (result.Edit is { } change)
+                {
+                    Diagram.Write(null, DiagramChangeOrigin.User, change);
+                }
+            },
+            null).ConfigureAwait(true);
+        if (accepted && (result.Edit is not null))
         {
             await SelectAsync(result.Selection).ConfigureAwait(true);
         }
@@ -222,38 +246,60 @@ public sealed partial class MusselDiagramView
 
     private Task<bool> ReorderAsync(IEnumerable<string> selection, OrderMove move)
     {
-        string[] ids = [.. selection.Where(x => Snapshot.Find(x) is DiagramBox { Locked: false } or DiagramLink { Locked: false })];
-        return RunCommandAsync(DiagramOperation.Command, static () => null, null, () => Diagram.Write(null, DiagramChangeOrigin.User, editor => editor.Reorder(ids, move)), null);
-    }
-
-    private Task ArrangeAsync(List<(string Id, DiagramPoint Offset)> moves)
-    {
-        if (moves.Count == 0)
-        {
-            return Task.CompletedTask;
-        }
-
+        string[] ids = [];
         return RunCommandAsync(
             DiagramOperation.Command,
-            static () => null,
-            null,
-            () => Diagram.Write(null, DiagramChangeOrigin.User, editor =>
+            () =>
             {
-                foreach (var (id, offset) in moves)
+                ids = [.. selection.Where(x => Snapshot.Find(x) is DiagramBox { Locked: false } or DiagramLink { Locked: false })];
+                return null;
+            },
+            null,
+            () => Diagram.Write(null, DiagramChangeOrigin.User, editor => editor.Reorder(ids, move)),
+            null);
+    }
+
+    private Task<bool> ArrangeAsync(Func<List<(string Id, DiagramPoint Offset)>> arrange)
+    {
+        List<(string Id, DiagramPoint Offset)> moves = [];
+        return RunCommandAsync(
+            DiagramOperation.Command,
+            () =>
+            {
+                moves = arrange();
+                return null;
+            },
+            null,
+            () =>
+            {
+                if (moves.Count == 0)
                 {
-                    editor.Move([id], offset);
+                    return;
                 }
-            }),
+
+                Diagram.Write(null, DiagramChangeOrigin.User, editor =>
+                {
+                    foreach (var (id, offset) in moves)
+                    {
+                        editor.Move([id], offset);
+                    }
+                });
+            },
             null);
     }
 
     private Task<bool> ToggleLockAsync(IEnumerable<string> selection)
     {
-        var items = Lockable(selection);
-        var locking = !items.All(IsLocked);
+        List<DiagramElement> items = [];
+        var locking = false;
         return RunCommandAsync(
             DiagramOperation.Command,
-            static () => null,
+            () =>
+            {
+                items = Lockable(selection);
+                locking = !items.All(IsLocked);
+                return null;
+            },
             null,
             () => Diagram.Write(null, DiagramChangeOrigin.User, editor =>
             {

@@ -206,7 +206,7 @@ public sealed class EditingTests
         diagram.Write(null, DiagramChangeOrigin.User, Grouping.AddMembers(diagram.Snapshot, diagram.Index, [id, "b"]).Edit!);
         Assert.Equal(["a", "b"], ((DiagramGroup)diagram.Find(id)!).MemberIds);
 
-        diagram.Write(null, DiagramChangeOrigin.User, Grouping.RemoveMembers(diagram.Snapshot, [id, "a"]).Edit!);
+        diagram.Write(null, DiagramChangeOrigin.User, Grouping.RemoveMembers(diagram.Snapshot, diagram.Index, [id, "a"]).Edit!);
         Assert.Equal(["b"], ((DiagramGroup)diagram.Find(id)!).MemberIds);
 
         Assert.Equal(DiagramReasonKind.Nesting, Grouping.CreateOverlay(diagram.Snapshot, diagram.Index, ["a", "c"], "servers").Reason!.Kind);

@@ -42,14 +42,14 @@ internal sealed class DiagramBoxView : ComponentBase
         renderedLook = Look;
         var box = Box;
         var type = Context.Index.FindBoxType(box);
-        var look = type?.Look;
+        var look = type is null ? null : Context.Index.LookOf(type);
         var width = box.Bounds.Width;
         var height = box.Bounds.Height;
         var isGroup = box is DiagramGroup;
         var template = (box is DiagramNode) && (type is not null) ? Templates.Find(box.Type) : null;
 
         builder.OpenElement(0, "g");
-        builder.AddAttribute(1, "class", ClassOf(box, type, Look));
+        builder.AddAttribute(1, "class", ClassOf(box, type, Look, ScriptTables.PermissionsOf(box, Context.Index)));
         builder.AddAttribute(2, "data-id", box.Id);
         builder.AddAttribute(3, "data-type", box.Type);
         builder.AddAttribute(4, "transform", Svg.Translate(box.Bounds.X, box.Bounds.Y));
@@ -84,15 +84,19 @@ internal sealed class DiagramBoxView : ComponentBase
 
         AddShape(builder, look?.Shape ?? DiagramShape.Rectangle, look?.Path, width, height);
 
-        var icon = box.Icon ?? look?.Icon;
+        var header = (type as DiagramGroupType)?.Header;
+        var form = header?.Form ?? DiagramHeaderForm.TopLeft;
+        var icon = isGroup && (form == DiagramHeaderForm.NameOnly) ? null : box.Icon ?? look?.Icon;
         var iconId = icon is null ? null : Context.FindIconId(icon);
         var iconUrl = (icon is not null) && (iconId is null) && IsUrl(icon) ? icon : null;
-        var iconSize = isGroup ? LabelLayout.HeaderIconSize : 0;
+        var iconSize = isGroup ? header?.IconSize ?? LabelLayout.HeaderIconSize : 0;
+        var (iconX, iconY) = isGroup && (form == DiagramHeaderForm.TopCenter) ? ((width - iconSize) / 2, -iconSize / 2) : (0, 0);
         if (iconId is not null)
         {
             builder.OpenElement(20, "use");
             builder.AddAttribute(21, "class", "mussel-diagram-icon");
             builder.AddAttribute(22, "href", $"#{iconId}");
+            AddPosition(builder, iconX, iconY);
             builder.AddAttribute(23, "width", Svg.Number(isGroup ? iconSize : width));
             builder.AddAttribute(24, "height", Svg.Number(isGroup ? iconSize : height));
             builder.CloseElement();
@@ -102,6 +106,7 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.OpenElement(25, "image");
             builder.AddAttribute(26, "class", "mussel-diagram-icon");
             builder.AddAttribute(27, "href", iconUrl);
+            AddPosition(builder, iconX, iconY);
             builder.AddAttribute(28, "width", Svg.Number(isGroup ? iconSize : width));
             builder.AddAttribute(29, "height", Svg.Number(isGroup ? iconSize : height));
             builder.AddAttribute(30, "preserveAspectRatio", "xMidYMid meet");
@@ -119,6 +124,8 @@ internal sealed class DiagramBoxView : ComponentBase
             {
                 builder.AddAttribute(51, "data-default", string.Empty);
             }
+
+            builder.AddAttribute(52, "data-stack", label.Stack);
 
             builder.AddAttribute(42, "x", Svg.Number(label.X));
             builder.AddAttribute(43, "y", Svg.Number(label.Y));
@@ -139,27 +146,47 @@ internal sealed class DiagramBoxView : ComponentBase
         builder.CloseElement();
     }
 
+    private static void AddPosition(RenderTreeBuilder builder, double x, double y)
+    {
+        if (x != 0)
+        {
+            builder.AddAttribute(31, "x", Svg.Number(x));
+        }
+
+        if (y != 0)
+        {
+            builder.AddAttribute(32, "y", Svg.Number(y));
+        }
+    }
+
     private void AddPorts(RenderTreeBuilder builder, DiagramBox box, double width, double height)
     {
         var local = new DiagramRect(0, 0, width, height);
         foreach (var port in Context.Index.PortsOf(box))
         {
             var position = port.PositionIn(local);
-            builder.OpenElement(60, "circle");
-            builder.AddAttribute(61, "class", "mussel-diagram-port");
-            builder.AddAttribute(62, "data-port", port.Id);
-            builder.AddAttribute(63, "cx", Svg.Number(position.X));
-            builder.AddAttribute(64, "cy", Svg.Number(position.Y));
-            builder.AddAttribute(65, "r", "4");
+            builder.OpenElement(80, "circle");
+            builder.AddAttribute(81, "class", "mussel-diagram-port");
+            builder.AddAttribute(82, "data-port", port.Id);
+            builder.AddAttribute(83, "data-direction", port.Definition.Direction switch
+            {
+                DiagramPortDirection.In => "in",
+                DiagramPortDirection.Out => "out",
+                _ => "both"
+            });
+            builder.AddAttribute(84, "data-kind", port.Definition.Kind);
+            builder.AddAttribute(85, "cx", Svg.Number(position.X));
+            builder.AddAttribute(86, "cy", Svg.Number(position.Y));
+            builder.AddAttribute(87, "r", "4");
             if (port.Definition.Visibility == DiagramPortVisibility.WhileConnecting)
             {
-                builder.AddAttribute(66, "data-hidden", string.Empty);
+                builder.AddAttribute(88, "data-hidden", string.Empty);
             }
 
             if (Context.Tooltips && !string.IsNullOrEmpty(port.Definition.Label))
             {
-                builder.OpenElement(67, "title");
-                builder.AddContent(68, port.Definition.Label);
+                builder.OpenElement(89, "title");
+                builder.AddContent(90, port.Definition.Label);
                 builder.CloseElement();
             }
 
@@ -203,7 +230,7 @@ internal sealed class DiagramBoxView : ComponentBase
         }
     }
 
-    private static string ClassOf(DiagramBox box, DiagramBoxType? type, ElementLook? look)
+    private static string ClassOf(DiagramBox box, DiagramBoxType? type, ElementLook? look, DiagramPermissions permissions)
     {
         var builder = new StringBuilder(box is DiagramGroup ? "mussel-diagram-group" : "mussel-diagram-node");
         if (type is null)
@@ -214,6 +241,21 @@ internal sealed class DiagramBoxView : ComponentBase
         if (box.Locked)
         {
             builder.Append(" mussel-diagram-locked");
+        }
+
+        if (type is DiagramGroupType { FillHitTest: true })
+        {
+            builder.Append(" mussel-diagram-fill-hit");
+        }
+
+        if ((permissions & DiagramPermissions.Move) == 0)
+        {
+            builder.Append(" mussel-diagram-fixed");
+        }
+
+        if ((permissions & DiagramPermissions.Connect) == 0)
+        {
+            builder.Append(" mussel-diagram-unconnectable");
         }
 
         AppendLook(builder, look);

@@ -1,108 +1,120 @@
-# MusselChart - Charts for Blazor
+# MusselDiagram - Diagram editor for Blazor
 
-[![NuGet](https://img.shields.io/nuget/v/MusselChart.svg)](https://www.nuget.org/packages/MusselChart/)
+[![NuGet](https://img.shields.io/nuget/v/MusselDiagram.svg)](https://www.nuget.org/packages/MusselDiagram/)
 
 ## 🐚 What is this?
 
-Charts for Blazor drawn as SVG, made for dashboards and widgets.  
-Lines, areas, bars, range bars, scatter and bubble plots, pies, radars, heatmaps, state timelines, KPI tiles, sparklines, bar gauges and radial bars follow the look of [ClamChart](https://github.com/usausa/clam-chart) and stay light on Blazor Server, where only the new points of a time series go over the circuit.  
+A diagram editor for Blazor, made to be built into applications.  
+Types and rules decide what can be placed where and what can be connected, and a model without UI checks and saves the diagram on servers too.  
 
-| 🖥️ Monitoring board | 📈 Charts | 🔢 Widgets |
+| 🧩 Editing | 🏷️ States and issues | 🌙 Dark theme |
 |:-:|:-:|:-:|
-| <img src="Document/monitor.png" width="240" /> | <img src="Document/charts.png" width="240" /> | <img src="Document/widgets.png" width="240" /> |
-
-| 📊 Bars | ✴️ Scatter and bubbles | 🍩 Pies |
-|:-:|:-:|:-:|
-| <img src="Document/bars.png" width="240" /> | <img src="Document/points.png" width="240" /> | <img src="Document/pie.png" width="240" /> |
-
-| 🕸️ Radars | 🔥 Heatmaps | 🚥 State timelines |
-|:-:|:-:|:-:|
-| <img src="Document/radar.png" width="240" /> | <img src="Document/heatmap.png" width="240" /> | <img src="Document/timeline.png" width="240" /> |
-
-| ⭕ Radial bars |
-|:-:|
-| <img src="Document/radial.png" width="240" /> |
+| <img src="Document/editing.png" width="240" /> | <img src="Document/overlays.png" width="240" /> | <img src="Document/dark.png" width="240" /> |
 
 ## 🚀 Quick Start
 
-Import the namespace; the styles come with the `{App}.styles.css` of the application.  
+Link the stylesheet in the page head.  
+
+```html
+<link rel="stylesheet" href="_content/MusselDiagram/MusselDiagram.css" />
+```
+
+Register the types, create a `Diagram` and show it in an interactive component.  
 
 ```razor
-@using MusselChart
+@page "/"
+@using MusselDiagram
+
+@if (view is not null)
+{
+    <MusselDiagramPalette View="view" />
+}
+<MusselDiagramView @ref="view" Diagram="diagram" Connected="OnConnected" />
+
+@code {
+    private static readonly DiagramSchema Schema = new()
+    {
+        NodeTypes =
+        [
+            new DiagramNodeType
+            {
+                Name = "server",
+                DisplayName = "Server",
+                Ports = [new DiagramPortDefinition { Id = "out", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right }]
+            },
+            new DiagramNodeType
+            {
+                Name = "database",
+                DisplayName = "Database",
+                Look = new DiagramLook { Shape = DiagramShape.Ellipse },
+                Ports = [new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Side = DiagramSide.Left }]
+            }
+        ],
+        LinkTypes = [new DiagramLinkType { Name = "arrow" }],
+        DefaultLinkType = "arrow"
+    };
+
+    private readonly Diagram diagram = new(Schema);
+
+    private MusselDiagramView? view;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void OnConnected(DiagramConnectedEventArgs e) => Console.WriteLine($"{e.Source.ElementId} -> {e.Target.ElementId}");
+}
 ```
 
-Write the axes and the series inside a chart.  
-
-```razor
-<MusselChartView Height="240" TrackingGroup="monitor">
-    <DateTimeAxis WindowSize="TimeSpan.FromMinutes(3)" />
-    <NumericAxis Minimum="0" Maximum="100" />
-    <LineSeries Items="Samples" X="static x => x.Time" Y="static x => x.Cpu" Title="CPU" ValueFormat="{0:N1}%" />
-</MusselChartView>
-```
-
-Fill a `ChartRingBuffer<T>` from a background service; every page shares it and each chart draws only the new items.  
-
-```csharp
-public ChartRingBuffer<Sample> Samples { get; } = new(190);
-```
-
-An X is a time (`X`), a number (`XValue`) or a name (`Category`), so the same series make rankings and plots.  
-
-```razor
-<MusselChartView Height="240" Orientation="ChartOrientation.Horizontal">
-    <BarSeries Items="Stores" Category="static x => x.Name" Y="static x => x.Sales" Title="Sales" StackGroup="total" />
-    <BarSeries Items="Stores" Category="static x => x.Name" Y="static x => x.Online" Title="Online" StackGroup="total" />
-</MusselChartView>
-
-<MusselChartView Height="240">
-    <NumericXAxis />
-    <BubbleSeries Items="Regions" XValue="static x => x.Income" Y="static x => x.Age" Size="static x => x.People" Title="Regions" />
-</MusselChartView>
-```
-
-The other chart types are views of their own.  
-
-```razor
-<MusselPieChartView Items="Expenses" CenterLabel="Total" LegendToggleEnabled="true" />
-
-<MusselRadialBarView Items="Servers" Thresholds="Levels" DisplayMode="ChartRadialBarMode.Segmented" />
-
-<MusselRadarChartView>
-    <RadarSeries Items="Scores" Category="static x => x.Name" Y="static x => x.Score" Title="Score" />
-</MusselRadarChartView>
-
-<MusselHeatmapView Items="Accesses" Row="static x => x.Day" Column="static x => x.Hour" Value="static x => x.Count" />
-
-<MusselStateTimelineView Items="States" Row="static x => x.Server" Start="static x => x.Start" State="static x => x.State" Maximum="Now" ValueMappings="Mappings" />
-```
+The diagram works without a view as well: `diagram.Validate()` checks the whole diagram, and `diagram.ToJson()` and `diagram.LoadJson(json)` save and load it.  
+The `Example` project shows every feature on Server, WebAssembly and Auto.  
 
 ## 🎨 Look
 
 | Part | Detail |
 |---|---|
-| Theme | CSS variables (`--mussel-primary-text`, `--mussel-grid-line` and more) with light defaults; `MusselChart.css` adds the dark `mussel-dark` |
-| Colors | `Palette` (`ChartPalettes`: default, Grafana, Material and shades) or `Color` of a series |
-| Thresholds | Lines and bands on charts, the state of tiles, the colors of gauges and rings, and the steps of state timelines |
-| Tiles and gauges | `ColorMode` and `LayoutMode` of a KPI tile, basic and segmented gauges and rings, gradients, threshold markers and glow of rings |
-| Pies | `InnerRadius`, `StartAngle` and `SweepAngle` for half donuts, `MaxSlices` with a merged slice, labels inside or outside with leader lines, and the center value |
-| Heatmaps | A matrix or a calendar, the Grafana Oranges scale or a `ColorScale` of your own, `CellGap` and a color scale |
+| Theme | CSS variables shared with the Mussel family (`--mussel-primary-text` and more), `--mussel-diagram-*` for the diagram, and `.mussel-dark` for dark backgrounds |
+| Types | Rectangles, ellipses, diamonds and paths, icons, colors, strokes and dashes, presets, group headers and label slots with formats |
+| Templates | Razor templates for node types that need their own drawing |
+| States | Selection, connection candidates, drop targets, errors and warnings, and states and badges of the app as overlays |
 
 ## ✅ Supported features
 
 | Category | Detail |
 |---|---|
-| **Charts** | Line, area, bar, range bar, scatter and bubble series mixed in one chart, grouped, stacked and 100% stacked bars, horizontal bars, stacked areas, pie, donut and half donut, radar with polygon or circle grids, matrix and calendar heatmaps, state timelines, KPI tiles, line, area, bar and win-loss sparklines, bar gauges and radial bars |
-| **Axes** | A date and time axis with a sliding window, category and numeric X axes, a value axis with fixed and soft ranges, label thinning |
-| **Data** | Typed delegates, `ChartEntry` items, `ChartRingBuffer<T>` read incrementally on a time axis, gaps for missing values |
-| **Interaction** | A crosshair and a tooltip on hover or touch, shared by `TrackingGroup`, tooltips of slices, rings and cells, and legend toggles of series and slices |
-| **Legend** | A list or a table with last, minimum, maximum and mean, and values and sides of the legend of other views |
+| **Model** | Nodes, ports, links, tree groups, overlay groups that cross other groups, shared items, typed data, queries, undo and redo, and JSON with versions |
+| **Rules** | Connection rules by port, direction, kind and type, nesting, counts, permissions, locks, app rules and whole-diagram checks |
+| **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
+| **Routes** | Orthogonal routes around obstacles, straight and curved lines, and a router that can be replaced |
+| **Palette** | Categories, search, dragging from the palette and from lists of the app, dropping on links, quick add by keys, and icon sets from Iconify JSON, zip files and folders |
+| **Commands** | A registry of commands with keys for toolbars and menus of the app |
+| **Export** | SVG, PNG and JPEG, with images and fonts embedded |
+| **Touch** | Pan, pinch zoom, long press and dragging from the palette |
+| **Languages** | English and Japanese built in, others as data of the same shape |
+| **Hosting** | Interactive Server, WebAssembly (also trimmed) and Auto; the core also runs without UI and with Native AOT |
+
+## ☁️ AWS architecture diagrams
+
+The Example shows how to draw AWS architecture diagrams with the official icons.  
+The icons are not included. Download them and load them in the Example:  
+
+1. Download the "Icon package" zip from [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/).
+2. Run the Example and open the AWS page.
+3. Choose the zip with the file button. The service, resource and group icons are read, and the sample shows them.
+
+Copy `Example.Client/Models/AwsDiagrams.cs` to use the same group looks, arrows and rules in an application.  
 
 ## 📖 API
 
-See the [API reference](Document/API.md).  
+See the [API reference](Document/API.md) and the [specification](Document/SPEC.md).  
 
 ## 🌊 Mussel family
 
 - [MusselChart](https://github.com/usausa/mussel-chart) - Charts
-- [MusselSheet ](https://github.com/usausa/mussel-sheet) - Input sheet
+- [MusselSheet](https://github.com/usausa/mussel-sheet) - Input sheet
+- [MusselCalendar](https://github.com/usausa/mussel-calendar) - Calendar
+- [MusselDiagram](https://github.com/usausa/mussel-diagram) - Diagram editor

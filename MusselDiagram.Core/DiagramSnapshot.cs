@@ -89,6 +89,12 @@ public sealed class DiagramSnapshot
 
     public ImmutableArray<DiagramBox> GetDownstream(string id) => Reach([id], true, false);
 
+    public ImmutableArray<DiagramBox> GetUnreachable(DiagramSchema schema)
+    {
+        var index = SchemaIndex.For(schema);
+        return GetUnreachable(Index.Boxes.Where(x => index.FindBoxType(x) is { Start: true }).Select(static x => x.Id));
+    }
+
     public ImmutableArray<DiagramBox> GetUnreachable(IEnumerable<string> startIds)
     {
         var reached = Reach(startIds, true, true).Select(static x => x.Id).ToHashSet(StringComparer.Ordinal);

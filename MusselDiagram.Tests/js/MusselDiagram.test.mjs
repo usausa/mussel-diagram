@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
     collectLines, snapAxis, matchingLines, gridSnap, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
-    keyName, nextZoom,
+    keyName, nextZoom, stackOffsets,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -23,6 +23,12 @@ test('a line does not start with a closing punctuation mark', () => {
     assert.equal(lines.join(''), '東京リージョン、大阪リージョン');
 });
 
+test('a line does not start with full-width punctuation or closing quotes', () => {
+    for (const mark of ['！', '？', '：', '；', '］', '”', '’']) {
+        assert.deepEqual(wrapLabel(`あいう${mark}えお`, 30, 0, measure).lines, [`あいう${mark}`, 'えお']);
+    }
+});
+
 test('line breaks in the text are kept', () => {
     assert.deepEqual(wrapLabel('a\nb', 100, 0, measure).lines, ['a', 'b']);
     assert.deepEqual(wrapLabel('a\r\n\r\nb', 100, 0, measure).lines, ['a', '', 'b']);
@@ -30,6 +36,14 @@ test('line breaks in the text are kept', () => {
 
 test('lines over the limit end with an ellipsis', () => {
     assert.deepEqual(wrapLabel('Amazon EC2 instance web server', 100, 2, measure), { lines: ['Amazon EC2', 'instance…'], truncated: true });
+});
+
+test('slots in the same placement are stacked in the declared order', () => {
+    const round = (values) => values.map((x) => Math.round(x * 100) / 100);
+    assert.deepEqual(round(stackOffsets([{ lines: 1, size: 12, valign: 'middle' }, { lines: 1, size: 12, valign: 'middle' }])), [-3, 11.4]);
+    assert.deepEqual(round(stackOffsets([{ lines: 2, size: 10, valign: 'top' }, { lines: 1, size: 12, valign: 'top' }])), [8, 33.6]);
+    assert.deepEqual(round(stackOffsets([{ lines: 1, size: 10, valign: 'bottom' }, { lines: 2, size: 10, valign: 'bottom' }])), [-26, -14]);
+    assert.deepEqual(round(stackOffsets([{ lines: 3, size: 12, valign: 'middle' }])), [12 * firstLineOffset(3, 'middle')].map((x) => Math.round(x * 100) / 100));
 });
 
 test('the first line is placed by the vertical alignment', () => {

@@ -64,7 +64,7 @@ internal sealed class DiagramDefsView : ComponentBase
             builder.SetKey(icon.Id);
             builder.AddAttribute(21, "id", icon.Id);
             builder.AddAttribute(22, "viewBox", $"0 0 {Svg.Number(icon.Icon.Width)} {Svg.Number(icon.Icon.Height)}");
-            builder.AddMarkupContent(23, icon.Icon.Body);
+            builder.AddMarkupContent(23, icon.Body);
             builder.CloseElement();
         }
 

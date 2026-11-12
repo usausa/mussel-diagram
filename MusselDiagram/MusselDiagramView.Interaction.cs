@@ -1,5 +1,7 @@
 namespace MusselDiagram;
 
+using System.Runtime.CompilerServices;
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -9,7 +11,7 @@ public sealed partial class MusselDiagramView
 {
     private const int HistoryLimit = 64;
 
-    private readonly SemaphoreSlim commitLock = new(1, 1);
+    private static readonly ConditionalWeakTable<Diagram, SemaphoreSlim> Gates = [];
 
     private readonly Dictionary<long, DiagramSnapshot> history = [];
 
@@ -46,9 +48,11 @@ public sealed partial class MusselDiagramView
 
     public IReadOnlyList<string> SelectedIds { get; private set; } = [];
 
+    private SemaphoreSlim Gate => Gates.GetValue(Diagram, static _ => new SemaphoreSlim(1, 1));
+
     public async ValueTask SelectAsync(IEnumerable<string> ids)
     {
-        string[] list = [.. ids.Where(Snapshot.Contains).Distinct(StringComparer.Ordinal)];
+        string[] list = [.. ids.Where(IsSelectable).Distinct(StringComparer.Ordinal)];
         await SetSelectionAsync(list).ConfigureAwait(true);
         if (controller is null)
         {
@@ -66,7 +70,9 @@ public sealed partial class MusselDiagramView
 
     public ValueTask ClearSelectionAsync() => SelectAsync([]);
 
-    internal Task OnSelectionChangedAsync(IEnumerable<string> ids) => SetSelectionAsync([.. ids.Where(Snapshot.Contains)]);
+    internal Task OnSelectionChangedAsync(IEnumerable<string> ids) => SetSelectionAsync([.. ids.Where(IsSelectable)]);
+
+    private bool IsSelectable(string id) => Snapshot.Find(id) is DiagramBox or DiagramLink;
 
     private async Task SetSelectionAsync(IReadOnlyList<string> ids)
     {
@@ -76,6 +82,11 @@ public sealed partial class MusselDiagramView
         }
 
         SelectedIds = ids;
+        if (HasCulledShown())
+        {
+            StateHasChanged();
+        }
+
         await SelectionChanged.InvokeAsync(SelectedIds).ConfigureAwait(true);
         await RefreshCommandsAsync().ConfigureAwait(true);
     }

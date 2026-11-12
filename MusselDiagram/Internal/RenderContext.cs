@@ -4,7 +4,7 @@ using System.Collections.Immutable;
 
 internal sealed record MarkerDefinition(string Id, DiagramMarker Kind, string? Color);
 
-internal sealed record IconDefinition(string Id, DiagramIcon Icon);
+internal sealed record IconDefinition(string Id, DiagramIcon Icon, string Body);
 
 internal sealed class RenderContext
 {
@@ -29,7 +29,7 @@ internal sealed class RenderContext
 
                 var id = $"mussel-diagram-{viewId}-i{icons.Count}";
                 iconIds[reference] = id;
-                icons.Add(new IconDefinition(id, icon));
+                icons.Add(new IconDefinition(id, icon, SvgSanitizer.Body(set, icon)));
             }
         }
 
@@ -45,7 +45,7 @@ internal sealed class RenderContext
 
                 var id = $"mussel-diagram-{viewId}-m{markers.Count}";
                 markerIds[(type.Name, kind)] = id;
-                markers.Add(new MarkerDefinition(id, kind, type.Look.Stroke));
+                markers.Add(new MarkerDefinition(id, kind, index.LookOf(type).Stroke));
             }
         }
 

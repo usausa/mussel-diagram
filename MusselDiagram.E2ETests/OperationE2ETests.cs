@@ -55,10 +55,10 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         await Expect(links).ToHaveCountAsync(5);
 
         await DragAsync(420, 185, 184, 49, false, async () =>
-            await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-line")).ToHaveCountAsync(1).ConfigureAwait(true));
+            await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-link")).ToHaveCountAsync(1).ConfigureAwait(true));
 
         await Expect(links).ToHaveCountAsync(6);
-        await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-line")).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-link")).ToHaveCountAsync(0);
     }
 
     [Theory]

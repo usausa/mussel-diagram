@@ -125,7 +125,7 @@ public static class DiagramIconImport
                 }
 
                 Report(id, svg, issues);
-                icons.Add(new DiagramIcon { Id = id, Body = svg.Body, Width = svg.Width, Height = svg.Height, Name = id, Category = categories.GetValueOrDefault(id) });
+                icons.Add(SvgSanitizer.MarkImported(new DiagramIcon { Id = id, Body = svg.Body, Width = svg.Width, Height = svg.Height, Name = id, Category = categories.GetValueOrDefault(id) }));
             }
         }
     }
@@ -200,7 +200,7 @@ public static class DiagramIconImport
             }
 
             Report(info.Id, svg, issues);
-            icons.Add(new DiagramIcon { Id = info.Id, Body = svg.Body, Width = svg.Width, Height = svg.Height, Name = info.Name ?? info.Id, Category = info.Category });
+            icons.Add(SvgSanitizer.MarkImported(new DiagramIcon { Id = info.Id, Body = svg.Body, Width = svg.Width, Height = svg.Height, Name = info.Name ?? info.Id, Category = info.Category }));
         }
 
         return new DiagramIconImportResult(new DiagramIconSet { Prefix = prefix, Icons = icons.ToImmutable() }, issues.ToImmutable());

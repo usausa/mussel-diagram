@@ -27,6 +27,16 @@ internal static class TypeSearch
         return [.. ranked.OrderBy(static x => x.Rank).ThenBy(static x => x.Order).Select(static x => x.Type)];
     }
 
+    public static List<string> OrderCategories(IEnumerable<DiagramBoxType> types, SchemaIndex index)
+    {
+        var order = index.Schema.Categories.Select(static x => x.Name).ToList();
+        return [.. types.Select(static x => x.Category).OfType<string>().Distinct(StringComparer.Ordinal).OrderBy(x => order.IndexOf(x) is var i and >= 0 ? i : int.MaxValue)];
+    }
+
+    public static IEnumerable<DiagramBoxType> InPaletteOrder(IReadOnlyList<DiagramBoxType> types, SchemaIndex index) =>
+        types.Where(static x => x.Category is null)
+            .Concat(OrderCategories(types, index).SelectMany(category => types.Where(x => string.Equals(x.Category, category, StringComparison.Ordinal))));
+
     public static string? CategoryLabel(DiagramBoxType type, SchemaIndex index) =>
         type.Category is { } category ? index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null;
 

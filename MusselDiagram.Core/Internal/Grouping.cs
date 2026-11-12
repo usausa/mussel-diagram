@@ -23,6 +23,11 @@ internal static class Grouping
             return GroupingResult.None;
         }
 
+        if ((CheckCount(snapshot, type) ?? CheckStay(index, boxes)) is { } limit)
+        {
+            return GroupingResult.Rejected(limit);
+        }
+
         var left = boxes.Min(static x => x.Bounds.X) - type.Padding.Left;
         var top = boxes.Min(static x => x.Bounds.Y) - type.Padding.Top;
         var right = boxes.Max(static x => x.Bounds.Right) + type.Padding.Right;
@@ -85,6 +90,11 @@ internal static class Grouping
             }
 
             var children = snapshot.GetChildren(group.Id).Where(x => !removed.Contains(x.Id)).ToArray();
+            if (CheckStay(index, children) is { } stay)
+            {
+                return GroupingResult.Rejected(stay);
+            }
+
             foreach (var child in children)
             {
                 if (!ElementPermissions.Allows(child, index, DiagramPermissions.Move))
@@ -103,6 +113,11 @@ internal static class Grouping
         }
 
         var deleted = groups.Select(static x => x.Id).ToArray();
+        if (CheckDelete(snapshot, index, deleted) is { } refused)
+        {
+            return GroupingResult.Rejected(refused);
+        }
+
         return new GroupingResult(
             editor =>
             {
@@ -128,7 +143,7 @@ internal static class Grouping
             return GroupingResult.None;
         }
 
-        if (CheckMembers(type, members) is { } reason)
+        if ((CheckMembers(type, members) ?? CheckCount(snapshot, type)) is { } reason)
         {
             return GroupingResult.Rejected(reason);
         }
@@ -165,7 +180,7 @@ internal static class Grouping
     public static bool CanRemoveMembers(DiagramSnapshot snapshot, IEnumerable<string> selection) =>
         (MemberTarget(snapshot, selection) is var (group, others)) && others.Any(x => group.MemberIds.Contains(x.Id));
 
-    public static GroupingResult RemoveMembers(DiagramSnapshot snapshot, IEnumerable<string> selection)
+    public static GroupingResult RemoveMembers(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection)
     {
         if (MemberTarget(snapshot, selection) is not var (group, others))
         {
@@ -179,6 +194,12 @@ internal static class Grouping
         }
 
         string[] members = [.. group.MemberIds.Where(x => !removed.Contains(x))];
+        if ((members.Length == 0) &&
+            ((!ElementPermissions.Allows(group, index, DiagramPermissions.Delete) || (index.FindBoxType(group) is { Undeletable: true }) ? Reason(DiagramReasonKind.Permission) : CheckDelete(snapshot, index, [group.Id])) is { } refused))
+        {
+            return GroupingResult.Rejected(refused);
+        }
+
         return new GroupingResult(editor => editor.SetMembers(group.Id, members), members.Length > 0 ? [group.Id] : [], null);
     }
 
@@ -226,6 +247,25 @@ internal static class Grouping
 
     private static List<DiagramBox> Boxes(DiagramSnapshot snapshot, IEnumerable<string> selection) =>
         [.. selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramBox>().Where(static x => x is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree })];
+
+    private static DiagramReason? CheckCount(DiagramSnapshot snapshot, DiagramGroupType type) =>
+        (type.MaxCount is { } max) && (snapshot.Groups.Count(x => string.Equals(x.Type, type.Name, StringComparison.Ordinal)) >= max) ? Reason(DiagramReasonKind.Count) : null;
+
+    private static DiagramReason? CheckStay(SchemaIndex index, IEnumerable<DiagramBox> boxes) =>
+        boxes.Any(x => (x.ParentId is not null) && (index.FindBoxType(x) is { StayInParent: true })) ? Reason(DiagramReasonKind.Nesting) : null;
+
+    private static DiagramReason? CheckDelete(DiagramSnapshot snapshot, SchemaIndex index, string[] ids)
+    {
+        if (index.Schema.Rules.CanDelete is not { } canDelete)
+        {
+            return null;
+        }
+
+        var result = canDelete(new DiagramDeletionContext { Snapshot = snapshot, ElementIds = [.. ids] });
+        return result.Allowed ? null : new DiagramReason(DiagramReasonKind.App, result.Reason);
+    }
+
+    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, DiagramCultures.Reason(kind));
 
     private static DiagramReason? CheckMembers(DiagramGroupType type, IEnumerable<DiagramBox> members) =>
         (type.AllowedMembers is { } allowed) && members.Any(x => !allowed.Contains(x.Type))

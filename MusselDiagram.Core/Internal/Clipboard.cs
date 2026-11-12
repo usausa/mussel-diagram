@@ -67,14 +67,14 @@ internal static class Clipboard
         return new ClipboardContent([.. elements], [.. roots]);
     }
 
-    public static (PasteResult? Result, DiagramReason? Reason) Paste(DiagramSnapshot snapshot, SchemaIndex index, ClipboardContent content, DiagramPoint offset)
+    public static (PasteResult? Result, DiagramReason? Reason) Paste(DiagramSnapshot snapshot, SchemaIndex index, ClipboardContent content, DiagramPoint offset, IReadOnlyDictionary<string, string>? ids = null)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var element in content.Elements)
         {
             if (element is not DiagramSharedItem)
             {
-                map[element.Id] = DiagramIds.Create();
+                map[element.Id] = ids?.GetValueOrDefault(element.Id) ?? DiagramIds.Create();
             }
         }
 

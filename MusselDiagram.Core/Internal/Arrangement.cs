@@ -37,7 +37,7 @@ internal static class Arrangement
                 AlignEdge.Middle => new DiagramPoint(0, ((top + bottom) / 2) - bounds.Center.Y),
                 _ => new DiagramPoint(0, bottom - bounds.Bottom)
             };
-            Add(result, box, offset, index);
+            Add(result, snapshot, box, offset, index);
         }
 
         return result;
@@ -58,7 +58,7 @@ internal static class Arrangement
         for (var i = 1; i < sorted.Count - 1; i++)
         {
             var delta = first + ((last - first) * i / (sorted.Count - 1)) - Center(sorted[i], horizontal);
-            Add(result, sorted[i], horizontal ? new DiagramPoint(delta, 0) : new DiagramPoint(0, delta), index);
+            Add(result, snapshot, sorted[i], horizontal ? new DiagramPoint(delta, 0) : new DiagramPoint(0, delta), index);
         }
 
         return result;
@@ -80,8 +80,13 @@ internal static class Arrangement
 
     private static double Center(DiagramBox box, bool horizontal) => horizontal ? box.Bounds.Center.X : box.Bounds.Center.Y;
 
-    private static void Add(List<(string Id, DiagramPoint Offset)> result, DiagramBox box, DiagramPoint offset, SchemaIndex index)
+    private static void Add(List<(string Id, DiagramPoint Offset)> result, DiagramSnapshot snapshot, DiagramBox box, DiagramPoint offset, SchemaIndex index)
     {
+        if (StayRules.Frame(snapshot, index, box) is { } frame)
+        {
+            offset = StayRules.Clamp(frame, box.Bounds, offset);
+        }
+
         if ((offset != default) && ElementPermissions.Allows(box, index, DiagramPermissions.Move))
         {
             result.Add((box.Id, offset));

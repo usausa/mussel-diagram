@@ -143,21 +143,17 @@ public sealed partial class MusselDiagramPalette
             .ToList();
         var searching = query.Trim().Length > 0;
         var shown = searching ? TypeSearch.Search(types, query, index, View.SearchNormalizer) : types;
-        var order = index.Schema.Categories.Select(static x => x.Name).ToList();
         var result = new List<PaletteRow>();
         foreach (var type in shown.Where(static x => x.Category is null))
         {
             result.Add(Item(type));
         }
 
-        var categories = shown.Select(static x => x.Category).OfType<string>().Distinct(StringComparer.Ordinal)
-            .OrderBy(x => order.IndexOf(x) is var i and >= 0 ? i : int.MaxValue)
-            .ToList();
-        foreach (var category in categories)
+        foreach (var category in TypeSearch.OrderCategories(shown, index))
         {
             var definition = index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal));
             var open = searching || ((definition?.Collapsed ?? false) == toggled.Contains(category));
-            result.Add(new PaletteRow(null, category, definition?.DisplayName ?? category, null, open));
+            result.Add(new PaletteRow(null, category, definition?.DisplayName ?? category, null, open, DiagramShape.Rectangle, null, null));
             if (open)
             {
                 result.AddRange(shown.Where(x => string.Equals(x.Category, category, StringComparison.Ordinal)).Select(Item));
@@ -166,9 +162,12 @@ public sealed partial class MusselDiagramPalette
 
         rows = result;
 
-        PaletteRow Item(DiagramBoxType type) =>
-            new(type, type.Category, type.DisplayName ?? type.Name, type.Look.Icon is { } icon ? View.RenderContext.FindIconId(icon) : null, true);
+        PaletteRow Item(DiagramBoxType type)
+        {
+            var look = View.RenderContext.Index.LookOf(type);
+            return new(type, type.Category, type.DisplayName ?? type.Name, look.Icon is { } icon ? View.RenderContext.FindIconId(icon) : null, true, look.Shape, look.Path, Svg.ShapeStyle(look));
+        }
     }
 
-    private sealed record PaletteRow(DiagramBoxType? Type, string? Category, string Label, string? IconId, bool Open);
+    private sealed record PaletteRow(DiagramBoxType? Type, string? Category, string Label, string? IconId, bool Open, DiagramShape Shape, string? Path, string? Style);
 }

@@ -112,6 +112,23 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TappingAnElementShowsTheConnectArrows(string mode)
+    {
+        await OpenAsync(mode);
+        var arrows = opened!.View.Locator(".mussel-diagram-overlay .mussel-diagram-arrow");
+
+        await TouchAsync("touchStart", (550, 335));
+        await TouchAsync("touchEnd");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='check'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(arrows).ToHaveCountAsync(4);
+
+        await TouchAsync("touchStart", (700, 470));
+        await TouchAsync("touchEnd");
+        await Expect(arrows).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task DoubleTapsEditText(string mode)
     {
         await OpenAsync(mode);

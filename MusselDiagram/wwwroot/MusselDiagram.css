@@ -15,7 +15,7 @@
     --mussel-diagram-candidate-color: #1a73e8;
     --mussel-diagram-drop-target-color: #1f883d;
     --mussel-diagram-not-allowed-color: var(--mussel-critical, #cf222e);
-    --mussel-diagram-grid-color: #d8dee4;
+    --mussel-diagram-grid-color: var(--mussel-grid-line, #d8dee4);
     --mussel-diagram-grid-major-color: #afb8c1;
     --mussel-diagram-pending-opacity: 0.6;
     --mussel-diagram-error-color: var(--mussel-critical, #cf222e);
@@ -44,7 +44,7 @@
     --mussel-diagram-candidate-color: #6ea8fe;
     --mussel-diagram-drop-target-color: #56d364;
     --mussel-diagram-not-allowed-color: var(--mussel-critical, #f85149);
-    --mussel-diagram-grid-color: #34332f;
+    --mussel-diagram-grid-color: var(--mussel-grid-line, #34332f);
     --mussel-diagram-grid-major-color: #4d4b45;
     --mussel-diagram-error-color: var(--mussel-critical, #f85149);
     --mussel-diagram-warning-color: #d29922;
@@ -114,6 +114,10 @@
     pointer-events: visibleStroke;
 }
 
+.mussel-diagram-group.mussel-diagram-fill-hit > .mussel-diagram-shape {
+    pointer-events: visible;
+}
+
 .mussel-diagram-unregistered > .mussel-diagram-shape {
     fill: none;
     stroke: var(--mussel-diagram-node-stroke);
@@ -146,7 +150,7 @@
     display: none;
 }
 
-.mussel-diagram-connecting .mussel-diagram-port[data-hidden] {
+.mussel-diagram-port[data-hidden][data-revealed] {
     display: inline;
 }
 
@@ -154,10 +158,15 @@
     fill: var(--mussel-diagram-candidate-color);
 }
 
+.mussel-diagram-port[data-not-allowed] {
+    fill: var(--mussel-diagram-not-allowed-color);
+    stroke: var(--mussel-diagram-not-allowed-color);
+}
+
 .mussel-diagram-link-hit {
     fill: none;
     stroke: transparent;
-    stroke-width: 10;
+    stroke-width: var(--mussel-diagram-link-hit-width, 10);
     vector-effect: non-scaling-stroke;
 }
 
@@ -230,6 +239,42 @@
     stroke-width: 1.5;
 }
 
+:where(.mussel-diagram-node, .mussel-diagram-group > .mussel-diagram-shape, .mussel-diagram-group > .mussel-diagram-label, .mussel-diagram-group > .mussel-diagram-icon) {
+    cursor: move;
+}
+
+:where(.mussel-diagram-fixed, .mussel-diagram-fixed > .mussel-diagram-shape, .mussel-diagram-fixed > .mussel-diagram-label, .mussel-diagram-fixed > .mussel-diagram-icon) {
+    cursor: default;
+}
+
+:where(.mussel-diagram-no-move .mussel-diagram-node, .mussel-diagram-no-move .mussel-diagram-group > .mussel-diagram-shape, .mussel-diagram-no-move .mussel-diagram-group > .mussel-diagram-label, .mussel-diagram-no-move .mussel-diagram-group > .mussel-diagram-icon) {
+    cursor: default;
+}
+
+:where(.mussel-diagram-port, .mussel-diagram-handle.mussel-diagram-end-handle, .mussel-diagram-arrow) {
+    cursor: crosshair;
+}
+
+:where(.mussel-diagram-port[data-direction="in"], .mussel-diagram-unconnectable > .mussel-diagram-port, .mussel-diagram-no-connect .mussel-diagram-port) {
+    cursor: inherit;
+}
+
+:where(.mussel-diagram-handle-n, .mussel-diagram-handle-s) {
+    cursor: ns-resize;
+}
+
+:where(.mussel-diagram-handle-e, .mussel-diagram-handle-w) {
+    cursor: ew-resize;
+}
+
+:where(.mussel-diagram-handle-nw, .mussel-diagram-handle-se) {
+    cursor: nwse-resize;
+}
+
+:where(.mussel-diagram-handle-ne, .mussel-diagram-handle-sw) {
+    cursor: nesw-resize;
+}
+
 .mussel-diagram-space,
 .mussel-diagram-space * {
     cursor: grab;
@@ -240,21 +285,52 @@
     cursor: grabbing;
 }
 
-.mussel-diagram-node,
-.mussel-diagram-group > .mussel-diagram-shape,
-.mussel-diagram-group > .mussel-diagram-label,
-.mussel-diagram-group > .mussel-diagram-icon,
 .mussel-diagram-dragging,
 .mussel-diagram-dragging * {
     cursor: move;
 }
 
-.mussel-diagram-port,
-.mussel-diagram-handle.mussel-diagram-end-handle,
-.mussel-diagram-arrow,
 .mussel-diagram-connecting,
 .mussel-diagram-connecting * {
     cursor: crosshair;
+}
+
+.mussel-diagram-resizing-n,
+.mussel-diagram-resizing-n *,
+.mussel-diagram-resizing-s,
+.mussel-diagram-resizing-s * {
+    cursor: ns-resize;
+}
+
+.mussel-diagram-resizing-e,
+.mussel-diagram-resizing-e *,
+.mussel-diagram-resizing-w,
+.mussel-diagram-resizing-w * {
+    cursor: ew-resize;
+}
+
+.mussel-diagram-resizing-nw,
+.mussel-diagram-resizing-nw *,
+.mussel-diagram-resizing-se,
+.mussel-diagram-resizing-se * {
+    cursor: nwse-resize;
+}
+
+.mussel-diagram-resizing-ne,
+.mussel-diagram-resizing-ne *,
+.mussel-diagram-resizing-sw,
+.mussel-diagram-resizing-sw * {
+    cursor: nesw-resize;
+}
+
+.mussel-diagram-selecting,
+.mussel-diagram-selecting * {
+    cursor: default;
+}
+
+.mussel-diagram-not-allowed,
+.mussel-diagram-not-allowed * {
+    cursor: not-allowed;
 }
 
 .mussel-diagram-handle {
@@ -263,26 +339,6 @@
     stroke-width: 1;
     vector-effect: non-scaling-stroke;
     pointer-events: all;
-}
-
-.mussel-diagram-handle-n,
-.mussel-diagram-handle-s {
-    cursor: ns-resize;
-}
-
-.mussel-diagram-handle-e,
-.mussel-diagram-handle-w {
-    cursor: ew-resize;
-}
-
-.mussel-diagram-handle-nw,
-.mussel-diagram-handle-se {
-    cursor: nwse-resize;
-}
-
-.mussel-diagram-handle-ne,
-.mussel-diagram-handle-sw {
-    cursor: nesw-resize;
 }
 
 .mussel-diagram-arrow {
@@ -301,14 +357,6 @@
     fill: none;
     stroke: var(--mussel-diagram-candidate-color);
     stroke-width: 1.5;
-    vector-effect: non-scaling-stroke;
-}
-
-.mussel-diagram-preview-line {
-    fill: none;
-    stroke: var(--mussel-diagram-selection-color);
-    stroke-width: 1.5;
-    stroke-dasharray: 4 3;
     vector-effect: non-scaling-stroke;
 }
 
@@ -407,8 +455,8 @@
 }
 
 .mussel-diagram-picker-shape {
-    fill: var(--mussel-diagram-node-fill);
-    stroke: var(--mussel-diagram-node-stroke);
+    fill: var(--mussel-diagram-shape-fill, var(--mussel-diagram-node-fill));
+    stroke: var(--mussel-diagram-shape-stroke, var(--mussel-diagram-node-stroke));
 }
 
 .mussel-diagram-picker-empty {
@@ -514,6 +562,8 @@
 .mussel-diagram-palette {
     --mussel-diagram-palette-background: #f6f8fa;
     --mussel-diagram-palette-hover: rgba(26, 115, 232, 0.1);
+    --mussel-diagram-palette-shape-fill: #ffffff;
+    --mussel-diagram-palette-shape-stroke: #57606a;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -528,6 +578,8 @@
 .mussel-diagram-palette.mussel-dark {
     --mussel-diagram-palette-background: #262624;
     --mussel-diagram-palette-hover: rgba(110, 168, 254, 0.16);
+    --mussel-diagram-palette-shape-fill: #1f1f1d;
+    --mussel-diagram-palette-shape-stroke: #a8a69f;
 }
 
 .mussel-diagram-palette-search {
@@ -604,8 +656,8 @@
 }
 
 .mussel-diagram-palette-shape {
-    fill: #ffffff;
-    stroke: #57606a;
+    fill: var(--mussel-diagram-shape-fill, var(--mussel-diagram-palette-shape-fill));
+    stroke: var(--mussel-diagram-shape-stroke, var(--mussel-diagram-palette-shape-stroke));
 }
 
 .mussel-diagram-palette-name {

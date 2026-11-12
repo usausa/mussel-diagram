@@ -128,6 +128,13 @@ public enum DiagramTextAlignment
     End
 }
 
+public enum DiagramHeaderForm
+{
+    TopLeft,
+    TopCenter,
+    NameOnly
+}
+
 public enum DiagramGroupSizing
 {
     Manual,

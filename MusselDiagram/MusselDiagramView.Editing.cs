@@ -60,13 +60,14 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramPointerEventArgs> BackgroundDoubleClicked { get; set; }
 
-    internal Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, long baseVersion, int rejectionsSeen)
+    internal Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var element = NewBox(type, bounds, parentId, value);
         Splice? split = null;
         return CommitAsync(
             DiagramOperation.Drop,
             rejectionsSeen,
+            selection,
             () =>
             {
                 var reason = CheckDrop(element, baseVersion);
@@ -94,13 +95,14 @@ public sealed partial class MusselDiagramView
             element?.Id);
     }
 
-    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, long baseVersion, int rejectionsSeen)
+    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var newText = text.Length == 0 ? null : text;
         string? oldText = null;
         return CommitAsync(
             DiagramOperation.TextEdit,
             rejectionsSeen,
+            selection,
             () =>
             {
                 var reason = CheckText(elementId, slot, baseVersion);
@@ -214,7 +216,7 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Count);
         }
 
-        if ((element.ParentId is not null) && (current.Find(element.ParentId) is not DiagramGroup { Kind: DiagramGroupKind.Tree, Locked: false }))
+        if (!CanBeParent(element.ParentId))
         {
             return Reason(DiagramReasonKind.Nesting);
         }
@@ -285,7 +287,8 @@ public sealed partial class MusselDiagramView
     private Task DeleteAsync(IEnumerable<string> selection, bool isCut)
     {
         var index = Diagram.Index;
-        var ids = Deletion.Deletable(Snapshot, index, selection);
+        string[] selected = [.. selection];
+        var ids = Deletion.Deletable(Snapshot, index, selected);
         if (ids.Count == 0)
         {
             return Task.CompletedTask;
@@ -296,6 +299,12 @@ public sealed partial class MusselDiagramView
             DiagramOperation.Delete,
             () =>
             {
+                ids = Deletion.Deletable(Snapshot, index, selected);
+                if (ids.Count == 0)
+                {
+                    return Reason(DiagramReasonKind.Changed);
+                }
+
                 removed = Deletion.Removed(Snapshot, index, ids);
                 if (index.Schema.Rules.CanDelete?.Invoke(new DiagramDeletionContext { Snapshot = Snapshot, ElementIds = removed }) is { Allowed: false } result)
                 {
@@ -328,7 +337,7 @@ public sealed partial class MusselDiagramView
             DiagramOperation.Paste,
             () =>
             {
-                var (result, reason) = Clipboard.Paste(Snapshot, Diagram.Index, content, new DiagramPoint(step, step));
+                var (result, reason) = Clipboard.Paste(Snapshot, Diagram.Index, content, new DiagramPoint(step, step), pasted?.IdMap);
                 pasted = result;
                 return reason;
             },

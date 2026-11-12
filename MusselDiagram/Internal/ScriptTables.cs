@@ -35,13 +35,14 @@ internal static class ScriptTables
         var schema = context.Index.Schema;
         return new ScriptSchema(
             [.. schema.NodeTypes.Select(x => Type(x, false, context, templates)), .. schema.GroupTypes.Select(x => Type(x, true, context, null))],
-            [.. schema.LinkTypes.Select(LinkType)],
+            [.. schema.LinkTypes.Select(x => LinkType(x, context))],
             schema.DefaultLinkType,
             Enum.GetValues<DiagramReasonKind>()
                 .Select(static x => (Kind: x, Text: DiagramCultures.Reason(x)))
                 .Where(static x => x.Text is not null)
                 .ToDictionary(static x => JsonNamingPolicy.CamelCase.ConvertName(x.Kind.ToString()), static x => x.Text!, StringComparer.Ordinal),
-            new ScriptTexts { SearchPlaceholder = DiagramCultures.SearchPlaceholder, NoMatches = DiagramCultures.NoMatches });
+            new ScriptTexts { SearchPlaceholder = DiagramCultures.SearchPlaceholder, NoMatches = DiagramCultures.NoMatches },
+            [.. TypeSearch.InPaletteOrder([.. schema.NodeTypes, .. schema.GroupTypes], context.Index).Select(static x => x.Name)]);
     }
 
     public static DiagramPermissions PermissionsOf(DiagramBox box, SchemaIndex index) => ElementPermissions.Of(box, index);
@@ -134,7 +135,8 @@ internal static class ScriptTables
     private static ScriptType Type(DiagramBoxType type, bool isGroup, RenderContext context, DiagramTemplateSet? templates)
     {
         var group = type as DiagramGroupType;
-        var ports = LinkRouting.Place(type.Ports);
+        var ports = LinkRouting.Place(type.Ports, type);
+        var look = context.Index.LookOf(type);
         return new ScriptType
         {
             Name = type.Name,
@@ -151,14 +153,23 @@ internal static class ScriptTables
             H = type.Size.Height,
             MinW = type.MinSize?.Width,
             MinH = type.MinSize?.Height,
-            Icon = type.Look.Icon is { } icon ? context.FindIconId(icon) : null,
-            Shape = templates?.Find(type.Name) is not null ? "rectangle" : type.Look.Shape switch
+            Icon = look.Icon is { } icon ? context.FindIconId(icon) : null,
+            HeaderForm = group is null ? null : (group.Header?.Form ?? DiagramHeaderForm.TopLeft) switch
+            {
+                DiagramHeaderForm.TopCenter => "top-center",
+                DiagramHeaderForm.NameOnly => "name-only",
+                _ => "top-left"
+            },
+            HeaderIcon = group is null ? null : group.Header?.IconSize ?? LabelLayout.HeaderIconSize,
+            Shape = templates?.Find(type.Name) is not null ? "rectangle" : look.Shape switch
             {
                 DiagramShape.Ellipse => "ellipse",
                 DiagramShape.Diamond => "diamond",
                 DiagramShape.Path => "path",
                 _ => "rectangle"
             },
+            Path = (templates?.Find(type.Name) is null) && (look.Shape == DiagramShape.Path) ? look.Path : null,
+            Style = Svg.ShapeStyle(look),
             Palette = type.InPalette,
             Parents = type.AllowedParents is { } parents ? [.. parents] : null,
             Children = group?.AllowedChildren is { } children ? [.. children] : null,
@@ -171,7 +182,7 @@ internal static class ScriptTables
         };
     }
 
-    private static ScriptLinkType LinkType(DiagramLinkType type)
+    private static ScriptLinkType LinkType(DiagramLinkType type, RenderContext context)
     {
         var (sourceCut, targetCut) = LinkRouting.Cuts(type);
         return new ScriptLinkType
@@ -184,7 +195,10 @@ internal static class ScriptTables
             AllowSelf = type.AllowSelf,
             AllowDuplicate = type.AllowDuplicate,
             AllowCrossParent = type.AllowCrossParent,
-            AllowCycles = type.AllowCycles
+            AllowCycles = type.AllowCycles,
+            Style = DiagramLinkView.StyleOf(context.Index.LookOf(type), null),
+            SourceMarker = context.FindMarkerId(type.Name, type.SourceMarker),
+            TargetMarker = context.FindMarkerId(type.Name, type.TargetMarker)
         };
     }
 
@@ -196,6 +210,7 @@ internal static class ScriptTables
             Id = port.Id,
             Side = Side(port.Side),
             Ratio = port.Ratio,
+            Along = port.Along,
             Offset = port.Offset,
             Direction = definition.Direction switch
             {

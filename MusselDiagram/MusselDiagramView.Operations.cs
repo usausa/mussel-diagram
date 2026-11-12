@@ -40,6 +40,9 @@ public sealed partial class MusselDiagramView
     public double ConnectionRadius { get; set; } = 20;
 
     [Parameter]
+    public double LinkHitWidth { get; set; } = 10;
+
+    [Parameter]
     public double QuickAddSpacing { get; set; } = 80;
 
     [Parameter]
@@ -60,15 +63,17 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramReconnectedEventArgs> Reconnected { get; set; }
 
-    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, string? splitLinkId, long baseVersion, int rejectionsSeen)
+    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, string? splitLinkId, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         Splice? split = null;
         return CommitAsync(
             DiagramOperation.Move,
             rejectionsSeen,
+            selection,
             () =>
             {
-                var reason = CheckMove(ids, baseVersion) ?? (reparent ? CheckParent(ids, parentId) : null);
+                var reason = CheckMove(ids, baseVersion) ?? (reparent ? CheckParent(ids, parentId) : null) ??
+                    (StayRules.Allows(Snapshot, Diagram.Index, ids, offset) ? null : Reason(DiagramReasonKind.Nesting));
                 split = (reason is null) && (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0)
                     ? SpliceOf(ids[0], splitLinkId, baseVersion, editor =>
                     {
@@ -106,10 +111,11 @@ public sealed partial class MusselDiagramView
             snapshot => Moved.InvokeAsync(new DiagramMovedEventArgs(ids, offset, reparent, reparent ? parentId : null, snapshot)));
     }
 
-    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, long baseVersion, int rejectionsSeen) =>
+    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null) =>
         CommitAsync(
             DiagramOperation.Resize,
             rejectionsSeen,
+            selection,
             () => CheckResize(id, bounds, baseVersion),
             async () =>
             {
@@ -120,12 +126,13 @@ public sealed partial class MusselDiagramView
             () => Diagram.Resize(id, bounds, null, DiagramChangeOrigin.User),
             snapshot => Resized.InvokeAsync(new DiagramResizedEventArgs(id, bounds, snapshot)));
 
-    internal Task<ScriptCommitResult> CommitConnectAsync(DiagramLinkEnd source, DiagramLinkEnd target, string linkType, long baseVersion, int rejectionsSeen)
+    internal Task<ScriptCommitResult> CommitConnectAsync(DiagramLinkEnd source, DiagramLinkEnd target, string linkType, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var linkId = DiagramIds.Create();
         return CommitAsync(
             DiagramOperation.Connect,
             rejectionsSeen,
+            selection,
             () => CheckConnect(source, target, linkType, baseVersion),
             async () =>
             {
@@ -137,21 +144,25 @@ public sealed partial class MusselDiagramView
             snapshot => Connected.InvokeAsync(new DiagramConnectedEventArgs(linkId, source, target, linkType, null, snapshot)));
     }
 
-    internal Task<ScriptCommitResult> CommitReconnectAsync(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long baseVersion, int rejectionsSeen) =>
-        CommitAsync(
+    internal Task<ScriptCommitResult> CommitReconnectAsync(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    {
+        DiagramLink? link = null;
+        return CommitAsync(
             DiagramOperation.Reconnect,
             rejectionsSeen,
-            () => CheckReconnect(linkId, side, end, baseVersion),
+            selection,
+            () => CheckReconnect(linkId, side, end, baseVersion, out link),
             async () =>
             {
-                var args = new DiagramReconnectingEventArgs(linkId, side, end);
+                var args = new DiagramReconnectingEventArgs(linkId, side, end, EndOf(link!, side, end, DiagramLinkEndSide.Source), EndOf(link!, side, end, DiagramLinkEndSide.Target), link!.Type);
                 await Reconnecting.InvokeAsync(args).ConfigureAwait(true);
                 return Canceled(args.Cancel, args.Reason);
             },
             () => Diagram.Reconnect(linkId, side, end, null, DiagramChangeOrigin.User),
-            snapshot => Reconnected.InvokeAsync(new DiagramReconnectedEventArgs(linkId, side, end, snapshot)));
+            snapshot => Reconnected.InvokeAsync(new DiagramReconnectedEventArgs(linkId, side, end, EndOf(link!, side, end, DiagramLinkEndSide.Source), EndOf(link!, side, end, DiagramLinkEndSide.Target), link!.Type, snapshot)));
+    }
 
-    internal Task<ScriptCommitResult> CommitPlaceAsync(string type, DiagramRect bounds, string? parentId, DiagramLinkEnd from, string linkType, long baseVersion, int rejectionsSeen)
+    internal Task<ScriptCommitResult> CommitPlaceAsync(string type, DiagramRect bounds, string? parentId, DiagramLinkEnd from, string linkType, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var element = NewBox(type, bounds, parentId);
         var linkId = DiagramIds.Create();
@@ -159,6 +170,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.Connect,
             rejectionsSeen,
+            selection,
             () => CheckPlace(element, from, linkType, baseVersion, out target),
             async () =>
             {
@@ -174,8 +186,12 @@ public sealed partial class MusselDiagramView
                     Diagram.Connect(NewLink(linkId, from, target, linkType));
                 }
             },
-            snapshot => Connected.InvokeAsync(new DiagramConnectedEventArgs(linkId, from, target, linkType, element, snapshot)));
+            snapshot => Connected.InvokeAsync(new DiagramConnectedEventArgs(linkId, from, target, linkType, element, snapshot)),
+            element?.Id);
     }
+
+    private static DiagramLinkEnd EndOf(DiagramLink link, DiagramLinkEndSide side, DiagramLinkEnd end, DiagramLinkEndSide wanted) =>
+        side == wanted ? end : wanted == DiagramLinkEndSide.Source ? link.Source : link.Target;
 
     private static DiagramReason? Canceled(bool cancel, string? reason) =>
         cancel ? new DiagramReason(reason is null ? DiagramReasonKind.Canceled : DiagramReasonKind.App, reason) : null;
@@ -185,13 +201,20 @@ public sealed partial class MusselDiagramView
     private async Task<ScriptCommitResult> CommitAsync(
         DiagramOperation operation,
         int rejectionsSeen,
+        IReadOnlyList<string>? selection,
         Func<DiagramReason?> check,
         Func<Task<DiagramReason?>> before,
         Action write,
         Func<DiagramSnapshot, Task> after,
         string? elementId = null)
     {
-        await commitLock.WaitAsync().ConfigureAwait(true);
+        if (selection is not null)
+        {
+            await SetSelectionAsync([.. selection.Where(IsSelectable)]).ConfigureAwait(true);
+        }
+
+        var gate = Gate;
+        await gate.WaitAsync().ConfigureAwait(true);
         try
         {
             if (rejectionsSeen < rejections)
@@ -225,7 +248,7 @@ public sealed partial class MusselDiagramView
         }
         finally
         {
-            commitLock.Release();
+            gate.Release();
         }
     }
 
@@ -297,7 +320,7 @@ public sealed partial class MusselDiagramView
     {
         var current = Snapshot;
         var index = Diagram.Index;
-        if ((parentId is not null) && (current.Find(parentId) is not DiagramGroup { Kind: DiagramGroupKind.Tree, Locked: false }))
+        if (!CanBeParent(parentId))
         {
             return Reason(DiagramReasonKind.Nesting);
         }
@@ -369,8 +392,12 @@ public sealed partial class MusselDiagramView
         return DiagramRules.CheckConnection(Snapshot, Diagram.Index, source, target, linkType, static _ => true, null, true);
     }
 
-    private DiagramReason? CheckReconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long baseVersion)
+    private bool CanBeParent(string? parentId) =>
+        (parentId is null) || ((Snapshot.Find(parentId) is DiagramGroup { Kind: DiagramGroupKind.Tree, Locked: false } parent) && (Diagram.Index.FindBoxType(parent) is not null));
+
+    private DiagramReason? CheckReconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long baseVersion, out DiagramLink? current)
     {
+        current = null;
         if (ReadOnly || !ConnectEnabled)
         {
             return Reason(DiagramReasonKind.Permission);
@@ -390,8 +417,9 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Permission);
         }
 
-        var source = side == DiagramLinkEndSide.Source ? end : link.Source;
-        var target = side == DiagramLinkEndSide.Target ? end : link.Target;
+        current = link;
+        var source = EndOf(link, side, end, DiagramLinkEndSide.Source);
+        var target = EndOf(link, side, end, DiagramLinkEndSide.Target);
         return DiagramRules.CheckConnection(Snapshot, Diagram.Index, source, target, link.Type, x => !string.Equals(x.Id, linkId, StringComparison.Ordinal), linkId, true);
     }
 
@@ -416,7 +444,7 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Count);
         }
 
-        if ((element.ParentId is not null) && (current.Find(element.ParentId) is not DiagramGroup { Locked: false }))
+        if (!CanBeParent(element.ParentId))
         {
             return Reason(DiagramReasonKind.Nesting);
         }

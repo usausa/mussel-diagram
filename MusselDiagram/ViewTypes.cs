@@ -174,11 +174,14 @@ public sealed class DiagramConnectedEventArgs : EventArgs
 
 public sealed class DiagramReconnectingEventArgs : EventArgs
 {
-    internal DiagramReconnectingEventArgs(string linkId, DiagramLinkEndSide end, DiagramLinkEnd newEnd)
+    internal DiagramReconnectingEventArgs(string linkId, DiagramLinkEndSide end, DiagramLinkEnd newEnd, DiagramLinkEnd source, DiagramLinkEnd target, string linkType)
     {
         LinkId = linkId;
         End = end;
         NewEnd = newEnd;
+        Source = source;
+        Target = target;
+        LinkType = linkType;
     }
 
     public string LinkId { get; }
@@ -186,6 +189,12 @@ public sealed class DiagramReconnectingEventArgs : EventArgs
     public DiagramLinkEndSide End { get; }
 
     public DiagramLinkEnd NewEnd { get; }
+
+    public DiagramLinkEnd Source { get; }
+
+    public DiagramLinkEnd Target { get; }
+
+    public string LinkType { get; }
 
     public bool Cancel { get; set; }
 
@@ -194,11 +203,14 @@ public sealed class DiagramReconnectingEventArgs : EventArgs
 
 public sealed class DiagramReconnectedEventArgs : EventArgs
 {
-    internal DiagramReconnectedEventArgs(string linkId, DiagramLinkEndSide end, DiagramLinkEnd newEnd, DiagramSnapshot snapshot)
+    internal DiagramReconnectedEventArgs(string linkId, DiagramLinkEndSide end, DiagramLinkEnd newEnd, DiagramLinkEnd source, DiagramLinkEnd target, string linkType, DiagramSnapshot snapshot)
     {
         LinkId = linkId;
         End = end;
         NewEnd = newEnd;
+        Source = source;
+        Target = target;
+        LinkType = linkType;
         Snapshot = snapshot;
     }
 
@@ -207,6 +219,12 @@ public sealed class DiagramReconnectedEventArgs : EventArgs
     public DiagramLinkEndSide End { get; }
 
     public DiagramLinkEnd NewEnd { get; }
+
+    public DiagramLinkEnd Source { get; }
+
+    public DiagramLinkEnd Target { get; }
+
+    public string LinkType { get; }
 
     public DiagramSnapshot Snapshot { get; }
 }

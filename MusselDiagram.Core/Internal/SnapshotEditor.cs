@@ -56,6 +56,8 @@ internal sealed class SnapshotEditor
 
     public bool SkipCycleCheck { get; init; }
 
+    public bool KeepMissingPorts { get; init; }
+
     public bool SkipRoutes { get; init; }
 
     public bool SkipAppRouter { get; init; }
@@ -94,10 +96,15 @@ internal sealed class SnapshotEditor
         reorder = false;
     }
 
-    public void Add(DiagramElement element) => Add(element, true);
+    public void Add(DiagramElement element)
+    {
+        Add(element, true);
+        Changes.Targets.Add(element.Id);
+    }
 
     public void AddWithRoute(DiagramLink link)
     {
+        Changes.Targets.Add(link.Id);
         if ((link.Route.Length >= 2) &&
             (elements.GetValueOrDefault(link.Source.ElementId) is DiagramBox sourceBox) &&
             (elements.GetValueOrDefault(link.Target.ElementId) is DiagramBox targetBox))
@@ -270,6 +277,7 @@ internal sealed class SnapshotEditor
         var children = ChildrenMap();
         foreach (var id in ids)
         {
+            Changes.Targets.Add(id);
             Collect(id);
         }
 
@@ -304,6 +312,8 @@ internal sealed class SnapshotEditor
         {
             return;
         }
+
+        Changes.Targets.Add(element.Id);
 
         if ((current is DiagramGroup currentGroup) && (element is DiagramGroup newGroup) && (currentGroup.Kind != newGroup.Kind))
         {
@@ -355,6 +365,11 @@ internal sealed class SnapshotEditor
 
     public void Move(IEnumerable<string> ids, DiagramPoint offset)
     {
+        if (!double.IsFinite(offset.X) || !double.IsFinite(offset.Y))
+        {
+            throw new DiagramException("The offset is not a pair of finite numbers.");
+        }
+
         if (offset == default)
         {
             return;
@@ -367,6 +382,7 @@ internal sealed class SnapshotEditor
             switch (elements.GetValueOrDefault(id))
             {
                 case DiagramGroup { Kind: DiagramGroupKind.Overlay } overlay:
+                    Changes.Targets.Add(id);
                     foreach (var member in overlay.MemberIds)
                     {
                         Collect(member);
@@ -374,6 +390,7 @@ internal sealed class SnapshotEditor
 
                     break;
                 case DiagramBox box:
+                    Changes.Targets.Add(id);
                     Collect(box.Id);
                     break;
             }
@@ -437,6 +454,7 @@ internal sealed class SnapshotEditor
 
             Put(moved);
             Changes.MarkUpdated(id, DiagramChangeParts.Parent);
+            Changes.Targets.Add(id);
             touched.Add(id);
             reorder |= box is DiagramGroup;
         }
@@ -454,6 +472,8 @@ internal sealed class SnapshotEditor
         {
             return;
         }
+
+        Changes.Targets.Add(groupId);
 
         if (members.IsEmpty)
         {
@@ -784,7 +804,7 @@ internal sealed class SnapshotEditor
             throw new DiagramException($"The end '{end.ElementId}' of '{link.Id}' is not a node or a group.");
         }
 
-        if ((end.PortId is { } portId) && (index.FindBoxType(box) is not null) && (index.FindPort(box, portId) is null))
+        if (!KeepMissingPorts && (end.PortId is { } portId) && (index.FindBoxType(box) is not null) && (index.FindPort(box, portId) is null))
         {
             throw new DiagramException($"The port '{portId}' of '{box.Id}' does not exist.");
         }
@@ -1096,6 +1116,7 @@ internal sealed class SnapshotEditor
     public void Reorder(IEnumerable<string> ids, OrderMove move)
     {
         var targets = ids.ToHashSet(StringComparer.Ordinal);
+        Changes.Targets.UnionWith(targets);
         Shift(nodes, targets, move, static _ => string.Empty);
         Shift(links, targets, move, static _ => string.Empty);
         if (!groups.Items.Any(x => targets.Contains(x.Id)))

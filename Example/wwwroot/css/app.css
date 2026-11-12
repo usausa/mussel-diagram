@@ -121,3 +121,20 @@ body {
     stroke: #1f883d;
     stroke-width: 2;
 }
+
+.layout {
+    --example-aws-cloud: #242f3e;
+    --example-aws-text: #000000;
+    --example-aws-arrow: #000000;
+}
+
+.layout.mussel-dark {
+    --example-aws-cloud: #ffffff;
+    --example-aws-text: #ffffff;
+    --example-aws-arrow: #8fa7c4;
+}
+
+.diagram-import {
+    max-width: 100%;
+    font-size: 12px;
+}

@@ -12,4 +12,20 @@ internal static class Svg
         DiagramDash.Dotted => "2 3",
         _ => null
     };
+
+    public static string? ShapeStyle(DiagramLook look)
+    {
+        var style = string.Empty;
+        if (look.Fill is { } fill)
+        {
+            style += $"--mussel-diagram-shape-fill: {fill};";
+        }
+
+        if (look.Stroke is { } stroke)
+        {
+            style += $"--mussel-diagram-shape-stroke: {stroke};";
+        }
+
+        return style.Length == 0 ? null : style;
+    }
 }

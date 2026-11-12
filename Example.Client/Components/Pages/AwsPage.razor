@@ -1,0 +1,16 @@
+@page "/aws"
+
+<PageTitle>MusselDiagram</PageTitle>
+
+<div class="diagram-page diagram-with-palette">
+    <aside class="diagram-sidebar">
+        <div class="diagram-actions">
+            <InputFile OnChange="ImportAsync" accept=".zip" class="diagram-import" data-action="import" />
+        </div>
+        @if (view is not null)
+        {
+            <MusselDiagramPalette View="view" />
+        }
+    </aside>
+    <MusselDiagramView @ref="view" Diagram="diagram" class="example-aws" />
+</div>

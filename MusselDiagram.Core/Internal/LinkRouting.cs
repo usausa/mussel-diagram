@@ -6,7 +6,7 @@ using System.Text;
 
 internal readonly record struct LinkAnchor(DiagramPoint Position, DiagramSide Side);
 
-internal sealed record PortPlacement(DiagramPortDefinition Definition, double Ratio)
+internal sealed record PortPlacement(DiagramPortDefinition Definition, double Ratio, double? Along = null)
 {
     public string Id => Definition.Id;
 
@@ -14,7 +14,7 @@ internal sealed record PortPlacement(DiagramPortDefinition Definition, double Ra
 
     public double Offset => Definition.Offset;
 
-    public DiagramPoint PositionIn(DiagramRect bounds) => LinkRouting.PortPosition(bounds, Side, Ratio, Offset);
+    public DiagramPoint PositionIn(DiagramRect bounds) => LinkRouting.PortPosition(bounds, Side, Ratio, Offset, Along);
 }
 
 internal static class LinkRouting
@@ -25,15 +25,15 @@ internal static class LinkRouting
 
     public const double MarkerLength = 10;
 
-    public static DiagramPoint PortPosition(DiagramRect bounds, DiagramSide side, double ratio, double offset) => side switch
+    public static DiagramPoint PortPosition(DiagramRect bounds, DiagramSide side, double ratio, double offset, double? along = null) => side switch
     {
-        DiagramSide.Top => new(bounds.X + (bounds.Width * ratio), bounds.Y - offset),
-        DiagramSide.Right => new(bounds.Right + offset, bounds.Y + (bounds.Height * ratio)),
-        DiagramSide.Bottom => new(bounds.X + (bounds.Width * ratio), bounds.Bottom + offset),
-        _ => new(bounds.X - offset, bounds.Y + (bounds.Height * ratio))
+        DiagramSide.Top => new(bounds.X + (along ?? (bounds.Width * ratio)), bounds.Y - offset),
+        DiagramSide.Right => new(bounds.Right + offset, bounds.Y + (along ?? (bounds.Height * ratio))),
+        DiagramSide.Bottom => new(bounds.X + (along ?? (bounds.Width * ratio)), bounds.Bottom + offset),
+        _ => new(bounds.X - offset, bounds.Y + (along ?? (bounds.Height * ratio)))
     };
 
-    public static ImmutableArray<PortPlacement> Place(ImmutableArray<DiagramPortDefinition> ports)
+    public static ImmutableArray<PortPlacement> Place(ImmutableArray<DiagramPortDefinition> ports, DiagramBoxType? type = null)
     {
         var builder = ImmutableArray.CreateBuilder<PortPlacement>(ports.Length);
         for (var i = 0; i < ports.Length; i++)
@@ -59,7 +59,10 @@ internal static class LinkRouting
                 ratio = (before + 1) / (double)(count + 1);
             }
 
-            builder.Add(new PortPlacement(port, ratio.Value));
+            var along = (port.Row is { } row) && (port.Side is DiagramSide.Left or DiagramSide.Right)
+                ? (type?.RowHeaderHeight ?? 0) + ((row + 0.5) * (type?.RowHeight ?? 20))
+                : (double?)null;
+            builder.Add(new PortPlacement(port, ratio.Value, along));
         }
 
         return builder.MoveToImmutable();

@@ -17,6 +17,8 @@ public sealed record DiagramSchema
 
     public ImmutableArray<DiagramCategory> Categories { get; init; } = [];
 
+    public ImmutableArray<DiagramPreset> Presets { get; init; } = [];
+
     public string? DefaultLinkType { get; init; }
 
     public string? DefaultGroupType { get; init; }
@@ -71,6 +73,10 @@ public abstract record DiagramBoxType : DiagramType
 
     public bool StayInParent { get; init; }
 
+    public double RowHeaderHeight { get; init; }
+
+    public double RowHeight { get; init; } = 20;
+
     public int? MaxCount { get; init; }
 
     public bool Required { get; init; }
@@ -123,7 +129,22 @@ public sealed record DiagramGroupType : DiagramBoxType
 
     public ImmutableArray<string>? AllowedMembers { get; init; }
 
+    public DiagramGroupHeader? Header { get; init; }
+
     public bool FillHitTest { get; init; }
+}
+
+public sealed record DiagramGroupHeader
+{
+    public DiagramHeaderForm Form { get; init; }
+
+    public double IconSize { get; init; } = 24;
+
+    public double? NameLeft { get; init; }
+
+    public double? NameTop { get; init; }
+
+    public DiagramTextAlignment? NameAlignment { get; init; }
 }
 
 public sealed record DiagramLinkType : DiagramType
@@ -177,6 +198,15 @@ public sealed record DiagramLook
     public double? StrokeWidth { get; init; }
 
     public DiagramDash Dash { get; init; }
+
+    public string? Preset { get; init; }
+}
+
+public sealed record DiagramPreset
+{
+    public required string Name { get; init; }
+
+    public required DiagramLook Look { get; init; }
 }
 
 public sealed record DiagramLabelSlot
@@ -220,6 +250,8 @@ public sealed record DiagramPortDefinition
     public DiagramSide Side { get; init; } = DiagramSide.Right;
 
     public double? Ratio { get; init; }
+
+    public int? Row { get; init; }
 
     public double Offset { get; init; }
 

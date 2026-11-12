@@ -1,6 +1,7 @@
 namespace MusselDiagram.Internal;
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -11,6 +12,12 @@ internal sealed record SanitizedSvg(string Body, double Width, double Height, IR
 internal static partial class SvgSanitizer
 {
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
+
+    private static readonly object Marker = new();
+
+    private static readonly ConditionalWeakTable<DiagramIcon, object> Imported = [];
+
+    private static readonly ConditionalWeakTable<DiagramIcon, StrongBox<string>> Cleaned = [];
 
     private static readonly HashSet<string> AllowedElements = new(StringComparer.Ordinal)
     {
@@ -45,6 +52,17 @@ internal static partial class SvgSanitizer
         var sanitized = Sanitize(root, idPrefix);
         var body = (minX == 0) && (minY == 0) ? sanitized.Body : $"<g transform=\"translate({Number(-minX)},{Number(-minY)})\">{sanitized.Body}</g>";
         return sanitized with { Body = body, Width = width, Height = height };
+    }
+
+    public static string Body(DiagramIconSet set, DiagramIcon icon) =>
+        Imported.TryGetValue(icon, out _)
+            ? icon.Body
+            : Cleaned.GetValue(icon, x => new StrongBox<string>(FromBody(x.Body, $"{SafeId(set.Prefix)}-{SafeId(x.Id)}-", x.Width, x.Height)?.Body ?? string.Empty)).Value!;
+
+    public static DiagramIcon MarkImported(DiagramIcon icon)
+    {
+        Imported.AddOrUpdate(icon, Marker);
+        return icon;
     }
 
     public static SanitizedSvg? FromBody(string body, string idPrefix, double width, double height)

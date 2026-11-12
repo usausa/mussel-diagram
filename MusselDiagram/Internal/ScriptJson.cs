@@ -43,6 +43,8 @@ internal sealed record ScriptOptions
 
     public required double ConnectionRadius { get; init; }
 
+    public required double LinkHitWidth { get; init; }
+
     public required double QuickAddSpacing { get; init; }
 
     public string? LinkType { get; init; }
@@ -82,6 +84,8 @@ internal sealed record ScriptPort
     public required string Side { get; init; }
 
     public required double Ratio { get; init; }
+
+    public double? Along { get; init; }
 
     public required double Offset { get; init; }
 
@@ -224,7 +228,15 @@ internal sealed record ScriptType
 
     public string? Icon { get; init; }
 
+    public string? HeaderForm { get; init; }
+
+    public double? HeaderIcon { get; init; }
+
     public required string Shape { get; init; }
+
+    public string? Path { get; init; }
+
+    public string? Style { get; init; }
 
     public required bool Palette { get; init; }
 
@@ -264,6 +276,12 @@ internal sealed record ScriptLinkType
     public required bool AllowCrossParent { get; init; }
 
     public required bool AllowCycles { get; init; }
+
+    public string? Style { get; init; }
+
+    public string? SourceMarker { get; init; }
+
+    public string? TargetMarker { get; init; }
 }
 
 internal sealed record ScriptTexts
@@ -273,7 +291,7 @@ internal sealed record ScriptTexts
     public required string NoMatches { get; init; }
 }
 
-internal sealed record ScriptSchema(IReadOnlyList<ScriptType> Types, IReadOnlyList<ScriptLinkType> LinkTypes, string? DefaultLinkType, IReadOnlyDictionary<string, string> Reasons, ScriptTexts Texts);
+internal sealed record ScriptSchema(IReadOnlyList<ScriptType> Types, IReadOnlyList<ScriptLinkType> LinkTypes, string? DefaultLinkType, IReadOnlyDictionary<string, string> Reasons, ScriptTexts Texts, IReadOnlyList<string> Order);
 
 internal sealed record ScriptTable(long Version, IReadOnlyList<ScriptBox> Boxes, IReadOnlyList<ScriptLink> Links);
 
