@@ -352,7 +352,9 @@ internal sealed class SnapshotEditor
                 ValidateLink(link);
                 var old = (DiagramLink)current;
                 var linkParts = LinkParts(old, link);
-                var reroute = ((linkParts & DiagramChangeParts.Ends) != 0) || !string.Equals(old.Type, link.Type, StringComparison.Ordinal);
+                var linkType = index.FindLinkType(link.Type);
+                var reroute = ((linkParts & DiagramChangeParts.Ends) != 0) || !string.Equals(old.Type, link.Type, StringComparison.Ordinal) ||
+                    (LinkRouting.FormOf(linkType, old.Look) != LinkRouting.FormOf(linkType, link.Look));
                 Put(reroute ? Track(RouteOf(link)) : link);
                 Changes.MarkUpdated(link.Id, reroute ? linkParts | DiagramChangeParts.Route : linkParts);
                 break;
@@ -529,6 +531,11 @@ internal sealed class SnapshotEditor
             parts |= DiagramChangeParts.Members;
         }
 
+        if (before.Look != after.Look)
+        {
+            parts |= DiagramChangeParts.Look;
+        }
+
         return parts;
     }
 
@@ -548,6 +555,11 @@ internal sealed class SnapshotEditor
         if (!SnapshotContent.SameData(before.Data, after.Data))
         {
             parts |= DiagramChangeParts.Data;
+        }
+
+        if (before.Look != after.Look)
+        {
+            parts |= DiagramChangeParts.Look;
         }
 
         return parts;
@@ -723,6 +735,7 @@ internal sealed class SnapshotEditor
             throw new DiagramException($"The bounds of '{box.Id}' are not finite numbers with a positive size.");
         }
 
+        ValidateLook(box.Id, box.Look);
         if (box is DiagramGroup group)
         {
             ValidateGroup(group);
@@ -791,8 +804,60 @@ internal sealed class SnapshotEditor
         }
     }
 
+    private static void ValidateLook(string id, DiagramBoxLook? look)
+    {
+        if (look is null)
+        {
+            return;
+        }
+
+        ValidateColor(id, look.Fill);
+        ValidateColor(id, look.Stroke);
+        ValidateColor(id, look.TextColor);
+        ValidateWidth(id, look.StrokeWidth);
+        if ((look.Dash is { } dash) && !LookValues.IsKnown(dash, LookValues.DashNames))
+        {
+            throw new DiagramException($"The look of '{id}' has an unknown dash.");
+        }
+    }
+
+    private static void ValidateLook(string id, DiagramLinkLook? look)
+    {
+        if (look is null)
+        {
+            return;
+        }
+
+        ValidateColor(id, look.Stroke);
+        ValidateWidth(id, look.StrokeWidth);
+        if (((look.Dash is { } dash) && !LookValues.IsKnown(dash, LookValues.DashNames)) ||
+            ((look.SourceMarker is { } source) && !LookValues.IsKnown(source, LookValues.MarkerNames)) ||
+            ((look.TargetMarker is { } target) && !LookValues.IsKnown(target, LookValues.MarkerNames)) ||
+            ((look.Form is { } form) && !LookValues.IsKnown(form, LookValues.FormNames)))
+        {
+            throw new DiagramException($"The look of '{id}' has an unknown dash, marker or form.");
+        }
+    }
+
+    private static void ValidateColor(string id, string? color)
+    {
+        if ((color is not null) && !LookValues.IsColor(color))
+        {
+            throw new DiagramException($"The look of '{id}' has '{color}', which is not a CSS color.");
+        }
+    }
+
+    private static void ValidateWidth(string id, double? width)
+    {
+        if ((width is { } value) && !LookValues.IsWidth(value))
+        {
+            throw new DiagramException($"The look of '{id}' has a stroke width that is not a finite number of zero or more.");
+        }
+    }
+
     private void ValidateLink(DiagramLink link)
     {
+        ValidateLook(link.Id, link.Look);
         ValidateEnd(link, link.Source);
         ValidateEnd(link, link.Target);
     }
@@ -816,7 +881,7 @@ internal sealed class SnapshotEditor
             : link with { Route = simple, RouteState = DiagramRouteState.Failed, RouteError = result.Error ?? "The router returned no route." };
 
     private static bool SameRequest(DiagramRouteRequest x, DiagramRouteRequest y) =>
-        (x.Source == y.Source) && (x.Target == y.Target) && ReferenceEquals(x.LinkType, y.LinkType) && x.Obstacles.SequenceEqual(y.Obstacles);
+        (x.Source == y.Source) && (x.Target == y.Target) && ReferenceEquals(x.LinkType, y.LinkType) && (x.Form == y.Form) && x.Obstacles.SequenceEqual(y.Obstacles);
 
     private DiagramLink Track((DiagramLink Link, PendingRoute? Pending) routed)
     {
@@ -828,11 +893,12 @@ internal sealed class SnapshotEditor
         return routed.Link;
     }
 
-    private (LinkAnchor Start, LinkAnchor End, DiagramBox Source, DiagramBox Target, DiagramLinkType? Type, IDiagramRouter? Router, ImmutableArray<DiagramPoint> Simple, DiagramRouteRequest? Request) Prepare(DiagramLink link)
+    private (LinkAnchor Start, LinkAnchor End, DiagramBox Source, DiagramBox Target, DiagramLinkType? Type, DiagramLineForm Form, IDiagramRouter? Router, ImmutableArray<DiagramPoint> Simple, DiagramRouteRequest? Request) Prepare(DiagramLink link)
     {
         var sourceBox = (DiagramBox)elements[link.Source.ElementId];
         var targetBox = (DiagramBox)elements[link.Target.ElementId];
         var type = index.FindLinkType(link.Type);
+        var form = LinkRouting.FormOf(type, link.Look);
         var (start, end) = LinkRouting.Anchors(sourceBox.Bounds, index.FindPort(sourceBox, link.Source.PortId), targetBox.Bounds, index.FindPort(targetBox, link.Target.PortId));
         var router = type?.Router ?? index.Schema.Router;
         DiagramRouteRequest? request = null;
@@ -846,11 +912,12 @@ internal sealed class SnapshotEditor
                 Target = new DiagramRouteEnd { Position = end.Position, Direction = end.Side },
                 Obstacles = [.. obstacleList],
                 LinkType = type,
+                Form = form,
                 GridSize = index.Schema.GridSize
             };
         }
 
-        return (start, end, sourceBox, targetBox, type, router, LinkRouting.Simple(start, end, type, index.Schema.GridSize), request);
+        return (start, end, sourceBox, targetBox, type, form, router, LinkRouting.Simple(start, end, type, form, index.Schema.GridSize), request);
     }
 
     private (DiagramLink Link, PendingRoute? Pending) RouteOf(DiagramLink link, bool force = false)
@@ -859,7 +926,7 @@ internal sealed class SnapshotEditor
         if (prepared.Router is not { } router)
         {
             var type = prepared.Type;
-            if (!force && (Budget is { Exceeded: true }) && ((type?.Form ?? DiagramLineForm.Orthogonal) == DiagramLineForm.Orthogonal))
+            if (!force && (Budget is { Exceeded: true }) && (prepared.Form == DiagramLineForm.Orthogonal))
             {
                 var clear = OrthogonalRouter.Clear(
                     prepared.Start,
@@ -883,7 +950,7 @@ internal sealed class SnapshotEditor
             }
 
             deferred.Remove(link.Id);
-            var route = LinkRouting.Route(prepared.Start, prepared.End, type, Obstacles, prepared.Source, prepared.Target, index.Schema.GridSize);
+            var route = LinkRouting.Route(prepared.Start, prepared.End, type, prepared.Form, Obstacles, prepared.Source, prepared.Target, index.Schema.GridSize);
             return (link with { Route = route, RouteState = DiagramRouteState.Routed, RouteError = null }, null);
         }
 

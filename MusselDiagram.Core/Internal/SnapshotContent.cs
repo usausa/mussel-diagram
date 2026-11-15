@@ -30,7 +30,7 @@ internal static class SnapshotContent
             (DiagramBox a, DiagramBox b) => SameBox(a, b),
             (DiagramLink a, DiagramLink b) =>
                 (a.Source == b.Source) && (a.Target == b.Target) && a.Route.SequenceEqual(b.Route) && (a.RouteState == b.RouteState) &&
-                string.Equals(a.RouteError, b.RouteError, StringComparison.Ordinal) && (a.Locked == b.Locked) && (a.Permissions == b.Permissions),
+                string.Equals(a.RouteError, b.RouteError, StringComparison.Ordinal) && (a.Look == b.Look) && (a.Locked == b.Locked) && (a.Permissions == b.Permissions),
             (DiagramSharedItem a, DiagramSharedItem b) => string.Equals(a.Label, b.Label, StringComparison.Ordinal),
             _ => false
         };
@@ -92,6 +92,7 @@ internal static class SnapshotContent
         string.Equals(x.Label, y.Label, StringComparison.Ordinal) &&
         SameTexts(x.Texts, y.Texts) &&
         string.Equals(x.Icon, y.Icon, StringComparison.Ordinal) &&
+        (x.Look == y.Look) &&
         (x.Locked == y.Locked) &&
         (x.Permissions == y.Permissions);
 }

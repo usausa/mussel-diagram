@@ -112,10 +112,16 @@ internal static class LinkRouting
         return new LinkAnchor(PortPosition(bounds, side, 0.5, 0), side);
     }
 
-    public static ImmutableArray<DiagramPoint> Simple(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, double grid)
+    public static DiagramLineForm FormOf(DiagramLinkType? linkType, DiagramLinkLook? look) => look?.Form ?? linkType?.Form ?? DiagramLineForm.Orthogonal;
+
+    public static DiagramMarker SourceMarkerOf(DiagramLinkType? linkType, DiagramLinkLook? look) => look?.SourceMarker ?? linkType?.SourceMarker ?? DiagramMarker.None;
+
+    public static DiagramMarker TargetMarkerOf(DiagramLinkType? linkType, DiagramLinkLook? look) => look?.TargetMarker ?? linkType?.TargetMarker ?? DiagramMarker.Arrow;
+
+    public static ImmutableArray<DiagramPoint> Simple(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, DiagramLineForm form, double grid)
     {
         var stub = linkType?.StubLength ?? DefaultStubLength;
-        return (linkType?.Form ?? DiagramLineForm.Orthogonal) switch
+        return form switch
         {
             DiagramLineForm.Straight => [start.Position, end.Position],
             DiagramLineForm.Curved => Curve(start, end, stub),
@@ -123,11 +129,11 @@ internal static class LinkRouting
         };
     }
 
-    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, ObstacleIndex obstacles, DiagramBox source, DiagramBox target, double grid)
+    public static ImmutableArray<DiagramPoint> Route(LinkAnchor start, LinkAnchor end, DiagramLinkType? linkType, DiagramLineForm form, ObstacleIndex obstacles, DiagramBox source, DiagramBox target, double grid)
     {
-        if ((linkType?.Form ?? DiagramLineForm.Orthogonal) != DiagramLineForm.Orthogonal)
+        if (form != DiagramLineForm.Orthogonal)
         {
-            return Simple(start, end, linkType, grid);
+            return Simple(start, end, linkType, form, grid);
         }
 
         return OrthogonalRouter.Route(
@@ -232,10 +238,8 @@ internal static class LinkRouting
         return builder.ToString();
     }
 
-    public static (double Source, double Target) Cuts(DiagramLinkType? type) =>
-        (type is null)
-            ? (0, MarkerLength)
-            : (type.SourceMarker == DiagramMarker.None ? 0 : MarkerLength, type.TargetMarker == DiagramMarker.None ? 0 : MarkerLength);
+    public static (double Source, double Target) Cuts(DiagramLinkType? type, DiagramLinkLook? look = null) =>
+        (SourceMarkerOf(type, look) == DiagramMarker.None ? 0 : MarkerLength, TargetMarkerOf(type, look) == DiagramMarker.None ? 0 : MarkerLength);
 
     public static double Angle(DiagramPoint from, DiagramPoint to) =>
         Math.Round(Math.Atan2(to.Y - from.Y, to.X - from.X) * 180 / Math.PI, 2);

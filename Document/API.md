@@ -151,7 +151,7 @@ A write that breaks the structure (duplicate IDs, missing ends, parents or membe
 | `Origin` | `DiagramChangeOrigin`: `User`, `Api`, `Undo`, `Redo` or `Load` |
 | `Tag` | The tag of the write, or `null` |
 | `Added`, `Deleted`, `Updated` | The element IDs; empty with `IsReset` |
-| `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order` and `Route` |
+| `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order`, `Route` and `Look` |
 | `IsReset` | Everything changed (loading) |
 
 `DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`, for a server.  
@@ -181,14 +181,17 @@ All elements are records, and an ID is created when none is given.
 | Type | Members |
 |---|---|
 | `DiagramElement` | The abstract base of the elements: `Id`, `Type`, `Data` |
-| `DiagramBox` | The abstract base of nodes and groups: `Bounds` (`DiagramRect`), `ParentId`, `Label`, `Texts`, `Icon`, `Locked`, `Permissions` |
+| `DiagramBox` | The abstract base of nodes and groups: `Bounds` (`DiagramRect`), `ParentId`, `Label`, `Texts`, `Icon`, `Look` (`DiagramBoxLook`), `Locked`, `Permissions` |
 | `DiagramNode` | A `DiagramBox` |
 | `DiagramGroup` | A `DiagramBox` with `Kind` (`DiagramGroupKind`: `Tree` or `Overlay`) and `MemberIds`. Overlay groups have no `Bounds` or `ParentId` of their own; their `Bounds` is computed |
-| `DiagramLink` | A `DiagramElement` with `Source`, `Target` (`DiagramLinkEnd` with `ElementId` and `PortId`), `Route` (`DiagramPoint` list), `RouteState` (`DiagramRouteState`: `Provisional`, `Routed` or `Failed`), `RouteError`, `Locked`, `Permissions` |
+| `DiagramLink` | A `DiagramElement` with `Source`, `Target` (`DiagramLinkEnd` with `ElementId` and `PortId`), `Route` (`DiagramPoint` list), `RouteState` (`DiagramRouteState`: `Provisional`, `Routed` or `Failed`), `RouteError`, `Look` (`DiagramLinkLook`), `Locked`, `Permissions` |
+| `DiagramBoxLook` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `TextColor`. `null` uses the look of the type |
+| `DiagramLinkLook` | `Stroke`, `StrokeWidth`, `Dash`, `SourceMarker`, `TargetMarker` (`DiagramMarker`), `Form` (`DiagramLineForm`). `null` uses the link type |
 | `DiagramSharedItem` | A `DiagramElement` with `Label` |
 | `DiagramPort` | Computed: `Id`, `Direction` (`DiagramPortDirection`: `In`, `Out` or `Both`), `Kind`, `Side` (`DiagramSide`), `Position`, `Label`, `Visibility` |
 
 `Texts` is an `ImmutableDictionary<string, string>` by slot name. `Icon` is `prefix:ID` of an imported icon or an image URL. `Data` is the registered data type, a `JsonElement`, or `null`.  
+Colors of a look are `#` hex, color names, color functions such as `rgb()`, or `var(--name)`; other values throw `DiagramException`. Widths are finite and 0 or more.  
 `Permissions` is a `DiagramPermissions?` with the flags `Select`, `Move`, `Resize`, `Delete`, `Connect` and `EditText`; when set, it replaces the permissions of the type. `Locked` stops everything except `Select`.  
 `DiagramPoint` (`X`, `Y`), `DiagramSize` (`Width`, `Height`), `DiagramRect` (`X`, `Y`, `Width`, `Height`, with `Right`, `Bottom`, `Center`, `Offset` and `Intersects`) and `DiagramThickness` (`Left`, `Top`, `Right`, `Bottom`) are value types.  
 
@@ -245,7 +248,7 @@ An immutable record.
 ### Routing
 
 `IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
-`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType` and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason.  
+`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason.  
 
 ## 🖼️ Icons
 
@@ -272,7 +275,7 @@ An immutable record.
 | Group | Values |
 |---|---|
 | Whole-diagram check | `ConnectionRule`, `NestingRule`, `MaxCount`, `RequiredType`, `RequiredPort`, `MissingPort`, `MissingSharedItem`, `UnregisteredType`, `App` |
-| Loading | `DuplicateId`, `MissingEnd`, `InvalidParent`, `InvalidMember`, `NoMembers`, `KindMismatch`, `InvalidSize`, `UnreadableData` |
+| Loading | `DuplicateId`, `MissingEnd`, `InvalidParent`, `InvalidMember`, `NoMembers`, `KindMismatch`, `InvalidSize`, `UnreadableData`, `InvalidLook` |
 | Sanitizing | `RemovedSvgContent`, `RejectedUrl`, `UnreadableIcon` |
 | Export | `ImageNotEmbedded` |
 
@@ -304,12 +307,12 @@ On links, badges line up at the middle of the route and the corner is not used.
 
 | Element | Fields |
 |---|---|
-| Node | `id`, `type`, `x`, `y`, `width`, `height`, `parent`, `label`, `texts`, `icon`, `data`, `locked`, `permissions` |
+| Node | `id`, `type`, `x`, `y`, `width`, `height`, `parent`, `label`, `texts`, `icon`, `look`, `data`, `locked`, `permissions` |
 | Group | The fields of a node, and `kind` (`tree` or `overlay`) and `members`. An overlay group has no `x`, `y`, `width`, `height` or `parent` |
-| Link | `id`, `type`, `source`, `target` (`element` and `port`), `route` (points as `[x, y]`, only when routed), `data`, `locked`, `permissions` |
+| Link | `id`, `type`, `source`, `target` (`element` and `port`), `route` (points as `[x, y]`, only when routed), `look`, `data`, `locked`, `permissions` |
 | Shared item | `id`, `type`, `label`, `data` |
 
-Fields without a value and default values are not written, except `kind`, `x`, `y`, `width` and `height`. `permissions` is a list of names such as `["select", "move"]`.  
+Fields without a value and default values are not written, except `kind`, `x`, `y`, `width` and `height`. `permissions` is a list of names such as `["select", "move"]`. `look` has the members of the look in camel case, with names for `dash` (`solid`, `dashed`, `dotted`), the markers (`none`, `arrow`, `openArrow`, `circle`, `diamond`) and `form` (`orthogonal`, `straight`, `curved`).  
 
 ## 🖼️ Export
 

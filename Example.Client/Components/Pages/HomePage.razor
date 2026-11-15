@@ -12,8 +12,9 @@
     </aside>
     <div class="diagram-area">
         <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
-        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" GridMajorInterval="5" GridMajorLineWidth="2" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Moving="OnMoving" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" GridMajorInterval="5" GridMajorLineWidth="2" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Moving="OnMoving" SelectionChanged="OnSelectionChanged" CommitMode="@(Wait ? DiagramCommitMode.Wait : DiagramCommitMode.Optimistic)">
             <CardTemplate />
         </MusselDiagramView>
     </div>
+    <LookPanel Diagram="diagram" Selection="selection" />
 </div>

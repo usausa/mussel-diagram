@@ -182,7 +182,7 @@ public sealed class ParityTests
                 ["targetCut"] = targetCut,
                 ["grid"] = grid
             },
-            ["expected"] = LinkRouting.ToPath(LinkRouting.Simple(start, end, type, grid), type.Form, sourceCut, targetCut)
+            ["expected"] = LinkRouting.ToPath(LinkRouting.Simple(start, end, type, type.Form, grid), type.Form, sourceCut, targetCut)
         };
     }
 

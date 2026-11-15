@@ -273,6 +273,82 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(page.Locator("[data-panel='ledger'] input[data-field='name']")).ToHaveValueAsync("TR2 動力");
     }
 
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBasicPageShowsEveryElementBesideThePanel(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var view = await opened.View.BoundingBoxAsync() ?? throw new InvalidOperationException("The view is not shown.");
+
+        foreach (var id in new[] { "frame", "group", "left", "right", "pin", "star1", "star2", "triangle", "rect", "diamond", "ellipse", "hexagon", "card" })
+        {
+            var element = opened.View.Locator($"g[data-id='{id}']:is(.mussel-diagram-node, .mussel-diagram-group)");
+            await Expect(element).ToBeAttachedAsync();
+            var box = await element.BoundingBoxAsync() ?? throw new InvalidOperationException($"'{id}' is not shown.");
+            Assert.True((box.X >= view.X) && (box.Y >= view.Y) && ((box.X + box.Width) <= (view.X + view.Width)) && ((box.Y + box.Height) <= (view.Y + view.Height)), id);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBasicPageChangesTheLookOfASelectedLink(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var link = opened.View.Locator("g.mussel-diagram-link[data-id='rect-diamond']");
+        var line = link.Locator("path.mussel-diagram-link-line");
+        await ClickAsync("g.mussel-diagram-link[data-id='rect-diamond'] > path.mussel-diagram-link-hit");
+
+        await ChooseAsync("link-dash", "点線");
+        await Expect(link).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-link-dash: 2 3;"));
+        await ChooseAsync("link-width", "3");
+        await Expect(link).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-link-stroke-width: 3;"));
+        await ChooseAsync("link-stroke", "赤");
+        await Expect(link).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-link-stroke: #E53935;"));
+        await ChooseAsync("link-target-marker", "ひし形");
+        var diamond = opened.View.Locator("defs > marker[style='--mussel-diagram-marker-color: #E53935']:has(path[d='M0,5L5,0L10,5L5,10Z'])");
+        await Expect(diamond).ToHaveCountAsync(1);
+        await Expect(line).ToHaveAttributeAsync("marker-end", $"url(#{await diamond.GetAttributeAsync("id")})");
+        await ChooseAsync("link-source-marker", "円");
+        await Expect(line).ToHaveAttributeAsync("marker-start", new Regex("^url\\(#"));
+        await ChooseAsync("link-form", "曲線");
+        await Expect(line).ToHaveAttributeAsync("d", new Regex("C"));
+
+        await ClickBackgroundAsync();
+        await opened.Page.Keyboard.PressAsync("Control+Z");
+        await Expect(line).Not.ToHaveAttributeAsync("d", new Regex("C"));
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBasicPageChangesTheLookOfSelectedShapesTogether(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var diamond = opened.View.Locator("g.mussel-diagram-node[data-id='diamond']");
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        var (x, y) = await CenterAsync("g.mussel-diagram-node[data-id='diamond'] > .mussel-diagram-shape");
+        await opened.Page.Keyboard.DownAsync("Shift");
+        await opened.Page.Mouse.ClickAsync(x, y);
+        await opened.Page.Keyboard.UpAsync("Shift");
+
+        await ChooseAsync("box-fill", "青");
+        await ChooseAsync("box-text", "白");
+        await ChooseAsync("box-width", "3");
+        foreach (var node in new[] { rect, diamond })
+        {
+            await Expect(node).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E5;.*--mussel-diagram-shape-stroke-width: 3;.*--mussel-diagram-text-color: #FFFFFF;"));
+        }
+
+        await ChooseAsync("box-fill", "型のまま");
+        await Expect(rect).Not.ToHaveAttributeAsync("style", new Regex("#1E88E5"));
+        await Expect(diamond).Not.ToHaveAttributeAsync("style", new Regex("#1E88E5"));
+
+        await ClickBackgroundAsync();
+        await opened.Page.Keyboard.PressAsync("Control+Z");
+        await Expect(rect).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E5;"));
+        await Expect(diamond).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E5;"));
+    }
+
     private static (double X, double Y) Translation(string? transform)
     {
         var match = Regex.Match(transform ?? string.Empty, @"translate\((?<x>[-0-9.e]+),(?<y>[-0-9.e]+)\)");
@@ -289,5 +365,17 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     {
         var (x, y) = await CenterAsync(selector).ConfigureAwait(true);
         await opened!.Page.Mouse.ClickAsync(x, y).ConfigureAwait(true);
+    }
+
+    private async Task ClickBackgroundAsync()
+    {
+        var box = await opened!.View.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The view is not shown.");
+        await opened.Page.Mouse.ClickAsync(box.X + 40, box.Y + box.Height - 40).ConfigureAwait(true);
+    }
+
+    private async Task ChooseAsync(string field, string option)
+    {
+        await opened!.Page.Locator($"[data-panel='look'] [data-field='{field}']").ClickAsync().ConfigureAwait(true);
+        await opened.Page.Locator(".mud-popover-open").GetByRole(AriaRole.Option, new() { Name = option, Exact = true }).ClickAsync().ConfigureAwait(true);
     }
 }

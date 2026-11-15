@@ -129,6 +129,11 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 continue;
             }
 
+            if (link.Look is not null)
+            {
+                RenderContext.ResolveMarkers(link);
+            }
+
             builder.OpenComponent<DiagramLinkView>(0);
             builder.SetKey(link.Id);
             builder.AddComponentParameter(1, nameof(DiagramLinkView.Link), link);

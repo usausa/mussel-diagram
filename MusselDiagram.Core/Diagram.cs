@@ -163,7 +163,7 @@ public sealed class Diagram
         }
 
         var type = Index.FindLinkType(link.Type);
-        var (sourceCut, targetCut) = LinkRouting.Cuts(type);
+        var (sourceCut, targetCut) = LinkRouting.Cuts(type, link.Look);
         var route = link.Route;
         return new DiagramLinkGeometry
         {
@@ -172,7 +172,7 @@ public sealed class Diagram
             TargetPoint = route[^1],
             SourceAngle = LinkRouting.Angle(route[1], route[0]),
             TargetAngle = LinkRouting.Angle(route[^2], route[^1]),
-            Path = LinkRouting.ToPath(route, type?.Form ?? DiagramLineForm.Orthogonal, sourceCut, targetCut)
+            Path = LinkRouting.ToPath(route, LinkRouting.FormOf(type, link.Look), sourceCut, targetCut)
         };
     }
 

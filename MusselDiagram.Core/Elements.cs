@@ -25,6 +25,8 @@ public abstract record DiagramBox : DiagramElement
 
     public string? Icon { get; init; }
 
+    public DiagramBoxLook? Look { get; init; }
+
     public bool Locked { get; init; }
 
     public DiagramPermissions? Permissions { get; init; }
@@ -53,9 +55,39 @@ public sealed record DiagramLink : DiagramElement
 
     public string? RouteError { get; init; }
 
+    public DiagramLinkLook? Look { get; init; }
+
     public bool Locked { get; init; }
 
     public DiagramPermissions? Permissions { get; init; }
+}
+
+public sealed record DiagramBoxLook
+{
+    public string? Fill { get; init; }
+
+    public string? Stroke { get; init; }
+
+    public double? StrokeWidth { get; init; }
+
+    public DiagramDash? Dash { get; init; }
+
+    public string? TextColor { get; init; }
+}
+
+public sealed record DiagramLinkLook
+{
+    public string? Stroke { get; init; }
+
+    public double? StrokeWidth { get; init; }
+
+    public DiagramDash? Dash { get; init; }
+
+    public DiagramMarker? SourceMarker { get; init; }
+
+    public DiagramMarker? TargetMarker { get; init; }
+
+    public DiagramLineForm? Form { get; init; }
 }
 
 public sealed record DiagramSharedItem : DiagramElement

@@ -165,24 +165,20 @@ public static class DiagramIconImport
     }
 
     public static ImmutableArray<DiagramNodeType> CreateNodeTypes(DiagramIconSet set, DiagramNodeType baseType, Func<DiagramIcon, bool>? filter = null) =>
-        [.. set.Icons.Where(x => filter?.Invoke(x) ?? true).Select(icon => baseType with
-        {
-            Name = $"{set.Prefix}:{icon.Id}",
-            DisplayName = icon.Name ?? icon.Id,
-            Category = icon.Category ?? baseType.Category,
-            SearchWords = icon.SearchWords,
-            Look = baseType.Look with { Icon = $"{set.Prefix}:{icon.Id}" }
-        })];
+        [.. set.Icons.Where(x => filter?.Invoke(x) ?? true).Select(icon => (DiagramNodeType)TypeFor(baseType, set.Prefix, icon))];
 
     public static ImmutableArray<DiagramGroupType> CreateGroupTypes(DiagramIconSet set, DiagramGroupType baseType, Func<DiagramIcon, bool>? filter = null) =>
-        [.. set.Icons.Where(x => filter?.Invoke(x) ?? true).Select(icon => baseType with
+        [.. set.Icons.Where(x => filter?.Invoke(x) ?? true).Select(icon => (DiagramGroupType)TypeFor(baseType, set.Prefix, icon))];
+
+    private static DiagramBoxType TypeFor(DiagramBoxType baseType, string prefix, DiagramIcon icon) =>
+        baseType with
         {
-            Name = $"{set.Prefix}:{icon.Id}",
+            Name = $"{prefix}:{icon.Id}",
             DisplayName = icon.Name ?? icon.Id,
             Category = icon.Category ?? baseType.Category,
             SearchWords = icon.SearchWords,
-            Look = baseType.Look with { Icon = $"{set.Prefix}:{icon.Id}" }
-        })];
+            Look = baseType.Look with { Icon = $"{prefix}:{icon.Id}" }
+        };
 
     private static DiagramIconImportResult ReadFiles(IEnumerable<(string Path, Func<string?> Read)> files, string prefix, Func<string, DiagramIconInfo?>? map)
     {

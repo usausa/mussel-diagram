@@ -47,7 +47,8 @@ public enum DiagramChangeParts
     Label = 32,
     Data = 64,
     Order = 128,
-    Route = 256
+    Route = 256,
+    Look = 512
 }
 
 public enum DiagramLinkDirection

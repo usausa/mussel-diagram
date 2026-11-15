@@ -30,6 +30,8 @@ public sealed record DiagramRouteRequest
 
     public DiagramLinkType? LinkType { get; init; }
 
+    public DiagramLineForm Form { get; init; }
+
     public double GridSize { get; init; }
 }
 

@@ -154,7 +154,9 @@ internal static class Clipboard
             }
 
             return (snapshot.Find(parentId) is DiagramGroup { Kind: DiagramGroupKind.Tree, Locked: false }) &&
-                (DiagramRules.CheckNesting(snapshot, index, null, box.Type, parentId) is null) ? parentId : null;
+                (DiagramRules.CheckNesting(snapshot, index, null, box.Type, parentId) is null)
+                    ? parentId
+                    : null;
         }
     }
 

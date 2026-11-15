@@ -9,6 +9,8 @@ internal sealed class DiagramDefsView : ComponentBase, IDisposable
 
     private int renderedIcons = -1;
 
+    private int renderedMarkers = -1;
+
     private IconSymbols? subscribed;
 
     [Parameter]
@@ -23,12 +25,13 @@ internal sealed class DiagramDefsView : ComponentBase, IDisposable
 
     protected override void OnParametersSet() => Subscribe(Icons);
 
-    protected override bool ShouldRender() => !ReferenceEquals(Context, rendered) || (Icons.Version != renderedIcons);
+    protected override bool ShouldRender() => !ReferenceEquals(Context, rendered) || (Icons.Version != renderedIcons) || (Context.Markers.Count != renderedMarkers);
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         rendered = Context;
         renderedIcons = Icons.Version;
+        renderedMarkers = Context.Markers.Count;
         builder.OpenElement(0, "defs");
         foreach (var marker in Context.Markers)
         {

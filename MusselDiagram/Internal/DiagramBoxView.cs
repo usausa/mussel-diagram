@@ -53,7 +53,7 @@ internal sealed class DiagramBoxView : ComponentBase
         builder.AddAttribute(2, "data-id", box.Id);
         builder.AddAttribute(3, "data-type", box.Type);
         builder.AddAttribute(4, "transform", Svg.Translate(box.Bounds.X, box.Bounds.Y));
-        if (StyleOf(look, Look?.Style) is { } style)
+        if (StyleOf(look, box.Look, Look?.Style) is { } style)
         {
             builder.AddAttribute(5, "style", style);
         }
@@ -134,7 +134,7 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.AddAttribute(46, "data-width", Svg.Number(label.Width));
             builder.AddAttribute(47, "data-lines", label.MaxLines.ToString(CultureInfo.InvariantCulture));
             builder.AddAttribute(48, "data-valign", label.VerticalAlign);
-            if (TextStyleOf(label.Format) is { } textStyle)
+            if (TextStyleOf(label.Format, box.Look?.TextColor is not null) is { } textStyle)
             {
                 builder.AddAttribute(49, "style", textStyle);
             }
@@ -262,7 +262,7 @@ internal sealed class DiagramBoxView : ComponentBase
         return builder.ToString();
     }
 
-    private static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
+    private static string? StyleOf(DiagramLook? look, DiagramBoxLook? own, DiagramRenderOverride? style)
     {
         var builder = new StringBuilder();
         if (look is not null)
@@ -271,6 +271,15 @@ internal sealed class DiagramBoxView : ComponentBase
             Append(builder, "--mussel-diagram-shape-stroke", look.Stroke);
             Append(builder, "--mussel-diagram-shape-stroke-width", look.StrokeWidth is { } strokeWidth ? Svg.Number(strokeWidth) : null);
             Append(builder, "--mussel-diagram-shape-dash", Svg.Dash(look.Dash));
+        }
+
+        if (own is not null)
+        {
+            Append(builder, "--mussel-diagram-shape-fill", own.Fill);
+            Append(builder, "--mussel-diagram-shape-stroke", own.Stroke);
+            Append(builder, "--mussel-diagram-shape-stroke-width", own.StrokeWidth is { } ownWidth ? Svg.Number(ownWidth) : null);
+            Append(builder, "--mussel-diagram-shape-dash", own.Dash is { } dash ? Svg.Dash(dash) ?? "none" : null);
+            Append(builder, "--mussel-diagram-text-color", own.TextColor);
         }
 
         AppendOverride(builder, style);
@@ -321,7 +330,7 @@ internal sealed class DiagramBoxView : ComponentBase
         Append(builder, "--mussel-diagram-override-opacity", style.Opacity is { } opacity ? Svg.Number(opacity) : null);
     }
 
-    private static string? TextStyleOf(DiagramTextFormat? format)
+    private static string? TextStyleOf(DiagramTextFormat? format, bool ownColor)
     {
         if (format is null)
         {
@@ -332,7 +341,7 @@ internal sealed class DiagramBoxView : ComponentBase
         Append(builder, "font-family", format.FontFamily);
         Append(builder, "font-size", format.FontSize is { } size ? $"{Svg.Number(size)}px" : null);
         Append(builder, "font-weight", format.FontWeight);
-        Append(builder, "fill", format.Color);
+        Append(builder, "fill", ownColor ? null : format.Color);
         return builder.Length == 0 ? null : builder.ToString();
     }
 

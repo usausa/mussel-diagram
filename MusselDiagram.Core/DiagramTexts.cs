@@ -44,7 +44,8 @@ public sealed record DiagramTexts
             [DiagramIssueKind.RemovedSvgContent] = "Removed from the icon '{0}': {1}",
             [DiagramIssueKind.RejectedUrl] = "The icon '{0}' refers to URLs that were not used: {1}",
             [DiagramIssueKind.UnreadableIcon] = "The icon '{0}' is not a readable SVG.",
-            [DiagramIssueKind.ImageNotEmbedded] = "The image '{0}' could not be embedded."
+            [DiagramIssueKind.ImageNotEmbedded] = "The image '{0}' could not be embedded.",
+            [DiagramIssueKind.InvalidLook] = "The look has values that cannot be used, so they were left out."
         },
         Commands = new Dictionary<string, string>(StringComparer.Ordinal)
         {

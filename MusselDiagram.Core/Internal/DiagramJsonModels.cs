@@ -42,6 +42,8 @@ internal sealed record DiagramJsonBox
 
     public string? Icon { get; init; }
 
+    public DiagramJsonBoxLook? Look { get; init; }
+
     public JsonElement? Data { get; init; }
 
     public bool Locked { get; init; }
@@ -49,6 +51,19 @@ internal sealed record DiagramJsonBox
     public IReadOnlyList<string>? Permissions { get; init; }
 
     public IReadOnlyList<string>? Members { get; init; }
+}
+
+internal sealed record DiagramJsonBoxLook
+{
+    public string? Fill { get; init; }
+
+    public string? Stroke { get; init; }
+
+    public double? StrokeWidth { get; init; }
+
+    public string? Dash { get; init; }
+
+    public string? TextColor { get; init; }
 }
 
 internal sealed record DiagramJsonLink
@@ -63,11 +78,28 @@ internal sealed record DiagramJsonLink
 
     public IReadOnlyList<IReadOnlyList<double>>? Route { get; init; }
 
+    public DiagramJsonLinkLook? Look { get; init; }
+
     public JsonElement? Data { get; init; }
 
     public bool Locked { get; init; }
 
     public IReadOnlyList<string>? Permissions { get; init; }
+}
+
+internal sealed record DiagramJsonLinkLook
+{
+    public string? Stroke { get; init; }
+
+    public double? StrokeWidth { get; init; }
+
+    public string? Dash { get; init; }
+
+    public string? SourceMarker { get; init; }
+
+    public string? TargetMarker { get; init; }
+
+    public string? Form { get; init; }
 }
 
 internal sealed record DiagramJsonEnd

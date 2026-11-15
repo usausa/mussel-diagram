@@ -1,0 +1,87 @@
+<aside class="diagram-panel" data-panel="look">
+    @if (Links is [var link, ..])
+    {
+        <MudText Typo="Typo.subtitle2">線</MudText>
+        <MudSelect T="string" Label="線種" Value="@CodeOf(link.Look?.Dash, Dashes)" ValueChanged="@(v => ChangeLinks(x => x with { Dash = ValueOf(v, Dashes) }))" data-field="link-dash">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (item, text) in Items(Dashes))
+            {
+                <MudSelectItem Value="@item">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="太さ" Value="@WidthOf(link.Look?.StrokeWidth)" ValueChanged="@(v => ChangeLinks(x => x with { StrokeWidth = ReadWidth(v) }))" data-field="link-width">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var width in Widths)
+            {
+                <MudSelectItem Value="@width">@width</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="色" Value="@(link.Look?.Stroke ?? Keep)" ValueChanged="@(v => ChangeLinks(x => x with { Stroke = ReadColor(v) }))" data-field="link-stroke">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (value, text) in Colors)
+            {
+                <MudSelectItem Value="@value">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="始端" Value="@CodeOf(link.Look?.SourceMarker, Markers)" ValueChanged="@(v => ChangeLinks(x => x with { SourceMarker = ValueOf(v, Markers) }))" data-field="link-source-marker">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (item, text) in Items(Markers))
+            {
+                <MudSelectItem Value="@item">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="終端" Value="@CodeOf(link.Look?.TargetMarker, Markers)" ValueChanged="@(v => ChangeLinks(x => x with { TargetMarker = ValueOf(v, Markers) }))" data-field="link-target-marker">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (item, text) in Items(Markers))
+            {
+                <MudSelectItem Value="@item">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="線の形" Value="@CodeOf(link.Look?.Form, Forms)" ValueChanged="@(v => ChangeLinks(x => x with { Form = ValueOf(v, Forms) }))" data-field="link-form">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (item, text) in Items(Forms))
+            {
+                <MudSelectItem Value="@item">@text</MudSelectItem>
+            }
+        </MudSelect>
+    }
+    @if (Boxes is [var box, ..])
+    {
+        <MudText Typo="Typo.subtitle2">図形</MudText>
+        <MudSelect T="string" Label="塗り" Value="@(box.Look?.Fill ?? Keep)" ValueChanged="@(v => ChangeBoxes(x => x with { Fill = ReadColor(v) }))" data-field="box-fill">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (value, text) in Colors)
+            {
+                <MudSelectItem Value="@value">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="線の色" Value="@(box.Look?.Stroke ?? Keep)" ValueChanged="@(v => ChangeBoxes(x => x with { Stroke = ReadColor(v) }))" data-field="box-stroke">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (value, text) in Colors)
+            {
+                <MudSelectItem Value="@value">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="線の太さ" Value="@WidthOf(box.Look?.StrokeWidth)" ValueChanged="@(v => ChangeBoxes(x => x with { StrokeWidth = ReadWidth(v) }))" data-field="box-width">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var width in Widths)
+            {
+                <MudSelectItem Value="@width">@width</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="線種" Value="@CodeOf(box.Look?.Dash, Dashes)" ValueChanged="@(v => ChangeBoxes(x => x with { Dash = ValueOf(v, Dashes) }))" data-field="box-dash">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (item, text) in Items(Dashes))
+            {
+                <MudSelectItem Value="@item">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="文字の色" Value="@(box.Look?.TextColor ?? Keep)" ValueChanged="@(v => ChangeBoxes(x => x with { TextColor = ReadColor(v) }))" data-field="box-text">
+            <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
+            @foreach (var (value, text) in Colors)
+            {
+                <MudSelectItem Value="@value">@text</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</aside>

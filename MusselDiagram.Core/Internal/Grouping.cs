@@ -226,9 +226,11 @@ internal static class Grouping
         return (type, boxes, parentId);
     }
 
-    private static List<DiagramGroup> UngroupTargets(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection) =>
-        [.. selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramGroup>()
-            .Where(x => ElementPermissions.Allows(x, index, DiagramPermissions.Delete) && (index.FindBoxType(x) is not { Undeletable: true }))];
+    private static List<DiagramGroup> UngroupTargets(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection)
+    {
+        var groups = selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramGroup>();
+        return [.. groups.Where(x => ElementPermissions.Allows(x, index, DiagramPermissions.Delete) && (index.FindBoxType(x) is not { Undeletable: true }))];
+    }
 
     private static DiagramGroupType? OverlayType(SchemaIndex index, string? typeName) =>
         (typeName is not null) && (index.FindGroupType(typeName) is { Kind: DiagramGroupKind.Overlay } type) ? type : null;

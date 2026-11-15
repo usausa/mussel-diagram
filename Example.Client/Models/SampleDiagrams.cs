@@ -129,13 +129,13 @@ public static class SampleDiagrams
         diagram.Add(Icon("triangle", "triangle", 576, 206, "right", "長いラベルは 2 行まで折り返します"));
         diagram.Add(new DiagramNode { Id = "rect", Type = "rectangle", Bounds = new DiagramRect(330, 160, 100, 60), ParentId = "left", Label = "四角" });
         diagram.Add(new DiagramNode { Id = "diamond", Type = "diamond", Bounds = new DiagramRect(500, 300, 100, 80), ParentId = "right", Label = "ひし形" });
-        diagram.Add(new DiagramNode { Id = "ellipse", Type = "ellipse", Bounds = new DiagramRect(820, 60, 120, 60), Label = "楕円" });
-        diagram.Add(new DiagramNode { Id = "hexagon", Type = "hexagon", Bounds = new DiagramRect(940, 250, 120, 80), Label = "六角形" });
+        diagram.Add(new DiagramNode { Id = "ellipse", Type = "ellipse", Bounds = new DiagramRect(40, 600, 120, 60), Label = "楕円" });
+        diagram.Add(new DiagramNode { Id = "hexagon", Type = "hexagon", Bounds = new DiagramRect(320, 660, 120, 80), Label = "六角形" });
         diagram.Add(new DiagramNode
         {
             Id = "card",
             Type = "card",
-            Bounds = new DiagramRect(820, 400, 160, 60),
+            Bounds = new DiagramRect(560, 600, 160, 60),
             Label = "カード",
             Texts = ImmutableDictionary<string, string>.Empty.Add("note", "テンプレートで描く")
         });

@@ -98,7 +98,8 @@ public enum DiagramIssueKind
     RemovedSvgContent,
     RejectedUrl,
     UnreadableIcon,
-    ImageNotEmbedded
+    ImageNotEmbedded,
+    InvalidLook
 }
 
 public sealed record DiagramIssue(DiagramIssueSeverity Severity, DiagramIssueKind Kind, string? Message)

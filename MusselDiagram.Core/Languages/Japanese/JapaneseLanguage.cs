@@ -42,7 +42,8 @@ public static class JapaneseLanguage
             [DiagramIssueKind.RemovedSvgContent] = "アイコン「{0}」から消したもの: {1}",
             [DiagramIssueKind.RejectedUrl] = "アイコン「{0}」の使わなかった URL: {1}",
             [DiagramIssueKind.UnreadableIcon] = "アイコン「{0}」は SVG として読めません",
-            [DiagramIssueKind.ImageNotEmbedded] = "画像「{0}」を入れられませんでした"
+            [DiagramIssueKind.ImageNotEmbedded] = "画像「{0}」を入れられませんでした",
+            [DiagramIssueKind.InvalidLook] = "見た目に使えない値があったので、外しました"
         },
         Commands = new Dictionary<string, string>(StringComparer.Ordinal)
         {

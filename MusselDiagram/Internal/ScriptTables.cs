@@ -114,7 +114,7 @@ internal static class ScriptTables
     {
         var type = index.FindLinkType(link.Type);
         var permissions = PermissionsOf(link, index);
-        var (sourceCut, targetCut) = LinkRouting.Cuts(type);
+        var (sourceCut, targetCut) = LinkRouting.Cuts(type, link.Look);
         return new ScriptLink
         {
             Id = link.Id,
@@ -124,7 +124,7 @@ internal static class ScriptTables
             Target = link.Target.ElementId,
             TargetPort = link.Target.PortId,
             Stub = type?.StubLength ?? LinkRouting.DefaultStubLength,
-            Form = FormName(type?.Form),
+            Form = FormName(LinkRouting.FormOf(type, link.Look)),
             SourceCut = sourceCut,
             TargetCut = targetCut,
             Selectable = (permissions & DiagramPermissions.Select) != 0,
@@ -154,20 +154,24 @@ internal static class ScriptTables
             MinW = type.MinSize?.Width,
             MinH = type.MinSize?.Height,
             Icon = look.Icon is { } icon ? context.FindIconId(icon) : null,
-            HeaderForm = group is null ? null : (group.Header?.Form ?? DiagramHeaderForm.TopLeft) switch
-            {
-                DiagramHeaderForm.TopCenter => "top-center",
-                DiagramHeaderForm.NameOnly => "name-only",
-                _ => "top-left"
-            },
+            HeaderForm = group is null
+                ? null
+                : (group.Header?.Form ?? DiagramHeaderForm.TopLeft) switch
+                {
+                    DiagramHeaderForm.TopCenter => "top-center",
+                    DiagramHeaderForm.NameOnly => "name-only",
+                    _ => "top-left"
+                },
             HeaderIcon = group is null ? null : group.Header?.IconSize ?? LabelLayout.HeaderIconSize,
-            Shape = templates?.Find(type.Name) is not null ? "rectangle" : look.Shape switch
-            {
-                DiagramShape.Ellipse => "ellipse",
-                DiagramShape.Diamond => "diamond",
-                DiagramShape.Path => "path",
-                _ => "rectangle"
-            },
+            Shape = templates?.Find(type.Name) is not null
+                ? "rectangle"
+                : look.Shape switch
+                {
+                    DiagramShape.Ellipse => "ellipse",
+                    DiagramShape.Diamond => "diamond",
+                    DiagramShape.Path => "path",
+                    _ => "rectangle"
+                },
             Path = (templates?.Find(type.Name) is null) && (look.Shape == DiagramShape.Path) ? look.Path : null,
             Style = Svg.ShapeStyle(look),
             Palette = type.InPalette,
@@ -196,9 +200,9 @@ internal static class ScriptTables
             AllowDuplicate = type.AllowDuplicate,
             AllowCrossParent = type.AllowCrossParent,
             AllowCycles = type.AllowCycles,
-            Style = DiagramLinkView.StyleOf(context.Index.LookOf(type), null),
-            SourceMarker = context.FindMarkerId(type.Name, type.SourceMarker),
-            TargetMarker = context.FindMarkerId(type.Name, type.TargetMarker)
+            Style = DiagramLinkView.StyleOf(context.Index.LookOf(type), null, null),
+            SourceMarker = context.ResolveMarker(type.SourceMarker, context.Index.LookOf(type).Stroke),
+            TargetMarker = context.ResolveMarker(type.TargetMarker, context.Index.LookOf(type).Stroke)
         };
     }
 

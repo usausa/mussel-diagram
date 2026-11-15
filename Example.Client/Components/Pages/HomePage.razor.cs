@@ -14,6 +14,8 @@ public sealed partial class HomePage
 
     private double zoom = 1;
 
+    private IReadOnlyList<string> selection = [];
+
     [SupplyParameterFromQuery]
     public bool Wait { get; set; }
 
@@ -36,6 +38,8 @@ public sealed partial class HomePage
             e.Reason = "この例ではピンを動かせません";
         }
     }
+
+    private void OnSelectionChanged(IReadOnlyList<string> ids) => selection = ids;
 
     private void OnViewportChanged(DiagramViewport viewport) => zoom = viewport.Zoom;
 }

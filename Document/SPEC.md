@@ -80,9 +80,9 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 
 | Element | Holds |
 |---|---|
-| Node (`DiagramNode`) | ID, type, position and size, parent, label, icon, data |
-| Group (`DiagramGroup`) | ID, type, kind (`Kind`), label, icon, data. A tree group (`Tree`) has a position, a size and a parent, and can have children. An overlay group (`Overlay`) has a list of members |
-| Link (`DiagramLink`) | ID, type, source and target, route, data |
+| Node (`DiagramNode`) | ID, type, position and size, parent, label, icon, look, data |
+| Group (`DiagramGroup`) | ID, type, kind (`Kind`), label, icon, look, data. A tree group (`Tree`) has a position, a size and a parent, and can have children. An overlay group (`Overlay`) has a list of members |
+| Link (`DiagramLink`) | ID, type, source and target, route, look, data |
 | Shared item (`DiagramSharedItem`) | ID, type, label, data. The view does not draw it |
 
 - An ID is a non-empty string, unique among the elements of the diagram. When the app gives none, the diagram makes one of 16 random hexadecimal digits. IDs never change and are looked up with `Find`. They are separate from labels
@@ -90,6 +90,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 - Positions and sizes are in world coordinates (CSS pixels at 100% zoom, y pointing down). Children are not relative to their parent. There is no origin or boundary
 - The position is the top left corner. There is no rotation or flipping
 - Nodes and groups draw the icon of their type, or the `Icon` of the element when it has one (the ID of an imported icon, or an image URL). Importing is in Palette and AWS architecture diagrams
+- Nodes and groups can each have a `Look` (`DiagramBoxLook`) with a fill, a stroke color, a stroke width, a dash and a text color, and links a `Look` (`DiagramLinkLook`) with a color, a width, a dash, source and target markers and a line form. Items left null use the values of the type
 - Nodes, groups and links also have a lock (`Locked`) and element permissions (`Permissions`) (Types and rules)
 
 ### Labels
@@ -162,6 +163,7 @@ Changing parents:
   - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group, an overlay group without members), and the kind of a group does not change
   - The data is the data type registered for the type, or `JsonElement`
   - Positions and sizes are finite, and sizes are greater than 0
+  - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
 | Event | When | Content |
@@ -420,6 +422,7 @@ C# and JS compute the port positions with the same formula from the type and the
 ### Styles and themes
 
 - The colors, strokes and text of a type are values or CSS variables. Named sets of looks (presets) are registered in the schema, and types use them by name
+- The `Look` of an element takes priority over the look of its type, and render overrides (State overlays) take priority over the `Look`. The text color of an element takes priority over the colors of the slot formats
 - The SVG elements of an element have a class for its kind (`mussel-diagram-node` and so on) and an attribute with its type name, so CSS of the app can style each type
 - CSS draws each state: selected, hover, not allowed, connection candidate, drop target, awaiting commit, error, warning
 - Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on an ancestor
@@ -632,7 +635,7 @@ C# computes the route of a link (a list of points) after the commit and stores i
 
 ### Line forms
 
-The link type declares the form.
+The link type declares the form, and the `Look` of a link can change it for that link.
 
 | Form | Content |
 |---|---|
@@ -664,7 +667,7 @@ The link type declares the form.
 
 ### Replacing the router and reading routes
 
-- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type and the grid size, and returns a list of points or the reason it could not route
+- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type, the line form and the grid size, and returns a list of points or the reason it could not route
 - With an asynchronous router, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
 - The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo are asked for again
 - A link knows whether its route is provisional or a result of the router, or why it could not be made
@@ -672,7 +675,7 @@ The link type declares the form.
 
 ### Ends
 
-- The end markers are none, arrow, open arrow, circle and diamond, chosen separately for the source and the target (link type)
+- The end markers are none, arrow, open arrow, circle and diamond, chosen separately for the source and the target (link type, and the `Look` of a link)
 - An end attached to a whole element stops at its outline: the shape for rectangles, ellipses and diamonds, the bounds for path shapes and icons (an AWS resource icon stops at its 48 px frame)
 - An end attached to a port stops at the port
 - At an end with a marker, the line is shortened by the marker so that it does not stick out of it
@@ -680,7 +683,7 @@ The link type declares the form.
 
 ### Line styles and hit testing
 
-- The link type declares the color, the width and the dash (solid, dashed, dotted) as values or CSS variables (Rendering)
+- The link type declares the color, the width and the dash (solid, dashed, dotted) as values or CSS variables, and the `Look` of a link can change them for that link (Rendering). Markers use the color of the line
 - Selection and hover use a transparent line over the visible one, `LinkHitWidth` wide on screen (default 10 px)
 - A selected link is highlighted (Selection and moving)
 
@@ -1056,7 +1059,7 @@ The core saves and loads diagrams as JSON. The view exports SVG, PNG and JPEG, b
 | `version` | The version of the save format (now 1) |
 | `nodes`, `groups`, `links`, `sharedItems` | Arrays of elements, in stacking order (Model) |
 
-- The fields of an element have short lower-case names (`id`, `type`, `x`, `y`, `width`, `height`, `parent`, `label`, `texts`, `icon`, `data` and so on). Fields without a value, and default values, are not written. The details are in [API.md](API.md)
+- The fields of an element have short lower-case names (`id`, `type`, `x`, `y`, `width`, `height`, `parent`, `label`, `texts`, `icon`, `look`, `data` and so on). Fields without a value, and default values, are not written. The details are in [API.md](API.md)
 - Data is written with the `JsonTypeInfo<T>` of the data type registered for the type. `JsonElement` data is written as it is
 - Unknown fields are skipped when reading
 
@@ -1073,6 +1076,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 | A group whose kind does not match its type | Treated like an unregistered type |
 | A size of 0 or less | The default size of the type |
 | Data the data type cannot read | Kept as `JsonElement` (a warning) |
+| Values of a look that cannot be used (color syntax, widths, names of markers and so on) | Those values are removed (a warning) |
 
 - Links to ports that no longer exist stay. They are drawn towards the outline of the element, and the whole-diagram check reports them as errors (Types and rules)
 - Elements of unregistered types are kept as they are (Types and rules)
@@ -1140,7 +1144,7 @@ The app can draw states over elements without changing the model (run states, ch
 | Overlay | Content |
 |---|---|
 | States | A list of state names. The element gets the class `mussel-diagram-state-<name>`, and CSS of the app draws it |
-| Render override | Fill, stroke color, stroke width, dash and opacity. It takes priority over the look of the type |
+| Render override | Fill, stroke color, stroke width, dash and opacity. It takes priority over the `Look` of the element and the look of the type |
 | Badges | Small marks on the corners of the element (Badges below) |
 
 - State names are ASCII letters, digits and hyphens

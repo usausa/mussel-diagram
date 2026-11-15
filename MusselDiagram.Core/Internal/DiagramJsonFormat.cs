@@ -118,6 +118,7 @@ internal static class DiagramJsonFormat
             Label = string.IsNullOrEmpty(box.Label) ? null : box.Label,
             Texts = box.Texts.IsEmpty ? null : box.Texts.OrderBy(static x => x.Key, StringComparer.Ordinal).ToDictionary(static x => x.Key, static x => (string?)x.Value, StringComparer.Ordinal),
             Icon = box.Icon,
+            Look = WriteLook(box.Look),
             Data = WriteData(box, index),
             Locked = box.Locked,
             Permissions = WritePermissions(box.Permissions),
@@ -132,6 +133,7 @@ internal static class DiagramJsonFormat
         Source = new DiagramJsonEnd { Element = link.Source.ElementId, Port = link.Source.PortId },
         Target = new DiagramJsonEnd { Element = link.Target.ElementId, Port = link.Target.PortId },
         Route = (link.RouteState == DiagramRouteState.Routed) && !link.Route.IsEmpty ? [.. link.Route.Select(static x => (IReadOnlyList<double>)[x.X, x.Y])] : null,
+        Look = WriteLook(link.Look),
         Data = WriteData(link, index),
         Locked = link.Locked,
         Permissions = WritePermissions(link.Permissions)
@@ -144,6 +146,31 @@ internal static class DiagramJsonFormat
         Label = string.IsNullOrEmpty(item.Label) ? null : item.Label,
         Data = WriteData(item, index)
     };
+
+    private static DiagramJsonBoxLook? WriteLook(DiagramBoxLook? look) =>
+        (look is null) || LookValues.IsEmpty(look)
+            ? null
+            : new DiagramJsonBoxLook
+            {
+                Fill = look.Fill,
+                Stroke = look.Stroke,
+                StrokeWidth = look.StrokeWidth,
+                Dash = LookValues.NameOf(look.Dash, LookValues.DashNames),
+                TextColor = look.TextColor
+            };
+
+    private static DiagramJsonLinkLook? WriteLook(DiagramLinkLook? look) =>
+        (look is null) || LookValues.IsEmpty(look)
+            ? null
+            : new DiagramJsonLinkLook
+            {
+                Stroke = look.Stroke,
+                StrokeWidth = look.StrokeWidth,
+                Dash = LookValues.NameOf(look.Dash, LookValues.DashNames),
+                SourceMarker = LookValues.NameOf(look.SourceMarker, LookValues.MarkerNames),
+                TargetMarker = LookValues.NameOf(look.TargetMarker, LookValues.MarkerNames),
+                Form = LookValues.NameOf(look.Form, LookValues.FormNames)
+            };
 
     private static JsonElement? WriteData(DiagramElement element, SchemaIndex index) => element.Data switch
     {
@@ -339,6 +366,94 @@ internal static class DiagramJsonFormat
 
         private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
+        private static string? ReadColor(string? color, ref bool invalid)
+        {
+            if ((color is null) || LookValues.IsColor(color))
+            {
+                return color;
+            }
+
+            invalid = true;
+            return null;
+        }
+
+        private static double? ReadWidth(double? width, ref bool invalid)
+        {
+            if ((width is not { } value) || LookValues.IsWidth(value))
+            {
+                return width;
+            }
+
+            invalid = true;
+            return null;
+        }
+
+        private static T? ReadName<T>(string? name, (T Value, string Name)[] names, ref bool invalid)
+            where T : struct
+        {
+            if (name is null)
+            {
+                return null;
+            }
+
+            if (LookValues.TryRead(name, names, out var value))
+            {
+                return value;
+            }
+
+            invalid = true;
+            return null;
+        }
+
+        private DiagramBoxLook? ReadLook(DiagramJsonBoxLook? json, string id)
+        {
+            if (json is null)
+            {
+                return null;
+            }
+
+            var invalid = false;
+            var look = new DiagramBoxLook
+            {
+                Fill = ReadColor(json.Fill, ref invalid),
+                Stroke = ReadColor(json.Stroke, ref invalid),
+                StrokeWidth = ReadWidth(json.StrokeWidth, ref invalid),
+                Dash = ReadName(json.Dash, LookValues.DashNames, ref invalid),
+                TextColor = ReadColor(json.TextColor, ref invalid)
+            };
+            if (invalid)
+            {
+                Report(DiagramIssueSeverity.Warning, DiagramIssueKind.InvalidLook, id);
+            }
+
+            return LookValues.IsEmpty(look) ? null : look;
+        }
+
+        private DiagramLinkLook? ReadLook(DiagramJsonLinkLook? json, string id)
+        {
+            if (json is null)
+            {
+                return null;
+            }
+
+            var invalid = false;
+            var look = new DiagramLinkLook
+            {
+                Stroke = ReadColor(json.Stroke, ref invalid),
+                StrokeWidth = ReadWidth(json.StrokeWidth, ref invalid),
+                Dash = ReadName(json.Dash, LookValues.DashNames, ref invalid),
+                SourceMarker = ReadName(json.SourceMarker, LookValues.MarkerNames, ref invalid),
+                TargetMarker = ReadName(json.TargetMarker, LookValues.MarkerNames, ref invalid),
+                Form = ReadName(json.Form, LookValues.FormNames, ref invalid)
+            };
+            if (invalid)
+            {
+                Report(DiagramIssueSeverity.Warning, DiagramIssueKind.InvalidLook, id);
+            }
+
+            return LookValues.IsEmpty(look) ? null : look;
+        }
+
         private static double Finite(double? value) => (value is { } number) && double.IsFinite(number) ? number : 0;
 
         private string? Claim(string? id)
@@ -390,6 +505,7 @@ internal static class DiagramJsonFormat
                 Label = json.Label,
                 Texts = texts is { IsEmpty: false } ? texts : box.Texts,
                 Icon = NullIfEmpty(json.Icon),
+                Look = ReadLook(json.Look, id),
                 Data = ReadData(json.Data, id, type, boxType),
                 Locked = json.Locked,
                 Permissions = ReadPermissions(json.Permissions)
@@ -412,6 +528,7 @@ internal static class DiagramJsonFormat
                 Source = new DiagramLinkEnd(source, NullIfEmpty(json.Source.Port)),
                 Target = new DiagramLinkEnd(target, NullIfEmpty(json.Target.Port)),
                 Route = ReadRoute(json.Route),
+                Look = ReadLook(json.Look, id),
                 Data = ReadData(json.Data, id, type, index.FindLinkType(type)),
                 Locked = json.Locked,
                 Permissions = ReadPermissions(json.Permissions)

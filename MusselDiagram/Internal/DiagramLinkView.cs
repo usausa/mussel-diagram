@@ -33,8 +33,8 @@ internal sealed class DiagramLinkView : ComponentBase
         renderedLook = Look;
         var link = Link;
         var type = Context.Index.FindLinkType(link.Type);
-        var form = type?.Form ?? DiagramLineForm.Orthogonal;
-        var (sourceCut, targetCut) = LinkRouting.Cuts(type);
+        var form = LinkRouting.FormOf(type, link.Look);
+        var (sourceCut, targetCut) = LinkRouting.Cuts(type, link.Look);
 
         builder.OpenElement(0, "g");
         var classes = new StringBuilder(type is null ? "mussel-diagram-link mussel-diagram-unregistered" : "mussel-diagram-link");
@@ -42,7 +42,7 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.AddAttribute(1, "class", classes.ToString());
         builder.AddAttribute(2, "data-id", link.Id);
         builder.AddAttribute(3, "data-type", link.Type);
-        if (StyleOf(type is null ? null : Context.Index.LookOf(type), Look?.Style) is { } style)
+        if (StyleOf(type is null ? null : Context.Index.LookOf(type), link.Look, Look?.Style) is { } style)
         {
             builder.AddAttribute(4, "style", style);
         }
@@ -62,8 +62,7 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.OpenElement(20, "path");
         builder.AddAttribute(21, "class", "mussel-diagram-link-line");
         builder.AddAttribute(22, "d", LinkRouting.ToPath(link.Route, form, sourceCut, targetCut));
-        var start = type is null ? null : Context.FindMarkerId(type.Name, type.SourceMarker);
-        var end = type is null ? Context.DefaultMarkerId : Context.FindMarkerId(type.Name, type.TargetMarker);
+        var (start, end) = Context.ResolveMarkers(link);
         if (start is not null)
         {
             builder.AddAttribute(23, "marker-start", $"url(#{start})");
@@ -78,7 +77,7 @@ internal sealed class DiagramLinkView : ComponentBase
         builder.CloseElement();
     }
 
-    internal static string? StyleOf(DiagramLook? look, DiagramRenderOverride? style)
+    internal static string? StyleOf(DiagramLook? look, DiagramLinkLook? own, DiagramRenderOverride? style)
     {
         var builder = new StringBuilder();
         if (look?.Stroke is not null)
@@ -94,6 +93,21 @@ internal sealed class DiagramLinkView : ComponentBase
         if ((look is not null) && (Svg.Dash(look.Dash) is { } dash))
         {
             builder.Append("--mussel-diagram-link-dash: ").Append(dash).Append(';');
+        }
+
+        if (own?.Stroke is not null)
+        {
+            builder.Append("--mussel-diagram-link-stroke: ").Append(own.Stroke).Append(';');
+        }
+
+        if (own?.StrokeWidth is { } ownWidth)
+        {
+            builder.Append("--mussel-diagram-link-stroke-width: ").Append(Svg.Number(ownWidth)).Append(';');
+        }
+
+        if (own?.Dash is { } ownDash)
+        {
+            builder.Append("--mussel-diagram-link-dash: ").Append(Svg.Dash(ownDash) ?? "none").Append(';');
         }
 
         DiagramBoxView.AppendOverride(builder, style);
