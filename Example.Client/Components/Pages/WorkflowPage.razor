@@ -6,9 +6,6 @@
     <aside class="diagram-sidebar">
         <div class="diagram-actions">
             <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(run is { Running: true })" OnClick="RunAsync" data-action="run">実行</MudButton>
-            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ExportSvgAsync" data-action="svg">SVG</MudButton>
-            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Png)" data-action="png">PNG</MudButton>
-            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => ExportImageAsync(DiagramImageFormat.Jpeg)" data-action="jpeg">JPEG</MudButton>
         </div>
         @if (view is not null)
         {
@@ -16,8 +13,8 @@
         }
     </aside>
     <div class="diagram-area">
-        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
-        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="WorkflowDiagrams.BadgeKinds" BadgeClicked="OnBadgeClicked" SelectionChanged="OnSelectionChanged" class="example-workflow" />
+        <ViewToolbar View="view" @bind-Tool="tool" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" Tool="@tool" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="WorkflowDiagrams.BadgeKinds" BadgeClicked="OnBadgeClicked" SelectionChanged="OnSelectionChanged" class="example-workflow" />
     </div>
     <aside class="diagram-panel" data-panel="settings">
         @if (Selected is { } node)
@@ -46,8 +43,8 @@
                 case ModelSettings model:
                     <MudTextField T="string" Label="モデル" Value="@model.Model" ValueChanged="@(v => Update(node, new ModelSettings(v ?? string.Empty)))" data-field="model" />
                     break;
-                case ToolSettings tool:
-                    <MudTextField T="string" Label="説明" Value="@tool.Description" ValueChanged="@(v => Update(node, new ToolSettings(v ?? string.Empty)))" data-field="description" />
+                case ToolSettings toolSettings:
+                    <MudTextField T="string" Label="説明" Value="@toolSettings.Description" ValueChanged="@(v => Update(node, new ToolSettings(v ?? string.Empty)))" data-field="description" />
                     break;
                 case NotifySettings notify:
                     <MudTextField T="string" Label="チャンネル" Value="@notify.Channel" ValueChanged="@(v => Update(node, new NotifySettings(v ?? string.Empty)))" data-field="channel" />

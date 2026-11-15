@@ -1,9 +1,12 @@
 @inject NavigationManager Navigation
 
-<div class="mode-switch" role="group" aria-label="Render mode">
-    <a class="@ClassOf("server")" href="@Link("server")" data-enhance-nav="false">Server</a>
-    <a class="@ClassOf("wasm")" href="@Link("wasm")" data-enhance-nav="false">WebAssembly</a>
-</div>
+@if (Visible)
+{
+    <div class="mode-switch" role="group" aria-label="Render mode">
+        <a class="@ClassOf("server")" href="@Link("server")" data-enhance-nav="false">Server</a>
+        <a class="@ClassOf("wasm")" href="@Link("wasm")" data-enhance-nav="false">WebAssembly</a>
+    </div>
+}
 
 @code {
     private string Mode => AssignedRenderMode switch

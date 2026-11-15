@@ -59,6 +59,9 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     public DiagramBackgroundDragMode BackgroundDragMode { get; set; }
 
     [Parameter]
+    public DiagramTool Tool { get; set; }
+
+    [Parameter]
     public double MinZoom { get; set; } = 0.05;
 
     [Parameter]
@@ -446,6 +449,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             DiagramBackgroundDragMode.None => "none",
             _ => "boxSelect"
         },
+        Tool = Tool == DiagramTool.Pan ? "pan" : "select",
         PanEnabled = PanEnabled,
         ZoomEnabled = ZoomEnabled,
         SelectionEnabled = SelectionEnabled,

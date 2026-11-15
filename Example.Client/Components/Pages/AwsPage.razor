@@ -13,7 +13,7 @@
         }
     </aside>
     <div class="diagram-area">
-        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
-        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" class="example-aws" />
+        <ViewToolbar View="view" @bind-Tool="tool" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" Tool="@tool" ViewportChanged="OnViewportChanged" class="example-aws" />
     </div>
 </div>

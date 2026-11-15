@@ -10,8 +10,8 @@
         }
     </aside>
     <div class="diagram-area">
-        <ViewToolbar View="view" @bind-Mode="dragMode" Zoom="zoom" />
-        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="ElectricDiagrams.BadgeKinds" SelectionChanged="OnSelectionChanged" class="example-electric" />
+        <ViewToolbar View="view" @bind-Tool="tool" @bind-Mode="dragMode" Zoom="zoom" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" Tool="@tool" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="ElectricDiagrams.BadgeKinds" SelectionChanged="OnSelectionChanged" class="example-electric" />
     </div>
     <aside class="diagram-panel" data-panel="ledger">
         @if (Selected is { } node)

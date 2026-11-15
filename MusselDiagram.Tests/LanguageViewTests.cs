@@ -28,7 +28,7 @@ public sealed class LanguageViewTests : BunitContext
             var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, new Diagram(Schema)));
             var palette = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, view.Instance));
 
-            Assert.Equal("最前面へ", view.Instance.Commands[DiagramCommands.BringToFront].DisplayName);
+            Assert.Equal("最前面へ移動", view.Instance.Commands[DiagramCommands.BringToFront].DisplayName);
             Assert.Equal("次の問題", view.Instance.Commands[DiagramCommands.NextIssue].DisplayName);
             var schema = (JsonElement)module.Invocations["attach"][0].Arguments[4]!;
             Assert.Equal("ここにはつなぐ所がありません", schema.GetProperty("reasons").GetProperty("noConnectionPoint").GetString());

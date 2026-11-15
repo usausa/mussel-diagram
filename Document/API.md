@@ -15,6 +15,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `LinkType` | `string?` | `null` | The type of links drawn from ports that declare none; `null` uses `DefaultLinkType` of the schema, then the first link type |
 | `WheelMode` | `DiagramWheelMode` | `Pan` | What the plain wheel does: `Pan` or `Zoom` |
 | `BackgroundDragMode` | `DiagramBackgroundDragMode` | `BoxSelect` | What a left drag on the background does with a mouse or a pen: `BoxSelect`, `Pan` or `None`. Touch keeps its gestures |
+| `Tool` | `DiagramTool` | `Select` | `Pan` pans with a left drag or a one-finger drag from anywhere, and clicks neither select nor edit. `BackgroundDragMode` is then not used |
 | `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
 | `GridVisible` | `bool` | `false` | Shows the grid |
 | `GridStyle` | `DiagramGridStyle` | `Dots` | `Dots` or `Lines` |

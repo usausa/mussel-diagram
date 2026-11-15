@@ -13,6 +13,12 @@ public enum DiagramBackgroundDragMode
     None
 }
 
+public enum DiagramTool
+{
+    Select,
+    Pan
+}
+
 public enum DiagramCommitMode
 {
     Optimistic,

@@ -13,6 +13,8 @@ internal sealed record ScriptOptions
 
     public required string BackgroundDrag { get; init; }
 
+    public required string Tool { get; init; }
+
     public required bool PanEnabled { get; init; }
 
     public required bool ZoomEnabled { get; init; }

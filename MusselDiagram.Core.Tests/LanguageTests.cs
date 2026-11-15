@@ -22,7 +22,8 @@ public sealed class LanguageTests
         Assert.Equal("型「legacy」は登録されていません", japanese.Message);
         Assert.Equal(english.Arguments, japanese.Arguments);
         Assert.Equal("ここにはつなぐ所がありません", InCulture(Japanese, static () => DiagramCultures.Reason(DiagramReasonKind.NoConnectionPoint)));
-        Assert.Equal("最前面へ", InCulture(Japanese, static () => DiagramCultures.Command("BringToFront")));
+        Assert.Equal("最前面へ移動", InCulture(Japanese, static () => DiagramCultures.Command("BringToFront")));
+        Assert.Equal("前面へ移動", InCulture(Japanese, static () => DiagramCultures.Command("BringForward")));
         Assert.Equal("Mine", InCulture(Japanese, static () => DiagramCultures.Command("Mine")));
     }
 

@@ -12,6 +12,8 @@ public sealed partial class HomePage
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     private IReadOnlyList<string> selection = [];
@@ -19,8 +21,20 @@ public sealed partial class HomePage
     [SupplyParameterFromQuery]
     public bool Wait { get; set; }
 
+    [SupplyParameterFromQuery]
+    public bool Pan { get; set; }
+
+    [SupplyParameterFromQuery]
+    public bool BackgroundPan { get; set; }
+
     [CascadingParameter]
     private GridMode Grid { get; set; }
+
+    protected override void OnInitialized()
+    {
+        tool = Pan ? DiagramTool.Pan : DiagramTool.Select;
+        dragMode = BackgroundPan ? DiagramBackgroundDragMode.Pan : DiagramBackgroundDragMode.BoxSelect;
+    }
 
     protected override void OnAfterRender(bool firstRender)
     {

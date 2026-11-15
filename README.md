@@ -1,6 +1,7 @@
 # MusselDiagram - Diagram editor for Blazor
 
 [![NuGet](https://img.shields.io/nuget/v/MusselDiagram.svg)](https://www.nuget.org/packages/MusselDiagram/)
+[![Demo](https://img.shields.io/badge/demo-WebAssembly-blue.svg)](https://usausa.github.io/mussel-diagram/)
 
 ## 🐚 What is this?
 

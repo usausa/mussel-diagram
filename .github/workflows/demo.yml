@@ -1,0 +1,43 @@
+name: Demo
+
+on:
+    push:
+        tags:
+            - 'v*'
+
+permissions:
+    contents: write
+
+concurrency:
+    group: demo
+    cancel-in-progress: true
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-dotnet@v4
+              with:
+                  dotnet-version: '11.0.x'
+
+            - name: Publish the WebAssembly example
+              run: dotnet publish Example.Client/Example.Client.csproj -c Release -p:ExampleStandalone=true -o publish
+
+            - name: Prepare the site
+              working-directory: publish/wwwroot
+              run: |
+                  sed -i 's#<base href="/" />#<base href="/${{ github.event.repository.name }}/" />#' index.html
+                  cp index.html 404.html
+                  touch .nojekyll
+                  find . -name '*.br' -delete
+                  find . -name '*.gz' -delete
+
+            - uses: peaceiris/actions-gh-pages@v4
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  publish_dir: publish/wwwroot
+                  publish_branch: gh-pages
+                  force_orphan: true
+                  full_commit_message: Demo ${{ github.ref_name }}

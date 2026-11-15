@@ -1439,6 +1439,9 @@ class DiagramController {
             this.labels.writeAll(true);
         }
         this.options = options;
+        if (this.panTool()) {
+            this.clearHover();
+        }
         this.applyOptionClasses();
         this.gridKey = '';
         this.updateGrid();
@@ -1448,9 +1451,14 @@ class DiagramController {
     applyOptionClasses() {
         const options = this.options;
         this.canvas?.style.setProperty('--mussel-diagram-link-hit-width', String(options.linkHitWidth ?? 10));
-        this.canvas?.classList.toggle('mussel-diagram-no-move', !options.moveEnabled);
-        this.canvas?.classList.toggle('mussel-diagram-no-connect', !options.connectEnabled);
+        this.canvas?.classList.toggle('mussel-diagram-no-move', !options.moveEnabled || this.panTool());
+        this.canvas?.classList.toggle('mussel-diagram-no-connect', !options.connectEnabled || this.panTool());
         this.canvas?.classList.toggle('mussel-diagram-pan-drag', (options.backgroundDrag === 'pan') && options.panEnabled);
+        this.canvas?.classList.toggle('mussel-diagram-pan-tool', this.panTool() && options.panEnabled);
+    }
+
+    panTool() {
+        return this.options.tool === 'pan';
     }
 
     setNotAllowed(on) {
@@ -1735,7 +1743,7 @@ class DiagramController {
             }
         }
         const port = target.closest?.('.mussel-diagram-port');
-        if (port && this.canvas.contains(port) && this.options.connectEnabled) {
+        if (port && this.canvas.contains(port) && this.options.connectEnabled && !this.panTool()) {
             const id = port.closest(ELEMENT_SELECTOR)?.getAttribute('data-id');
             const box = this.table.boxes.get(id);
             const definition = findPort(box, port.getAttribute('data-port'));
@@ -1830,6 +1838,15 @@ class DiagramController {
             if (press.consumed) {
                 return;
             }
+            if (this.panTool()) {
+                this.press = null;
+                if (press.touch) {
+                    this.startPan(event);
+                } else if (this.startPan(event, press)) {
+                    this.panTo(event);
+                }
+                return;
+            }
             if (press.touch && (press.hit.kind === 'background') && !press.long) {
                 this.press = null;
                 this.startPan(event);
@@ -1918,7 +1935,7 @@ class DiagramController {
     }
 
     longPress(press) {
-        if ((this.press !== press) || this.drag) {
+        if ((this.press !== press) || this.drag || this.panTool()) {
             return;
         }
         press.long = true;
@@ -2007,6 +2024,9 @@ class DiagramController {
             if (this.dotnet) {
                 this.track(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index).catch(() => {}));
             }
+            return;
+        }
+        if (this.panTool()) {
             return;
         }
         if ((hit.kind === 'port') || (hit.kind === 'arrow')) {
@@ -2112,7 +2132,7 @@ class DiagramController {
             const box = this.table.boxes.get(id);
             if (!box) {
                 const link = this.table.links.get(id);
-                if (link && !drag && link.connectable && this.options.connectEnabled) {
+                if (link && !drag && link.connectable && this.options.connectEnabled && !this.panTool()) {
                     handles.push(...this.endHandles(link));
                 }
                 continue;
@@ -2126,7 +2146,7 @@ class DiagramController {
                 width: box.w + (pad * 2),
                 height: box.h + (pad * 2),
             }));
-            if (!drag && box.resizable && this.options.resizeEnabled) {
+            if (!drag && box.resizable && this.options.resizeEnabled && !this.panTool()) {
                 handles.push(...this.resizeHandles(box));
             }
         }
@@ -2223,7 +2243,7 @@ class DiagramController {
     }
 
     updateHover(event) {
-        if (!this.options.connectEnabled || this.waiting) {
+        if (!this.options.connectEnabled || this.waiting || this.panTool()) {
             this.clearHover();
             return;
         }
@@ -3795,7 +3815,7 @@ class DiagramController {
             return;
         }
         const hit = this.pressTarget({ target: under, clientX: event.clientX, clientY: event.clientY });
-        if (hit.kind === 'element' && hit.box) {
+        if ((hit.kind === 'element') && hit.box && !this.panTool()) {
             const slot = this.slotAt(hit.id, event);
             if (slot) {
                 this.editText(hit.id, slot);

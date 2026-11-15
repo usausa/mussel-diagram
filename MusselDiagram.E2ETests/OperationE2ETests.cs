@@ -179,6 +179,61 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         await Expect(node).Not.ToHaveAttributeAsync("data-pending", string.Empty);
     }
 
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ThePanToolPansFromNodesAndPorts(string mode)
+    {
+        opened = await app.OpenAsync("?pan=true", mode);
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-pan-tool"));
+
+        await DragAsync(250, 170, 100, 0, false, null);
+        await DragAsync(530, 190, 0, 50, false, null);
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(100,50) scale(1)");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1']")).ToHaveAttributeAsync("transform", "translate(226,146)");
+        await Expect(opened.View.Locator("g.mussel-diagram-link")).ToHaveCountAsync(7);
+        await Expect(opened.View.Locator("[data-selected]")).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBackgroundPanModeStillMovesNodes(string mode)
+    {
+        opened = await app.OpenAsync("?backgroundPan=true", mode);
+        var star = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-pan-drag"));
+
+        await DragAsync(700, 470, -100, 0, false, null);
+        await DragAsync(150, 170, 60, 40, true, null);
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(-100,0) scale(1)");
+        await Expect(star).ToHaveAttributeAsync("transform", "translate(286,186)");
+        await Expect(star).ToHaveAttributeAsync("data-selected", string.Empty);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ThePanToolLeavesClicksToTheApp(string mode)
+    {
+        opened = await app.OpenAsync("?pan=true", mode);
+        var selected = opened.View.Locator("[data-selected]");
+
+        await ClickAsync(250, 170);
+        await Expect(selected).ToHaveCountAsync(0);
+        await ClickAsync(430, 190);
+        await Expect(opened.View.Locator(".mussel-diagram-picker")).ToHaveCountAsync(0);
+        await DoubleClickAsync(250, 204);
+        await Expect(opened.View.Locator("textarea.mussel-diagram-text-editor")).ToHaveCountAsync(0);
+        await Expect(selected).ToHaveCountAsync(0);
+
+        await opened.Page.Keyboard.PressAsync("Control+A");
+        await ClickAsync(700, 470);
+
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay rect.mussel-diagram-selection").First).ToBeAttachedAsync();
+        await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-handle")).ToHaveCountAsync(0);
+    }
+
     private async Task<(double X, double Y)> OriginAsync()
     {
         var box = await opened!.View.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The view is not shown.");
@@ -189,6 +244,12 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     {
         var (left, top) = await OriginAsync().ConfigureAwait(true);
         await opened!.Page.Mouse.ClickAsync((float)left + x, (float)top + y).ConfigureAwait(true);
+    }
+
+    private async Task DoubleClickAsync(float x, float y)
+    {
+        var (left, top) = await OriginAsync().ConfigureAwait(true);
+        await opened!.Page.Mouse.DblClickAsync((float)left + x, (float)top + y).ConfigureAwait(true);
     }
 
     private async Task DragAsync(float x, float y, float dx, float dy, bool alt, Func<Task>? beforeRelease)

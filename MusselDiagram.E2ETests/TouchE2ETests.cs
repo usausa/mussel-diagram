@@ -144,9 +144,54 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await Expect(opened!.View.Locator("textarea.mussel-diagram-text-editor")).ToHaveValueAsync("星 1");
     }
 
-    private async Task OpenAsync(string mode)
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ThePanToolPansFromNodesAndTapsDoNotSelect(string mode)
     {
-        opened = await app.OpenAsync(string.Empty, mode, true).ConfigureAwait(true);
+        await OpenAsync(mode, true);
+        var viewport = opened!.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        var selected = opened.View.Locator("[data-selected]");
+
+        await TouchAsync("touchStart", (550, 340));
+        await TouchAsync("touchEnd");
+        await LongPressAsync((250, 170));
+        await Expect(selected).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-arrow")).ToHaveCountAsync(0);
+
+        await TouchAsync("touchStart", (250, 170));
+        await MoveAsync([(250, 170)], [(250, 270)]);
+        await TouchAsync("touchEnd");
+        await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"^translate\(0,9\d\) scale\(1\)$"));
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1']")).ToHaveAttributeAsync("transform", "translate(226,146)");
+
+        await TouchAsync("touchStart", (700, 470));
+        await Task.Delay(400, TestContext.Current.CancellationToken);
+        await MoveAsync([(700, 470)], [(600, 470)]);
+        await TouchAsync("touchEnd");
+        await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"^translate\(-9\d,9\d\) scale\(1\)$"));
+        await Expect(selected).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task SwitchingToThePanToolHidesTheConnectArrows(string mode)
+    {
+        await OpenAsync(mode);
+        var arrows = opened!.View.Locator(".mussel-diagram-overlay .mussel-diagram-arrow");
+        await TouchAsync("touchStart", (550, 340));
+        await TouchAsync("touchEnd");
+        await Expect(arrows).ToHaveCountAsync(4);
+
+        await opened.Page.Locator("[data-tool='pan']").TapAsync();
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-tool"));
+        await Expect(arrows).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='diamond'][data-selected]")).ToHaveCountAsync(1);
+    }
+
+    private async Task OpenAsync(string mode, bool pan = false)
+    {
+        opened = await app.OpenAsync(pan ? "?pan=true" : string.Empty, mode, true).ConfigureAwait(true);
         session = await opened.Page.Context.NewCDPSessionAsync(opened.Page).ConfigureAwait(true);
         var box = await opened.View.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The view is not shown.");
         origin = (box.X, box.Y);

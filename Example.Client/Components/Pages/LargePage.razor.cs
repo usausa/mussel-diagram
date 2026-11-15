@@ -12,6 +12,8 @@ public sealed partial class LargePage
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     [CascadingParameter]

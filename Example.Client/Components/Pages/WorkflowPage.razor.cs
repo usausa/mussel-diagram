@@ -3,7 +3,6 @@ namespace Example.Client.Components.Pages;
 using Example.Client.Models;
 
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
 
 public sealed partial class WorkflowPage : IDisposable
 {
@@ -19,6 +18,8 @@ public sealed partial class WorkflowPage : IDisposable
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     private IReadOnlyList<DiagramIssue> issues = [];
@@ -28,9 +29,6 @@ public sealed partial class WorkflowPage : IDisposable
     private WorkflowRun? run;
 
     private Dictionary<string, DiagramOverlay> overlays = [];
-
-    [Inject]
-    private IJSRuntime Runtime { get; set; } = default!;
 
     [CascadingParameter]
     private GridMode Grid { get; set; }
@@ -93,39 +91,6 @@ public sealed partial class WorkflowPage : IDisposable
         if ((run is not null) && string.Equals(e.Badge.Kind, WorkflowDiagrams.RunsBadge, StringComparison.Ordinal) && run.Rerun(e.ElementId))
         {
             overlays = run.Overlays();
-        }
-    }
-
-    private async Task ExportSvgAsync()
-    {
-        if (view is not null)
-        {
-            await DownloadAsync(await view.ExportSvgAsync(new DiagramSvgExportOptions { IncludeOverlays = true, EmbedFonts = true }), "diagram.svg", "image/svg+xml");
-        }
-    }
-
-    private async Task ExportImageAsync(DiagramImageFormat format)
-    {
-        if (view is not null)
-        {
-            var png = format == DiagramImageFormat.Png;
-            var result = await view.ExportImageAsync(new DiagramImageExportOptions { Format = format, Scale = 2, IncludeOverlays = true });
-            await DownloadAsync(result, png ? "diagram.png" : "diagram.jpg", png ? "image/png" : "image/jpeg");
-        }
-    }
-
-    private async Task DownloadAsync(DiagramExportResult result, string name, string type)
-    {
-        if (result.Content is not { } content)
-        {
-            return;
-        }
-
-        await using (content)
-        {
-            using var stream = new DotNetStreamReference(content, true);
-            await using var module = await Runtime.InvokeAsync<IJSObjectReference>("import", "./js/download.js");
-            await module.InvokeVoidAsync("download", name, type, stream);
         }
     }
 

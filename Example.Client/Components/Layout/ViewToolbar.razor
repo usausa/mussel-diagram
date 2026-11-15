@@ -1,16 +1,64 @@
 <div class="view-toolbar" role="toolbar" aria-label="描画面の操作">
-    <MudIconButton Icon="@Icons.Material.Filled.NearMe" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.BoxSelect)" aria-label="範囲選択" aria-pressed="@PressedOf(DiagramBackgroundDragMode.BoxSelect)" title="範囲選択" data-tool="box-select" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.BoxSelect))" />
-    <MudIconButton Icon="@Icons.Material.Filled.PanTool" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.Pan)" aria-label="手のひら" aria-pressed="@PressedOf(DiagramBackgroundDragMode.Pan)" title="手のひら" data-tool="pan" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.Pan))" />
-    <MudIconButton Icon="@Icons.Material.Filled.DoNotTouch" Size="Size.Small" Color="@ColorOf(DiagramBackgroundDragMode.None)" aria-label="何もしない" aria-pressed="@PressedOf(DiagramBackgroundDragMode.None)" title="何もしない" data-tool="none" OnClick="@(() => SetModeAsync(DiagramBackgroundDragMode.None))" />
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Disabled="@EditDisabled" aria-label="元に戻す" title="元に戻す (Ctrl+Z)" data-action="undo" OnClick="@(() => ExecuteAsync(DiagramCommands.Undo))" />
+        <MudIconButton Icon="@Icons.Material.Filled.Redo" Size="Size.Small" Disabled="@EditDisabled" aria-label="やり直す" title="やり直す (Ctrl+Y)" data-action="redo" OnClick="@(() => ExecuteAsync(DiagramCommands.Redo))" />
+    </div>
     <span class="view-toolbar-separator"></span>
-    <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Disabled="@(View is null)" aria-label="縮小" title="縮小" data-action="zoom-out" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomOut))" />
-    <MudMenu Label="@ZoomText" EndIcon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Dense="true" Disabled="@(View is null)" AriaLabel="倍率" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" data-action="zoom-menu">
-        @foreach (var level in Levels)
-        {
-            <MudMenuItem Label="@Percent(level)" OnClick="@(() => SetZoomAsync(level))" />
-        }
-    </MudMenu>
-    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Disabled="@(View is null)" aria-label="拡大" title="拡大" data-action="zoom-in" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomIn))" />
-    <MudIconButton Icon="@Icons.Material.Filled.FitScreen" Size="Size.Small" Disabled="@(View is null)" aria-label="全体表示" title="全体表示" data-action="zoom-fit" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToFit))" />
-    <MudIconButton Icon="@Icons.Material.Filled.CenterFocusStrong" Size="Size.Small" Disabled="@(View is null)" aria-label="選んだ要素を表示" title="選んだ要素を表示" data-action="zoom-selection" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToSelection))" />
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.ContentCut" Size="Size.Small" Disabled="@EditDisabled" aria-label="切り取り" title="切り取り (Ctrl+X)" data-action="cut" OnClick="@(() => ExecuteAsync(DiagramCommands.Cut))" />
+        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Disabled="@(View is null)" aria-label="コピー" title="コピー (Ctrl+C)" data-action="copy" OnClick="@(() => ExecuteAsync(DiagramCommands.Copy))" />
+        <MudIconButton Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Disabled="@EditDisabled" aria-label="貼り付け" title="貼り付け (Ctrl+V)" data-action="paste" OnClick="@(() => ExecuteAsync(DiagramCommands.Paste))" />
+        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Disabled="@EditDisabled" aria-label="削除" title="削除 (Delete)" data-action="delete" OnClick="@(() => ExecuteAsync(DiagramCommands.Delete))" />
+    </div>
+    <span class="view-toolbar-separator"></span>
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.NearMe" Size="Size.Small" Color="@ColorOf(Selects(DiagramBackgroundDragMode.BoxSelect))" aria-label="範囲選択" aria-pressed="@PressedOf(Selects(DiagramBackgroundDragMode.BoxSelect))" title="範囲選択" data-tool="box-select" OnClick="@(() => SelectAsync(DiagramBackgroundDragMode.BoxSelect))" />
+        <MudIconButton Icon="@Icons.Material.Filled.PanTool" Size="Size.Small" Color="@ColorOf(Tool == DiagramTool.Pan)" aria-label="手のひら" aria-pressed="@PressedOf(Tool == DiagramTool.Pan)" title="手のひら" data-tool="pan" OnClick="PanAsync" />
+        <MudIconButton Icon="@Icons.Material.Filled.DoNotTouch" Size="Size.Small" Color="@ColorOf(Selects(DiagramBackgroundDragMode.None))" aria-label="何もしない" aria-pressed="@PressedOf(Selects(DiagramBackgroundDragMode.None))" title="何もしない" data-tool="none" OnClick="@(() => SelectAsync(DiagramBackgroundDragMode.None))" />
+    </div>
+    <span class="view-toolbar-separator"></span>
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Disabled="@(View is null)" aria-label="縮小" title="縮小" data-action="zoom-out" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomOut))" />
+        <MudMenu Label="@ZoomText" EndIcon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Dense="true" Disabled="@(View is null)" AriaLabel="倍率" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" data-action="zoom-menu">
+            @foreach (var level in Levels)
+            {
+                <MudMenuItem Label="@Percent(level)" OnClick="@(() => SetZoomAsync(level))" />
+            }
+        </MudMenu>
+        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Disabled="@(View is null)" aria-label="拡大" title="拡大" data-action="zoom-in" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomIn))" />
+        <MudIconButton Icon="@Icons.Material.Filled.FitScreen" Size="Size.Small" Disabled="@(View is null)" aria-label="全体表示" title="全体表示" data-action="zoom-fit" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToFit))" />
+        <MudIconButton Icon="@Icons.Material.Filled.CenterFocusStrong" Size="Size.Small" Disabled="@(View is null)" aria-label="選んだ要素を表示" title="選んだ要素を表示" data-action="zoom-selection" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToSelection))" />
+    </div>
+    <span class="view-toolbar-separator"></span>
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.FlipToFront" Size="Size.Small" Disabled="@EditDisabled" aria-label="最前面へ移動" title="最前面へ移動 (Ctrl+Shift+F)" data-action="bring-to-front" OnClick="@(() => ExecuteAsync(DiagramCommands.BringToFront))" />
+        <MudIconButton Icon="@Icons.Material.Filled.MoveUp" Size="Size.Small" Disabled="@EditDisabled" aria-label="前面へ移動" title="前面へ移動 (Ctrl+Alt+Shift+F)" data-action="bring-forward" OnClick="@(() => ExecuteAsync(DiagramCommands.BringForward))" />
+        <MudIconButton Icon="@Icons.Material.Filled.MoveDown" Size="Size.Small" Disabled="@EditDisabled" aria-label="背面へ移動" title="背面へ移動 (Ctrl+Alt+Shift+B)" data-action="send-backward" OnClick="@(() => ExecuteAsync(DiagramCommands.SendBackward))" />
+        <MudIconButton Icon="@Icons.Material.Filled.FlipToBack" Size="Size.Small" Disabled="@EditDisabled" aria-label="最背面へ移動" title="最背面へ移動 (Ctrl+Shift+B)" data-action="send-to-back" OnClick="@(() => ExecuteAsync(DiagramCommands.SendToBack))" />
+    </div>
+    <span class="view-toolbar-separator"></span>
+    <div class="view-toolbar-group">
+        <MudIconButton Icon="@Icons.Material.Filled.SelectAll" Size="Size.Small" Disabled="@EditDisabled" aria-label="グループ化" title="グループ化 (Ctrl+G)" data-action="group" OnClick="@(() => ExecuteAsync(DiagramCommands.Group))" />
+        <MudIconButton Icon="@Icons.Material.Filled.Deselect" Size="Size.Small" Disabled="@EditDisabled" aria-label="グループ解除" title="グループ解除 (Ctrl+Shift+U)" data-action="ungroup" OnClick="@(() => ExecuteAsync(DiagramCommands.Ungroup))" />
+        <MudIconButton Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Disabled="@EditDisabled" aria-label="ロックの切り替え" title="ロックの切り替え (Ctrl+L)" data-action="lock" OnClick="@(() => ExecuteAsync(DiagramCommands.ToggleLock))" />
+        <MudMenu Icon="@Icons.Material.Filled.AlignHorizontalLeft" Size="Size.Small" Dense="true" Disabled="@EditDisabled" AriaLabel="整列" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" title="整列" data-action="align-menu">
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignHorizontalLeft" Label="左に揃える" data-action="align-left" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignLeft))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignHorizontalCenter" Label="左右の中央に揃える" data-action="align-center" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignCenter))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignHorizontalRight" Label="右に揃える" data-action="align-right" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignRight))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignVerticalTop" Label="上に揃える" data-action="align-top" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignTop))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignVerticalCenter" Label="上下の中央に揃える" data-action="align-middle" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignMiddle))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.AlignVerticalBottom" Label="下に揃える" data-action="align-bottom" OnClick="@(() => ExecuteAsync(DiagramCommands.AlignBottom))" />
+            <MudDivider />
+            <MudMenuItem Icon="@Icons.Material.Filled.HorizontalDistribute" Label="左右に等間隔" data-action="distribute-horizontally" OnClick="@(() => ExecuteAsync(DiagramCommands.DistributeHorizontally))" />
+            <MudMenuItem Icon="@Icons.Material.Filled.VerticalDistribute" Label="上下に等間隔" data-action="distribute-vertically" OnClick="@(() => ExecuteAsync(DiagramCommands.DistributeVertically))" />
+        </MudMenu>
+    </div>
+    <span class="view-toolbar-separator"></span>
+    <div class="view-toolbar-group">
+        <MudMenu Icon="@Icons.Material.Filled.Download" Size="Size.Small" Dense="true" Disabled="@(View is null)" AriaLabel="書き出し" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" title="書き出し" data-action="export-menu">
+            <MudMenuItem Label="SVG" data-action="export-svg" OnClick="ExportSvgAsync" />
+            <MudMenuItem Label="PNG" data-action="export-png" OnClick="@(() => ExportImageAsync(DiagramImageFormat.Png))" />
+            <MudMenuItem Label="JPEG" data-action="export-jpeg" OnClick="@(() => ExportImageAsync(DiagramImageFormat.Jpeg))" />
+        </MudMenu>
+    </div>
 </div>

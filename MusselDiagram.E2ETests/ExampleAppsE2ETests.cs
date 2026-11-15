@@ -1,5 +1,6 @@
 namespace MusselDiagram.E2ETests;
 
+using System.Text;
 using System.Text.RegularExpressions;
 
 using static Microsoft.Playwright.Assertions;
@@ -129,7 +130,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
     [Theory]
     [MemberData(nameof(ModeNames))]
-    public async Task TheToolbarSwitchesWhatABackgroundDragDoes(string mode)
+    public async Task TheToolbarSwitchesWhatADragDoes(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
         var page = opened.Page;
@@ -147,7 +148,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         await page.Locator("[data-tool='pan']").ClickAsync();
         await Expect(page.Locator("[data-tool='pan']")).ToHaveAttributeAsync("aria-pressed", "true");
-        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-drag"));
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-tool"));
         var (beforeX, beforeY) = Translation(await viewport.GetAttributeAsync("transform"));
         await page.Mouse.MoveAsync(x, y);
         await page.Mouse.DownAsync();
@@ -160,6 +161,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         await page.Locator("[data-tool='none']").ClickAsync();
         await Expect(page.Locator("[data-tool='none']")).ToHaveAttributeAsync("aria-pressed", "true");
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).Not.ToHaveClassAsync(new Regex("mussel-diagram-pan-tool"));
         var still = await viewport.GetAttributeAsync("transform") ?? string.Empty;
         await page.Mouse.MoveAsync(x, y);
         await page.Mouse.DownAsync();
@@ -275,6 +277,165 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarDeletesUndoesAndPastes(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var star = opened.View.Locator("g.mussel-diagram-node[data-id='star2']");
+        await Expect(nodes).ToHaveCountAsync(9);
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await page.Locator("[data-action='delete']").ClickAsync();
+        await Expect(rect).ToHaveCountAsync(0);
+        await page.Locator("[data-action='undo']").ClickAsync();
+        await Expect(rect).ToHaveCountAsync(1);
+        await page.Locator("[data-action='redo']").ClickAsync();
+        await Expect(rect).ToHaveCountAsync(0);
+        await Expect(nodes).ToHaveCountAsync(8);
+
+        await ClickAsync("g.mussel-diagram-node[data-id='star1'] > .mussel-diagram-shape");
+        await page.Locator("[data-action='copy']").ClickAsync();
+        await page.Locator("[data-action='paste']").ClickAsync();
+        await Expect(nodes).ToHaveCountAsync(9);
+
+        await ClickAsync("g.mussel-diagram-node[data-id='star2'] > .mussel-diagram-shape");
+        await Expect(star).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.Locator("[data-action='cut']").ClickAsync();
+        await Expect(star).ToHaveCountAsync(0);
+        await Expect(nodes).ToHaveCountAsync(8);
+        await page.Locator("[data-action='paste']").ClickAsync();
+        await Expect(nodes).ToHaveCountAsync(9);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarChangesTheOrderOfTheSelection(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var nodes = opened.View.Locator(".mussel-diagram-nodes > g.mussel-diagram-node");
+        var count = await nodes.CountAsync();
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+
+        await opened.Page.Locator("[data-action='send-to-back']").ClickAsync();
+        await Expect(nodes.Nth(0)).ToHaveAttributeAsync("data-id", "rect");
+        await opened.Page.Locator("[data-action='bring-forward']").ClickAsync();
+        await Expect(nodes.Nth(1)).ToHaveAttributeAsync("data-id", "rect");
+        await opened.Page.Locator("[data-action='bring-to-front']").ClickAsync();
+        await Expect(nodes.Nth(count - 1)).ToHaveAttributeAsync("data-id", "rect");
+        await opened.Page.Locator("[data-action='send-backward']").ClickAsync();
+        await Expect(nodes.Nth(count - 2)).ToHaveAttributeAsync("data-id", "rect");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarGroupsLocksAndAligns(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var groups = opened.View.Locator("g.mussel-diagram-group");
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var hexagon = opened.View.Locator("g.mussel-diagram-node[data-id='hexagon']");
+        await Expect(groups).ToHaveCountAsync(4);
+        await ClickAsync("g.mussel-diagram-node[data-id='ellipse'] > .mussel-diagram-shape");
+        await ShiftClickAsync("g.mussel-diagram-node[data-id='hexagon'] > .mussel-diagram-shape");
+        await Expect(hexagon).ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await page.Locator("[data-action='group']").ClickAsync();
+        await Expect(groups).ToHaveCountAsync(5);
+        await Expect(opened.View.Locator("g.mussel-diagram-group[data-selected]")).ToHaveCountAsync(1);
+        await page.Locator("[data-action='ungroup']").ClickAsync();
+        await Expect(groups).ToHaveCountAsync(4);
+
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.Locator("[data-action='lock']").ClickAsync();
+        await Expect(rect).ToHaveClassAsync(new Regex("mussel-diagram-locked"));
+
+        await ClickAsync("g.mussel-diagram-node[data-id='ellipse'] > .mussel-diagram-shape");
+        await ShiftClickAsync("g.mussel-diagram-node[data-id='hexagon'] > .mussel-diagram-shape");
+        await Expect(hexagon).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.Locator("[data-action='align-menu'] button").First.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "上に揃える", Exact = true }).ClickAsync();
+        await Expect(hexagon).ToHaveAttributeAsync("transform", "translate(320,600)");
+
+        await ShiftClickAsync("g.mussel-diagram-node[data-id='card'] > .mussel-diagram-shape");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='card']")).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.Locator("[data-action='align-menu'] button").First.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "左右に等間隔", Exact = true }).ClickAsync();
+        await Expect(hexagon).ToHaveAttributeAsync("transform", "translate(310,600)");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarDownloadsSvgAndPng(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+
+        var svg = await DownloadAsync("SVG", "diagram.svg");
+        Assert.Contains("<svg", Encoding.UTF8.GetString(svg), StringComparison.Ordinal);
+
+        var png = await DownloadAsync("PNG", "diagram.png");
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], png[..8]);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheEditButtonsAreOffOnAReadOnlyPage(string mode)
+    {
+        opened = await app.OpenAsync("monitor", mode);
+        var page = opened.Page;
+
+        foreach (var action in new[] { "undo", "redo", "cut", "paste", "delete", "bring-to-front", "bring-forward", "send-backward", "send-to-back", "group", "ungroup", "lock" })
+        {
+            await Expect(page.Locator($"[data-action='{action}']")).ToBeDisabledAsync();
+        }
+
+        await Expect(page.Locator("[data-action='align-menu'] button").First).ToBeDisabledAsync();
+        await Expect(page.Locator("[data-action='copy']")).ToBeEnabledAsync();
+        await Expect(page.Locator("[data-action='export-menu'] button").First).ToBeEnabledAsync();
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarWrapsInANarrowWindow(string mode)
+    {
+        opened = await app.OpenAsync("workflow", mode);
+        await opened.Page.SetViewportSizeAsync(1100, 900);
+        var toolbar = opened.Page.Locator(".view-toolbar");
+        var items = toolbar.Locator(":scope > *");
+        var bar = await toolbar.BoundingBoxAsync() ?? throw new InvalidOperationException("The toolbar is not shown.");
+        var count = await items.CountAsync();
+
+        for (var i = 0; i < count; i++)
+        {
+            var box = await items.Nth(i).BoundingBoxAsync() ?? throw new InvalidOperationException($"The item {i} is not shown.");
+            Assert.True((box.X + box.Width) <= (bar.X + bar.Width), $"The item {i} sticks out.");
+        }
+
+        string[][] groups =
+        [
+            ["undo", "redo"],
+            ["cut", "copy", "paste", "delete"],
+            ["box-select", "pan", "none"],
+            ["zoom-out", "zoom-menu", "zoom-in", "zoom-fit", "zoom-selection"],
+            ["bring-to-front", "bring-forward", "send-backward", "send-to-back"],
+            ["group", "ungroup", "lock", "align-menu"]
+        ];
+        foreach (var group in groups)
+        {
+            var first = await MiddleAsync(group[0]);
+            foreach (var name in group[1..])
+            {
+                Assert.True(Math.Abs(await MiddleAsync(name) - first) <= 4, $"'{name}' is not on the row of '{group[0]}'.");
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task TheBasicPageShowsEveryElementBesideThePanel(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -365,6 +526,30 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     {
         var (x, y) = await CenterAsync(selector).ConfigureAwait(true);
         await opened!.Page.Mouse.ClickAsync(x, y).ConfigureAwait(true);
+    }
+
+    private async Task<float> MiddleAsync(string name)
+    {
+        var box = await opened!.Page.Locator($".view-toolbar [data-action='{name}'], .view-toolbar [data-tool='{name}']").BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException($"'{name}' is not shown.");
+        return box.Y + (box.Height / 2);
+    }
+
+    private async Task ShiftClickAsync(string selector)
+    {
+        var (x, y) = await CenterAsync(selector).ConfigureAwait(true);
+        await opened!.Page.Keyboard.DownAsync("Shift").ConfigureAwait(true);
+        await opened.Page.Mouse.ClickAsync(x, y).ConfigureAwait(true);
+        await opened.Page.Keyboard.UpAsync("Shift").ConfigureAwait(true);
+    }
+
+    private async Task<byte[]> DownloadAsync(string format, string name)
+    {
+        var page = opened!.Page;
+        await page.Locator("[data-action='export-menu'] button").First.ClickAsync().ConfigureAwait(true);
+        var download = await page.RunAndWaitForDownloadAsync(() => page.GetByRole(AriaRole.Menuitem, new() { Name = format, Exact = true }).ClickAsync()).ConfigureAwait(true);
+        Assert.Equal(name, download.SuggestedFilename);
+        var path = await download.PathAsync().ConfigureAwait(true);
+        return await File.ReadAllBytesAsync(path).ConfigureAwait(true);
     }
 
     private async Task ClickBackgroundAsync()

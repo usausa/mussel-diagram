@@ -16,6 +16,8 @@ public sealed partial class MonitorPage : IDisposable
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     private Dictionary<string, DiagramOverlay> overlays = [];

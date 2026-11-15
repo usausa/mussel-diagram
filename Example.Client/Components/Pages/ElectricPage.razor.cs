@@ -14,6 +14,8 @@ public sealed partial class ElectricPage : IDisposable
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     private IReadOnlyList<DiagramIssue> issues = [];

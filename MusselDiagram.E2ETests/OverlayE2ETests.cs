@@ -120,7 +120,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await DeleteAsync("model");
         await Expect(opened.View.Locator(".mussel-diagram-badge-set[data-for='agent'] > .mussel-diagram-badge[data-tone='error']")).ToHaveCountAsync(1);
 
-        var svg = XDocument.Parse(Encoding.UTF8.GetString(await DownloadAsync("svg")));
+        var svg = XDocument.Parse(Encoding.UTF8.GetString(await DownloadAsync("SVG")));
         XNamespace ns = "http://www.w3.org/2000/svg";
         var root = svg.Root!;
         var width = int.Parse(root.Attribute("width")!.Value, CultureInfo.InvariantCulture);
@@ -136,12 +136,12 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         Assert.NotNull(agent.Elements(ns + "rect").First().Attribute("stroke"));
         Assert.Contains(root.Descendants(ns + "g"), static x => x.Attribute("data-id")?.Value == "idle");
 
-        var png = await DownloadAsync("png");
+        var png = await DownloadAsync("PNG");
         Assert.Equal([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], png[..8]);
         Assert.Equal(width * 2, BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16)));
         Assert.Equal(height * 2, BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20)));
 
-        var jpeg = await DownloadAsync("jpeg");
+        var jpeg = await DownloadAsync("JPEG");
         Assert.Equal([0xFF, 0xD8, 0xFF], jpeg[..3]);
     }
 
@@ -155,10 +155,11 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await Expect(node).ToHaveCountAsync(0).ConfigureAwait(true);
     }
 
-    private async Task<byte[]> DownloadAsync(string action)
+    private async Task<byte[]> DownloadAsync(string format)
     {
         var page = opened!.Page;
-        var download = await page.RunAndWaitForDownloadAsync(() => page.Locator($"[data-action='{action}']").ClickAsync()).ConfigureAwait(true);
+        await page.Locator("[data-action='export-menu'] button").First.ClickAsync().ConfigureAwait(true);
+        var download = await page.RunAndWaitForDownloadAsync(() => page.GetByRole(AriaRole.Menuitem, new() { Name = format, Exact = true }).ClickAsync()).ConfigureAwait(true);
         var path = await download.PathAsync().ConfigureAwait(true);
         return await File.ReadAllBytesAsync(path).ConfigureAwait(true);
     }

@@ -96,11 +96,18 @@ body {
 .view-toolbar {
     display: flex;
     flex: none;
+    flex-wrap: wrap;
     align-items: center;
     gap: 2px;
     padding: 2px 8px;
     background-color: var(--mud-palette-surface);
     border-bottom: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.view-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
 .view-toolbar-separator {

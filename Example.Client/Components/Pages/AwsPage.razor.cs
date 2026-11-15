@@ -15,6 +15,8 @@ public sealed partial class AwsPage
 
     private DiagramBackgroundDragMode dragMode;
 
+    private DiagramTool tool;
+
     private double zoom = 1;
 
     [Inject]

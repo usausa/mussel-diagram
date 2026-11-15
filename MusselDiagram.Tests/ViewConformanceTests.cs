@@ -256,6 +256,17 @@ public sealed class ViewConformanceTests : BunitContext
     }
 
     [Fact]
+    public void TheToolGoesToTheScript()
+    {
+        Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.Tool, DiagramTool.Pan));
+
+        var defaults = (JsonElement)module.Invocations["attach"][0].Arguments[2]!;
+        var options = (JsonElement)module.Invocations["attach"][1].Arguments[2]!;
+        Assert.Equal(("select", "pan"), (defaults.GetProperty("tool").GetString(), options.GetProperty("tool").GetString()));
+    }
+
+    [Fact]
     public void ThePaletteDrawsTheShapeOfEachType()
     {
         var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
