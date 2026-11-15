@@ -427,6 +427,10 @@
     stroke: var(--mussel-diagram-grid-major-color);
 }
 
+.mussel-diagram-grid path {
+    shape-rendering: crispEdges;
+}
+
 .mussel-diagram-picker {
     position: absolute;
     z-index: 2;

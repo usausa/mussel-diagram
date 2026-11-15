@@ -35,6 +35,10 @@ internal sealed record ScriptOptions
 
     public required string GridStyle { get; init; }
 
+    public required int GridMajorInterval { get; init; }
+
+    public required double GridMajorLineWidth { get; init; }
+
     public required double GridSize { get; init; }
 
     public required bool SnapToGrid { get; init; }

@@ -452,6 +452,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         Optimistic = CommitMode == DiagramCommitMode.Optimistic,
         GridVisible = GridVisible,
         GridStyle = GridStyle == DiagramGridStyle.Lines ? "lines" : "dots",
+        GridMajorInterval = GridMajorInterval,
+        GridMajorLineWidth = GridMajorLineWidth,
         GridSize = Diagram.Schema.GridSize,
         SnapToGrid = SnapToGrid,
         SnapToElements = SnapToElements,

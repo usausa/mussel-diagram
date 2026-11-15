@@ -44,6 +44,28 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TheGridTakesTheFirstMovingNodeWhenThePressedOneStays(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var star = opened.View.Locator("g.mussel-diagram-node[data-id='star2']");
+        await ClickAsync(380, 190);
+        await page.Keyboard.PressAsync("Control+L");
+        await Expect(rect).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-locked"));
+        await page.Keyboard.DownAsync("Shift");
+        await ClickAsync(250, 300);
+        await page.Keyboard.UpAsync("Shift");
+        await Expect(star).ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await DragAsync(380, 190, 33, 0, false, null);
+
+        await Expect(star).ToHaveAttributeAsync("transform", "translate(256,276)");
+        await Expect(rect).ToHaveAttributeAsync("transform", "translate(330,160)");
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task ResizingANodeChangesItsBounds(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

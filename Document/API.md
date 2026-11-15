@@ -18,6 +18,8 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
 | `GridVisible` | `bool` | `false` | Shows the grid |
 | `GridStyle` | `DiagramGridStyle` | `Dots` | `Dots` or `Lines` |
+| `GridMajorInterval` | `int` | `4` | Every how many grid lines (and dots in both directions) a major line is drawn. `0` draws none |
+| `GridMajorLineWidth` | `double` | `1` | Width in screen pixels of the major lines |
 | `SnapToGrid`, `SnapToElements` | `bool` | `true` | Snapping to the grid, and to other elements with guides |
 | `SnapTolerance` | `double` | `8` | Snapping distance in screen pixels |
 | `ConnectionRadius` | `double` | `20` | Distance in screen pixels within which a port becomes the target of a connection |
@@ -360,7 +362,7 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 | Variable | Use |
 |---|---|
 | `--mussel-diagram-background` | The background of the view |
-| `--mussel-diagram-grid-color`, `--mussel-diagram-grid-major-color` | The grid, and every fourth line |
+| `--mussel-diagram-grid-color`, `--mussel-diagram-grid-major-color` | The grid, and its major lines |
 | `--mussel-diagram-node-fill`, `--mussel-diagram-node-stroke`, `--mussel-diagram-text-color` | Shapes and labels without their own colors |
 | `--mussel-diagram-group-fill`, `--mussel-diagram-group-stroke` | Groups without their own colors |
 | `--mussel-diagram-link-color`, `--mussel-diagram-link-width` | Links without their own look |

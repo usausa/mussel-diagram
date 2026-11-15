@@ -12,4 +12,5 @@
     </MudMenu>
     <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Disabled="@(View is null)" aria-label="拡大" title="拡大" data-action="zoom-in" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomIn))" />
     <MudIconButton Icon="@Icons.Material.Filled.FitScreen" Size="Size.Small" Disabled="@(View is null)" aria-label="全体表示" title="全体表示" data-action="zoom-fit" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToFit))" />
+    <MudIconButton Icon="@Icons.Material.Filled.CenterFocusStrong" Size="Size.Small" Disabled="@(View is null)" aria-label="選んだ要素を表示" title="選んだ要素を表示" data-action="zoom-selection" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomToSelection))" />
 </div>

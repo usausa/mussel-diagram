@@ -138,9 +138,10 @@ public static class AwsDiagrams
                 new DiagramLabelSlot { Name = "note", Placement = DiagramLabelPlacement.Bottom, MaxLines = 1, Format = GroupName, Editable = true }
             ],
             Padding = new DiagramThickness(20, 50, 20, 30),
-            AllowedParents = Parents.TryGetValue(x.Name, out var parents) ? parents : null
+            AllowedParents = Parents.TryGetValue(x.Name, out var parents) ? parents : null,
+            TopLevel = !Parents.ContainsKey(x.Name)
         }).ToList();
-        groups.Add(groups.Single(static x => x.Name == "aws-availability-zone") with { Name = "aws-availability-zone-overlay", DisplayName = "Availability Zone (across)", Kind = DiagramGroupKind.Overlay, AllowedParents = null });
+        groups.Add(groups.Single(static x => x.Name == "aws-availability-zone") with { Name = "aws-availability-zone-overlay", DisplayName = "Availability Zone (across)", Kind = DiagramGroupKind.Overlay, AllowedParents = null, TopLevel = true });
         var scaling = groups.FindIndex(static x => x.Name == "aws-auto-scaling-group");
         groups[scaling] = groups[scaling] with { Kind = DiagramGroupKind.Overlay };
         return new DiagramSchema

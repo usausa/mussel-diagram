@@ -130,6 +130,34 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
         await Expect(links).ToHaveCountAsync(6);
     }
 
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task SubnetsCannotBeDroppedAtTheTopLevel(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+        var view = opened.View;
+        var page = opened.Page;
+        var zoom = page.Locator("[data-action='zoom-menu'] button").First;
+        await Expect(zoom).ToHaveTextAsync(new Regex("^[0-9]+%$"));
+        await zoom.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "50%", Exact = true }).ClickAsync();
+        await Expect(view.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new Regex(@"scale\(0\.5\)$"));
+        var subnet = view.Locator("g.mussel-diagram-group[data-id='public-a']");
+        var start = await subnet.GetAttributeAsync("transform") ?? string.Empty;
+        var area = await view.BoundingBoxAsync() ?? throw new InvalidOperationException("The view is not shown.");
+        var cloud = await view.Locator("g.mussel-diagram-group[data-id='cloud']").BoundingBoxAsync() ?? throw new InvalidOperationException("The cloud is not shown.");
+        var (fromX, fromY) = await CenterAsync(view.Locator("g.mussel-diagram-group[data-id='public-a'] > text.mussel-diagram-label").First);
+        var toX = (cloud.X + cloud.Width + area.X + area.Width) / 2;
+
+        await page.Mouse.MoveAsync(fromX, fromY);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(toX, fromY, new() { Steps = 10 });
+        await page.Mouse.UpAsync();
+
+        await Expect(subnet).ToHaveAttributeAsync("transform", start);
+        await Expect(view.Locator(".mussel-diagram-reason")).ToHaveTextAsync(new Regex("ここには置けません|The element cannot be placed here"));
+    }
+
     private static async Task<(float X, float Y)> CenterAsync(ILocator locator)
     {
         var box = await locator.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The element is not shown.");

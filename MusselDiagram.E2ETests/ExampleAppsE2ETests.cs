@@ -28,6 +28,12 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(button).ToHaveAttributeAsync("data-grid", "lines");
         await Expect(pattern.Locator("path").First).ToBeAttachedAsync();
         await Expect(pattern.Locator("circle")).ToHaveCountAsync(0);
+        await Expect(pattern).ToHaveAttributeAsync("x", "-5");
+        await Expect(pattern).ToHaveAttributeAsync("width", "50");
+        await Expect(pattern.Locator("path.mussel-diagram-grid-major")).ToHaveAttributeAsync("d", "M5,0V50M0,5H50");
+        await Expect(pattern.Locator("path.mussel-diagram-grid-major")).ToHaveAttributeAsync("stroke-width", "2");
+        await Expect(pattern.Locator("path.mussel-diagram-grid-major")).ToHaveCSSAsync("shape-rendering", "crispedges");
+        await Expect(pattern.Locator("path.mussel-diagram-grid-minor")).ToHaveCSSAsync("shape-rendering", "crispedges");
 
         await button.ClickAsync();
         await Expect(button).ToHaveAttributeAsync("data-grid", "none");
@@ -189,6 +195,27 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         await page.Locator("[data-action='zoom-fit']").ClickAsync();
         await Expect(label).ToHaveTextAsync(fitted);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarZoomsToTheSelection(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var label = page.Locator("[data-action='zoom-menu'] button").First;
+        await Expect(label).ToHaveTextAsync(new Regex("^[0-9]+%$"));
+        var fitted = (await label.TextContentAsync())?.Trim() ?? string.Empty;
+
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='rect']")).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.Locator("[data-action='zoom-selection']").ClickAsync();
+        await Expect(label).Not.ToHaveTextAsync(fitted);
+
+        var view = await opened.View.BoundingBoxAsync() ?? throw new InvalidOperationException("The view is not shown.");
+        var (x, y) = await CenterAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        Assert.InRange(x, view.X + (view.Width / 2) - 2, view.X + (view.Width / 2) + 2);
+        Assert.InRange(y, view.Y + (view.Height / 2) - 2, view.Y + (view.Height / 2) + 2);
     }
 
     [Theory]

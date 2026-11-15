@@ -103,8 +103,8 @@ public static class WorkflowDiagrams
         ],
         LinkTypes =
         [
-            new DiagramLinkType { Name = "main", AllowCycles = false, Look = new DiagramLook { Stroke = "var(--example-flow-line)" } },
-            new DiagramLinkType { Name = "ai", TargetMarker = DiagramMarker.None, Look = new DiagramLook { Stroke = "#A855F7", Dash = DiagramDash.Dashed } }
+            new DiagramLinkType { Name = "main", Form = DiagramLineForm.Curved, AllowCycles = false, Look = new DiagramLook { Stroke = "var(--example-flow-line)" } },
+            new DiagramLinkType { Name = "ai", Form = DiagramLineForm.Curved, TargetMarker = DiagramMarker.None, Look = new DiagramLook { Stroke = "#A855F7", Dash = DiagramDash.Dashed } }
         ],
         DefaultLinkType = "main",
         IconSets =
@@ -133,8 +133,8 @@ public static class WorkflowDiagrams
         diagram.Add(Step("fetch", "http", 200, 120, "受注を取る", new HttpSettings("GET", "https://example.com/api/orders")));
         diagram.Add(Step("check", "branch", 360, 120, "新しい受注がある", new BranchSettings("count > 0")));
         diagram.Add(Step("agent", "agent", 540, 60, "返信を考える", new AgentSettings("受注の内容を読んで、お客様への返信を考える")));
-        diagram.Add(Step("model", "model", 480, 230, "言語モデル", new ModelSettings("claude-sonnet-5-5")));
-        diagram.Add(Step("stock", "tool", 600, 230, "在庫を調べる", new ToolSettings("在庫を調べる")));
+        diagram.Add(Step("model", "model", 480, 290, "言語モデル", new ModelSettings("claude-sonnet-5-5")));
+        diagram.Add(Step("stock", "tool", 600, 290, "在庫を調べる", new ToolSettings("在庫を調べる")));
         diagram.Add(Step("reply", "notify", 740, 60, "返信を送る", new NotifySettings("#orders")));
         diagram.Add(Step("idle", "notify", 740, 230, "担当に知らせる", new NotifySettings("#team")));
         diagram.Connect(Link("start-fetch", "start", "out", "fetch", "in", "main"));

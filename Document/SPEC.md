@@ -66,7 +66,7 @@ The view takes its size from its parent element. When the parent is resized, it 
 
 | Item | Content |
 |---|---|
-| Render modes | Works the same in Interactive Server, WebAssembly and Auto. Prerendering and static SSR are not supported in the first version |
+| Render modes | Works the same in Interactive Server, WebAssembly and Auto. Showing the diagram while prerendering and in static SSR is not supported in the first version |
 | Handled in the browser | Pointer and keys, the display while dragging, snapping, connection candidates, the simple route while dragging, label wrapping |
 | Handled in C# | The model, commits, validation, routing, rendering |
 | Drawing nodes | By default the component draws the shape the type declares. A type with a template registered on the view is drawn by that Razor template, which renders SVG elements |
@@ -100,7 +100,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 - An empty slot shows the default text of the type, which is not saved. Without default text it shows nothing
 - Text for slots the type does not have is kept and not drawn
 - In-place editing works on editable slots only (Commands and keys)
-- Placement, format and wrapping are in Rendering, group headers in AWS architecture diagrams. Link labels and labels that move on their own are not in the first version
+- Placement, format and wrapping are in Rendering, group headers in AWS architecture diagrams. Link labels and labels that move on their own are planned for the next version
 
 ### Ports and links
 
@@ -186,7 +186,7 @@ Through the methods of a snapshot.
 | Question | Content |
 |---|---|
 | Connections | The links of an element (in and out, optionally by port), and the elements one link before and after |
-| Traversal | Upstream and downstream (the elements reached along the links), the elements in cycles, the nodes and linked groups not reachable from given elements |
+| Traversal | Upstream and downstream (the elements reached by following the links in their direction), the elements in cycles, the nodes and linked groups not reachable from given elements |
 | Tree | Parent, children, ancestors, descendants, top-level elements |
 | Overlay | The members of a group, the overlay groups around an element |
 | Shared items | The elements that refer to a shared item (the use count), the shared items nothing refers to |
@@ -215,7 +215,8 @@ A schema (`DiagramSchema`) is an immutable record of the node, group, link and s
 | Ports | Ports below | Nodes, groups |
 | Data | The `JsonTypeInfo<T>` of the data type, the default data, and a function that returns the IDs of the shared items the data refers to | All |
 | Nesting | Allowed parent types, whether it can be at the top level, whether it stays inside its parent (Nesting rules) | Nodes, groups |
-| Counts | Maximum count, required, undeletable, start mark (Counts and permissions) | Nodes, groups, shared items |
+| Counts | Maximum count, required, undeletable (Counts and permissions) | Nodes, groups, shared items |
+| Start | Start mark (Counts and permissions) | Nodes, groups |
 | Permissions | Select, move, resize, delete, connect, edit text | Nodes, groups, links |
 | Tooltip | A function that returns text from the data (Selection and moving) | Nodes, groups, links |
 | Groups only | Kind (tree or overlay), sizing (manual or to the contents), padding, header form (AWS architecture diagrams), allowed child or member types | Groups |
@@ -342,7 +343,7 @@ From back to front:
 | Interaction | Selection frame, handles, guides, preview lines, the box selection frame, connection candidates |
 
 - Only the interaction layer is drawn in a separate SVG laid over the diagram SVG
-- End markers, and the icons that are shown (by elements, badges, palette items, picker items and dragged types), are placed once in `<defs>` and referenced with `<use>`. The grid is one pattern that fills the visible area
+- End markers, and the icons that are shown (by elements, badges, palette items, type picker items and dragged types), are placed once in `<defs>` and referenced with `<use>`. The grid is one pattern that fills the visible area
 - The text editor is HTML over the SVG
 
 ### Panning and zooming
@@ -351,19 +352,20 @@ From back to front:
 |---|---|
 | Pan | Space+drag, middle-button drag, wheel (vertical), Shift+wheel (horizontal). On touch, a one-finger drag on the background. A left drag on the background is box selection by default, and pans with `BackgroundDragMode` `Pan` (Selection and moving) |
 | Zoom | Ctrl+wheel, Alt+wheel, pinch (keeping the point under the pointer still), and the zoom commands |
-| Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. An element can also be brought to the center |
+| Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. The whole diagram includes the labels and badges drawn outside the elements. An element can also be brought to the center |
 
-- `WheelMode` makes the plain wheel zoom instead
+- `WheelMode` makes the plain wheel zoom instead (Zoom with Mouse Wheel in draw.io)
 - The zoom goes from `MinZoom` (default 0.05) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
-- The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram (with the labels and badges drawn outside the elements) or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
+- The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
 - The position and zoom of the view are not in the diagram. To keep them, the app saves the values of `ViewportChanged`
-- The view has no edges. Page frames and limits on the visible area are not in the first version
+- The view has no edges. Page frames and limits on the visible area are planned for the next version
 
 ### Grid
 
-- `GridVisible` shows the grid, with the spacing `GridSize` of the schema (default 10). It is drawn as dots or lines, with every fourth line darker
-- At zoom levels where the spacing on screen is under 8 px, the spacing is doubled until it is not. The snapping spacing does not change
+- `GridVisible` shows the grid, with the spacing `GridSize` of the schema (default 10). It is drawn as dots or lines. Lines are snapped to device pixels (`shape-rendering: crispEdges`)
+- Every `GridMajorInterval`-th line (default 4), and every such dot in both directions, is drawn darker as a major line. Major lines are `GridMajorLineWidth` screen pixels wide (default 1), and other lines 1 pixel. 0 draws no major lines
+- At zoom levels where the spacing on screen is under 8 px, the spacing is doubled until it is not. Major lines are counted in the lines drawn. The snapping spacing does not change
 
 ### Culling
 
@@ -398,7 +400,7 @@ From back to front:
 - Past the maximum lines, the end of the last line becomes "…", the rest is left out, and `<title>` holds the full text. Without a maximum, all lines are drawn
 - The text is wrapped again when fonts finish loading, and when the text, the width of the slot or the format changes
 - The number of lines is not returned to C#. The size of a label never changes the size or position of an element
-- Export writes the wrapped lines (Saving and export). A rule that keeps set words (AWS, Amazon) on the same line as the next word is not in the first version
+- Export writes the wrapped lines (Saving and export). A rule that keeps set words (AWS, Amazon) on the same line as the next word is planned for the next version
 
 ### Port positions
 
@@ -413,7 +415,7 @@ C# and JS compute the port positions with the same formula from the type and the
 | Offset | Pixels outwards from the side |
 
 - When an element is resized, its ports follow by ratio
-- CSS can draw each kind of port differently. Ports shown only on hover are not in the first version
+- CSS can draw each kind of port differently. Ports shown only on hover are planned for the next version
 
 ### Styles and themes
 
@@ -455,9 +457,9 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click selects the frontmost element under the pointer. A group is selected by its frame, header or ports (Rendering)
 - A click on a port that can start a link does not change the selection and opens the type picker (Palette)
 - Shift+click and Ctrl+click (Cmd on Mac) add to or remove from the selection
-- Box selection, a left drag on the background, selects the elements entirely inside the rectangle. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is not in the first version
+- Box selection, a left drag on the background, selects the elements entirely inside the rectangle. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is added later, when needed
 - `BackgroundDragMode` decides what a left drag on the background does with a mouse or a pen: `BoxSelect` (the default), `Pan` or `None`. A click on the background clears the selection in every mode. Touch keeps its gestures (a one-finger drag pans, and a drag after a long press selects)
-- A click on the background, and Esc outside an operation, clear the selection. Deleted elements leave the selection
+- A click on the background, and Esc outside an operation, clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment. Even when the selection known to C# is behind, they act on the selection the user saw
 
@@ -478,7 +480,7 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - An element never gets smaller than the minimum size of its type. A tree group never gets smaller than the bounds of its children plus its padding. The children neither move nor change size
 - Groups sized to their contents and overlay groups show no handles
 - Ports follow by ratio. While resizing, the edges snap to the grid and the guides
-- Keeping the aspect ratio and locking an axis are not in the first version
+- Keeping the aspect ratio and locking an axis are planned for the next version
 
 ### Align, distribute, order and lock
 
@@ -516,7 +518,7 @@ Pointer Events take the mouse, the pen and touch together. The view has `touch-a
 | Double-click | On an editable slot, starts editing its text (Commands and keys). On a node whose first editable slot is empty, edits that slot. Elsewhere, `ElementDoubleClicked` (`BackgroundDoubleClicked` for the background) reports it |
 | Hover | Shows the tooltip of the element with `<title>`: the text that a function of the schema makes from the data, otherwise the full text of a shortened label |
 
-Context menus on right-click and long press are not in the first version.
+Context menus on right-click and long press are planned for the next version.
 
 ### Keys
 
@@ -532,7 +534,7 @@ Context menus on right-click and long press are not in the first version.
 ### Turning behaviour off and adding it
 
 - Each built-in operation can be turned off with its `…Enabled`: pan, zoom, selection, box selection, move, resize, connect, drop, text editing, tooltip. `ReadOnly` turns off all editing operations (Components and packages)
-- The app adds its own behaviour through the click and double-click events and through commands. Switching tools other than the background drag (`BackgroundDragMode`), such as drawing links or shapes, is not in the first version
+- The app adds its own behaviour through the click and double-click events and through commands. Switching tools other than the background drag (`BackgroundDragMode`), such as drawing links or shapes, is planned for the next version
 
 ## 🧲 Snapping and guides
 
@@ -546,7 +548,7 @@ JS computes snapping and guides while dragging. They work for moving, resizing a
 
 ### Grid
 
-- When moving, the center of the pressed node, or the top left of the pressed group, is rounded to the grid, and the same offset moves the whole selection. The distances between the selected elements do not change
+- When moving, the center of the pressed node, or the top left of the pressed group, is rounded to the grid, and the same offset moves the whole selection. When the pressed element does not move (it is locked, for example), the first moving element in the order of selection is used instead. The distances between the selected elements do not change
 - When resizing, the moving edges are rounded to the grid
 - An element placed from the palette or by quick add has its center (a node) or its top left (a group) rounded to the grid
 - So the center lines of nodes lie on grid lines whatever their size, and so do the ports in the middle of a side and the ends of links attached to a whole node
@@ -559,7 +561,7 @@ JS computes snapping and guides while dragging. They work for moving, resizing a
 - When resizing, only the moving edges snap
 - Only the nodes and tree groups in the visible area count. The moving elements, their descendants and ancestors, and links do not
 - The candidates are collected once, when the drag passes the threshold, and looked up through indexes sorted per axis
-- Snapping to equal spacing and to equal sizes is not in the first version
+- Snapping to equal spacing and to equal sizes is added later, when needed
 
 ### Priority and turning snapping off
 
@@ -573,7 +575,7 @@ Creating links and reconnecting their ends. The connection rules in Types and ru
 
 ### Starting
 
-- Dragging an out or both port draws a link from it. A click on it is in Palette (adding a connected element). Links cannot be drawn from in ports in the first version
+- Dragging an out or both port draws a link from it. A click on it is in Palette (adding a connected element). Links are not drawn from in ports (planned for the next version)
 - For a type that connects as a whole, resting the pointer on the element for 140 ms (on touch, selecting only that element) shows "connect arrows" above, below, left and right of it. Dragging an arrow draws a link from the whole element. A click on an arrow is in Palette (adding a connected element)
 - Ports are always shown. A type can declare ports that show only while a connection is dragged (the way draw.io uses its connection points)
 - The type of the new link is in Types and rules: the declaration of the port, then the `LinkType` of the view, then the default of the schema, then the first link type
@@ -588,7 +590,7 @@ While dragging, the target is searched in this order. Targets the rules reject a
 | 2 | Whole element | The innermost element under the pointer that connects as a whole |
 
 - Once a target is found, the end of the preview line snaps to it
-- Links do not connect to links in the first version
+- Links do not connect to links (added later, when needed)
 
 ### While drawing
 
@@ -639,8 +641,8 @@ The link type declares the form.
 | Curved | A cubic Bézier. The control points stick out from each end in the direction of the end |
 
 - The direction of an end is outwards from the side of its port, or, for a whole element, outwards from the side facing the other end
-- An end attached to a whole element leaves from the middle of the side facing the other end. Ends that slide along the outline are not in the first version
-- Editing waypoints, rounded corners and jumps over crossing lines are not in the first version
+- An end attached to a whole element leaves from the middle of the side facing the other end. Ends that slide along the outline are planned for the next version
+- Editing waypoints, rounded corners and jumps over crossing lines are planned for the next version
 
 ### Orthogonal routes
 
@@ -674,7 +676,7 @@ The link type declares the form.
 - An end attached to a whole element stops at its outline: the shape for rectangles, ellipses and diamonds, the bounds for path shapes and icons (an AWS resource icon stops at its 48 px frame)
 - An end attached to a port stops at the port
 - At an end with a marker, the line is shortened by the marker so that it does not stick out of it
-- Stopping before a label placed outside the element is not in the first version
+- Stopping before a label placed outside the element is planned for the next version
 
 ### Line styles and hit testing
 
@@ -701,13 +703,13 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 - The items of closed categories, and items outside the visible part, are not drawn. Item icons reference the same `<symbol>` as the view, and an icon is placed in the view when its item is drawn
 - CSS changes the look. Colors use the same CSS variables as the view (Rendering)
 - Items are disabled when the view is `ReadOnly` or `DropEnabled` is false
-- Item descriptions, large previews, recently used types, and items the user adds are not in the first version
+- Item descriptions, large previews, recently used types, and items the user adds are planned for the next version
 
 ### Search
 
 - Typing in the search box above the list filters by display name, search words, category display name and type name
 - Matching is partial and case-insensitive. With words separated by spaces, only the items that contain all of them appear
-- While searching, only the categories with matches show, open. Within a category, exact matches of the display name come first, then prefix matches, then the rest, otherwise the order in the schema. Without matches, a message says so (the texts are in Languages)
+- While searching, only the categories with matches show, open. Within a category, exact matches of the display name come first, then prefix matches, then the rest, each in the order of the schema. Without matches, a message says so (the texts are in Languages)
 - The app can pass a function that normalizes text before comparing (full-width and half-width, hiragana and katakana and so on)
 - The type picker uses the same search
 
@@ -726,7 +728,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 - Adding is one change, which includes splicing into a link. `Dropping` and `Dropped` report the type, the position, the parent, the value and the link spliced into, before and after. Before, `Cancel` stops it and a reason can be returned (Commit and validation)
 - A placed group does not take the elements under it as children
 - Auto-scrolling at the edges, Esc and a second finger work as for moving (Selection and moving). Auto-scrolling starts once the pointer has been inside the view away from its edges
-- Placing by click, placing repeatedly, an animation back after a rejected drop, and dropping files, images and text from the OS are not in the first version
+- Placing by click, placing repeatedly, an animation back after a rejected drop, and dropping files, images and text from the OS are planned for the next version
 
 ### Parent and where an element can be placed
 
@@ -767,7 +769,7 @@ A small list that opens over the view to find and choose a type. It has a search
 - While the list is open, a preview frame with the size of the chosen type is drawn at the position. When it was opened from a link, an arrow or a port, a preview line from the connection point is drawn too. The list opens where it fits in the view
 - The placed element is snapped to the grid, passes the checks of Parent and where an element can be placed, and is selected. When the list was opened from a link, an arrow or a port, the element is connected at its first declared connection point that can connect, and adding and connecting are one change (`Connecting`, `Connected`). When it was opened by the command, `Dropping` and `Dropped` report it
 - The app can open it too, at a position it gives (on a double-click on the background, for example)
-- It places one element at a time. Adding several in a row is not in the first version
+- It places one element at a time. Adding several in a row is planned for the next version
 
 ### Adding a connected element
 
@@ -790,8 +792,8 @@ A small list that opens over the view to find and choose a type. It has a search
 - It reads only the streams and files the app passes, never the network. No icon sets are bundled
 - Imported SVG is sanitized (Saving and export). The IDs inside an icon get a prefix per icon
 - When the app passes a base type (shape, default size, label slots, ports, rules), a type is made for each chosen icon. The type name is `prefix:ID` of the icon by default, and the display name, the category and the search words come from the icon. The app adds the types to the schema and replaces it
-- An icon is placed in the document once, the first time something shows it (Rendering). The view, the palette and the picker reference the same one
-- How to read the official AWS package and make its IDs is in AWS architecture diagrams. Replacing a set with a newer version of it is not in the first version
+- An icon is placed in the document once, the first time something shows it (Rendering). The view, the palette and the type picker reference the same one
+- How to read the official AWS package and make its IDs is in AWS architecture diagrams. Replacing a set with a newer version of it is planned for the next version
 
 ## 🚦 Commit and validation
 
@@ -857,7 +859,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 
 ### Whole-diagram check
 
-- `Validate` returns the list of issues (`DiagramIssue`) for a snapshot and a schema. It never throws, and works the same without a view (on a server)
+- `Validate` returns the list of issues (`DiagramIssue`) for a snapshot and a schema. It never throws, and works the same without a view (on a server, for example)
 - An issue has a severity (error or warning), a kind, a text, and element IDs (with a port or a slot)
 
 | Checked | Severity |
@@ -868,7 +870,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 | Required ports without links, and links to ports that no longer exist | Error |
 | Shared item IDs with no target | Error |
 | Elements of unregistered types | Warning |
-| Icon URLs of elements that are not used (Saving and export) | Warning |
+| Element icon URLs that were not used (Saving and export) | Warning |
 | The whole-diagram check of the app | Decided by the app |
 
 - The app decides when to check (on every change, before saving and so on)
@@ -940,7 +942,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - A command has a name, a display name, keys, whether it is enabled, a checked state, and what it does. The commands of the app are added in the same form
 - For built-in commands, keys can be changed and removed, an enabled check can be added, and what they do can be replaced
 - The enabled and checked states are checked again whenever the selection, the diagram or the state of the view changes, and `Changed` reports it (to enable and disable toolbars and menus)
-- `ExecuteAsync` (a name and an argument) runs a command. `Group` and `CreateOverlayGroup` take a type, and `QuickAdd` a position
+- `ExecuteAsync` (a name and an argument) runs a command. Only `Group` and `CreateOverlayGroup` (a type) and `QuickAdd` (a position) take an argument
 - Display names follow the texts of the language (Languages)
 - There are no toolbar, menu, context menu or command palette components. The app builds them from the registry
 
@@ -950,11 +952,11 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - A key is written as modifiers (Ctrl, Alt, Shift) and a key joined with `+` (`Ctrl+Shift+Z`). On Mac, Ctrl means ⌘ and Alt means Option
 - A key belongs to one command only. The last assignment wins
 - JS matches the keys, and stops (`preventDefault`) and runs only the keys of enabled commands. The keys of disabled commands go to the browser
-- While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then
+- While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then. During a drag, the keys of all commands are stopped and do not run, and so are the keys of the commands other than the view and selection commands while a `Wait` commit awaits its answer
 - Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them, unless the app changed what they do or when they are enabled. For the others, JS sends the name and the selection of that moment to C#
-- During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input, and the text editor keeps Enter with any modifier. During IME composition, no key is a command
+- During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input, and the text editor keeps Enter with any modifier. F1 to F12, with or without modifiers, are not treated as typing keys (when they are command keys, they run the command). During IME composition, no key is a command
 - Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving)
-- Moving elements with the arrow keys, and moving between elements with Tab, are not in the first version
+- Moving elements with the arrow keys, and moving between elements with Tab, are planned for the next version
 
 ### Built-in commands
 
@@ -986,20 +988,20 @@ The keys follow draw.io.
 
 - Deletes the selected elements. A tree group is deleted with its descendants, and the attached links are deleted in the same change. For an overlay group, only the group is deleted, and the members stay (Model)
 - Elements that cannot be deleted (lock, permissions, undeletable types) stay. A tree group with a descendant that cannot be deleted is not deleted. With nothing deletable, the command is disabled
-- Deleting a node in the middle and joining its neighbours is not in the first version
+- Deleting a node in the middle and joining its neighbours is planned for the next version
 
 ### Copy, cut and paste
 
-- Copy keeps a copy of the selected elements in the view. The OS clipboard, and copying between diagrams, are not in the first version
+- Copy keeps a copy of the selected elements in the view. The OS clipboard, and copying between diagrams, are planned for the next version
 - The copy holds the selected nodes and groups, the descendants of tree groups, the links with both ends in the copy, and the shared items the data of the copied elements refers to. An overlay group keeps only the members in the copy, and is left out when it has none
 - Cut is a copy and a delete in one change (`Deleting`, `Deleted`)
 - Paste adds the copied elements with new IDs and selects them
-  - The parent is the parent in the copy. Otherwise it is the original parent (when it still exists and the nesting rules allow it), otherwise the top level
+  - The parent is the parent in the copy. Otherwise it is the original parent (when it still exists, is an unlocked tree group, and the nesting rules allow it), otherwise the top level
   - Each paste moves the position right and down by 2 grid spacings more from the copied position
   - A shared item with the same ID in the diagram is referred to. Otherwise it is added with the same ID
   - When an element cannot be placed because of a maximum count or the nesting rules, the paste is rejected with the reason
 - `Pasting` and `Pasted` hold the mapping from the old to the new IDs. The app fixes references to other elements inside data by writing with `Merge` in `Pasted` (Undo)
-- Pasting at the original position and placing at the cursor are not in the first version
+- Pasting at the original position and placing at the cursor are planned for the next version
 
 ### Group and ungroup
 
@@ -1036,7 +1038,7 @@ The keys follow draw.io.
 - Losing the focus (pressing outside the view, Tab and so on) commits
 - The commit is `TextCommitting` and `TextCommitted` (Commit and validation). Unchanged text writes nothing. An emptied slot shows the default text
 - Panning and zooming work while editing, and the input follows the element. When the element is deleted, editing stops
-- Starting to edit by typing is not in the first version
+- Starting to edit by typing is planned for the next version
 
 ## 💾 Saving and export
 
@@ -1098,20 +1100,20 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - Labels, slot texts and tooltips are always drawn as text, never parsed as HTML
 - The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject` and references to external URLs are removed (the prefixes of the IDs inside are in Palette)
 - The `Icon` URL of an element is used only when it is an http, https or relative URL, or a data URL of an image. Other URLs are not drawn
-- What was removed from icons, and the URLs they do not use, come back as issues (warnings) of the import. The URLs of elements that are not used come back from the whole-diagram check
+- What was removed from icons, and the URLs they do not use, come back as issues (warnings) of the import. Element URLs that were not used come back from the whole-diagram check
 
 ### SVG export
 
 - `ExportSvgAsync` of the view returns the whole diagram as one SVG. Export without a view is added later, when needed
 - It has the groups, links and nodes, and the wrapped labels. Culled elements are drawn before writing. The selection frame, handles, guides, preview lines and the grid are left out
 - State overlays (states, render overrides, badges) and issue badges are included when chosen (not by default)
-- The area is the bounds of all the elements plus a margin (default 10). Choosing an area is not in the first version
+- The area is the bounds of all the elements plus a margin (default 10). Choosing an area is planned for the next version
 - The background is transparent by default, and can be filled with the background color. Colors follow the current light or dark mode
 - The colors, strokes and text formats that CSS variables and classes decide are written to the attributes of the elements as computed values, so the SVG looks the same without CSS
 - Export waits for the icons in use that are still being read. Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
 - Fonts are written by name only by default. When chosen, the fonts used among those the page loaded with `@font-face` are embedded as data URLs
 - Tooltips, classes, styles and the hit areas of links are left out. `data-id` and `data-type` are kept
-- PDF, and images with the diagram data embedded, are not in the first version
+- PDF, and images with the diagram data embedded, are planned for the next version
 
 ### PNG and JPEG export
 
@@ -1141,7 +1143,7 @@ The app can draw states over elements without changing the model (run states, ch
 | Render override | Fill, stroke color, stroke width, dash and opacity. It takes priority over the look of the type |
 | Badges | Small marks on the corners of the element (Badges below) |
 
-- State names are letters, digits and hyphens
+- State names are ASCII letters, digits and hyphens
 - The classes are separate from the built-in states (selected, hover, awaiting commit, error, warning and so on; Rendering), and both can apply at once
 - They work the same on elements drawn by templates
 - The app builds run state displays, highlighting the links a run took, and dimming other elements with these
@@ -1153,7 +1155,7 @@ The app can draw states over elements without changing the model (run states, ch
 - Badges are packed from their corner along the top or bottom side, in order, 4 px apart. The first one is centered on the corner. They are 16 high and scale with the diagram
 - On links, badges line up side by side in order at the middle of the length of the route, and the corner of the kind is not used
 - The tones are default, info, success, warning and error. Their colors are CSS variables (Rendering)
-- A badge without text is a dot. The tooltip uses `<title>`
+- A badge without text is a circle. The tooltip uses `<title>`
 - A click on a badge of a clickable kind does not change the selection, and `BadgeClicked` reports it. Clicks on other badges go through to the element
 
 ### Issue badges
@@ -1164,7 +1166,7 @@ The app can draw states over elements without changing the model (run states, ch
 ### Export and screen readers
 
 - Whether export includes them is in Saving and export (not by default)
-- Reading badges with screen readers is not in the first version
+- Reading badges with screen readers is planned for the next version
 
 ## ☁️ AWS architecture diagrams
 
@@ -1182,7 +1184,7 @@ AWS architecture diagrams are drawn with the general features of the library. Th
 | Extra text such as CIDR blocks | A label slot of the group type |
 | Light and dark backgrounds | The theme (`.mussel-dark`). CSS variables switch the line and name of AWS Cloud and the color of the arrows |
 
-Not in the first version: elements on a frame that move with it (an Internet gateway on the top edge of a VPC), a fill behind an icon, switching icons for light and dark backgrounds, link names, numbered callouts, and wrapping that keeps AWS and Amazon on the same line as the next word.
+Planned for the next version: elements on a frame that move with it (an Internet gateway on the top edge of a VPC, for example), a fill behind an icon, switching icons for light and dark backgrounds, link names, numbered callouts, and wrapping that keeps AWS and Amazon on the same line as the next word.
 
 ### Group headers
 
@@ -1202,25 +1204,25 @@ A group type declares the form of its header.
 
 - The app reads the Icon package, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
 - The user extracts the SVG files of the package into `AwsIcons/` at the root of the repository, which Git ignores. The build of the Example copies the files it reads (the table below) to `AwsIcons/` in the output folder
-- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read at once
+- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read in full at once
 - The ID is the file name without the release date and the size, with the prefix `aws`. It stays the same when a new release (three a year) replaces the package
 
 | File | ID | Size read |
 |---|---|---|
-| Service `Arch_<name>_<size>.svg` | `aws:Arch_<name>` (for example `aws:Arch_Amazon-EC2`) | The `64` folder (80 px) |
+| Service `Arch_<name>_<size>.svg` | `aws:Arch_<name>` (for example `aws:Arch_Amazon-EC2`) | Size `64` (80 px) |
 | Resource `Res_<service>_<resource>_48.svg` | `aws:Res_<service>_<resource>` (for example `aws:Res_Amazon-EC2_Instance`) | 48 px |
 | Group `<name>_32.svg` | `aws:<name>` | 40 px |
 
 - The category comes from the name of the category folder of services and resources
-- Only SVG is read. Category icons and icons for dark backgrounds (`_Dark` and `Res_48_Dark`) are not read
-- The types of icons removed in a release become unregistered types (Types and rules). Reporting removed or renamed icons is not in the first version
+- Only SVG is read. Category icons and icons for dark backgrounds (`_Dark` and `Res_48_Dark`) are not read (switching icons for light and dark backgrounds is planned for the next version)
+- The types of icons removed in a release become unregistered types (Types and rules). Reporting removed or renamed icons is planned for the next version
 
 ### Types in the Example
 
 - Groups: the 20 groups and the 7 colors of custom groups in the official guide (Release 24-2026.07.31), as presets. Lines are 1.25 pt (about 1.67 px) without fill, and names are 12 pt (16 px) Arial, black (white on dark backgrounds). Availability Zone has two types, a tree group and an overlay group
 - Icon nodes: a type for each icon, made from base types for services and resources (Palette)
 - Arrows: three link types, with open arrows at one end, at both ends and at none. Lines are 1.25 pt and black (#8FA7C4 on dark backgrounds)
-- Examples of nesting rules (a subnet only inside a VPC, and so on)
+- Examples of nesting rules (a subnet only inside a VPC or an Availability Zone, and so on)
 
 ### Documentation and images
 

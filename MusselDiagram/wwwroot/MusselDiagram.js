@@ -636,6 +636,34 @@ export function gridAnchor(bounds, centered) {
     return centered ? { x: bounds.x + (bounds.w / 2), y: bounds.y + (bounds.h / 2) } : { x: bounds.x, y: bounds.y };
 }
 
+export function gridTile(style, spacing, zoom, interval, majorWidth) {
+    const count = interval > 0 ? interval : 1;
+    const size = spacing * count;
+    const half = spacing / 2;
+    const shapes = [];
+    if (style === 'lines') {
+        const line = (i) => `M${half + (i * spacing)},0V${size}M0,${half + (i * spacing)}H${size}`;
+        if (interval > 0) {
+            shapes.push({ tag: 'path', class: 'mussel-diagram-grid-major', d: line(0), 'stroke-width': majorWidth / zoom });
+        }
+        const minor = [];
+        for (let i = interval > 0 ? 1 : 0; i < count; i++) {
+            minor.push(line(i));
+        }
+        if (minor.length > 0) {
+            shapes.push({ tag: 'path', class: 'mussel-diagram-grid-minor', d: minor.join(''), 'stroke-width': 1 / zoom });
+        }
+    } else {
+        for (let i = 0; i < count; i++) {
+            for (let j = 0; j < count; j++) {
+                const major = (interval > 0) && (i === 0) && (j === 0);
+                shapes.push({ tag: 'circle', class: major ? 'mussel-diagram-grid-major' : 'mussel-diagram-grid-minor', cx: half + (i * spacing), cy: half + (j * spacing), r: 1 / zoom });
+            }
+        }
+    }
+    return { size, offset: -half, shapes };
+}
+
 export function resizeEdges(box, handle, dx, dy) {
     return {
         left: box.x + (handle.includes('w') ? dx : 0),
@@ -1543,20 +1571,15 @@ class DiagramController {
         while (spacing * zoom < GRID_MINIMUM) {
             spacing *= 2;
         }
-        const key = `${this.options.gridStyle}:${spacing}:${zoom}`;
+        const { gridStyle, gridMajorInterval, gridMajorLineWidth } = this.options;
+        const key = `${gridStyle}:${spacing}:${zoom}:${gridMajorInterval}:${gridMajorLineWidth}`;
         if (key !== this.gridKey) {
             this.gridKey = key;
             const id = `mussel-diagram-${this.uid}-grid`;
-            const size = spacing * 4;
-            const pattern = svg('pattern', { id, width: size, height: size, patternUnits: 'userSpaceOnUse' });
-            for (let i = 0; i < 4; i++) {
-                for (let j = 0; (j < 4) && (this.options.gridStyle !== 'lines'); j++) {
-                    pattern.append(svg('circle', { class: (i === 0) && (j === 0) ? 'mussel-diagram-grid-major' : 'mussel-diagram-grid-minor', cx: i * spacing, cy: j * spacing, r: 1 / zoom }));
-                }
-                if (this.options.gridStyle === 'lines') {
-                    const major = i === 0 ? 'mussel-diagram-grid-major' : 'mussel-diagram-grid-minor';
-                    pattern.append(svg('path', { class: major, d: `M${i * spacing},0V${size}M0,${i * spacing}H${size}`, 'stroke-width': 1 / zoom }));
-                }
+            const tile = gridTile(gridStyle, spacing, zoom, gridMajorInterval, gridMajorLineWidth);
+            const pattern = svg('pattern', { id, x: tile.offset, y: tile.offset, width: tile.size, height: tile.size, patternUnits: 'userSpaceOnUse' });
+            for (const { tag, ...attributes } of tile.shapes) {
+                pattern.append(svg(tag, attributes));
             }
             this.gridRect = svg('rect', { class: 'mussel-diagram-grid-fill', fill: `url(#${id})` });
             this.gridLayer.replaceChildren(pattern, this.gridRect);
@@ -1582,8 +1605,12 @@ class DiagramController {
     }
 
     fit(bounds, margin) {
+        this.fitTo(this.drawnBounds(bounds), margin);
+    }
+
+    fitTo(bounds, margin) {
         this.foldGesture();
-        this.view = fitView(this.drawnBounds(bounds), this.size.width, this.size.height, margin, this.options.minZoom, this.options.maxZoom);
+        this.view = fitView(bounds, this.size.width, this.size.height, margin, this.options.minZoom, this.options.maxZoom);
         this.applyView();
         this.notifyViewport();
     }
@@ -2515,7 +2542,8 @@ class DiagramController {
         const top = Math.min(...boxes.map((b) => b.y));
         const bounds = { x: left, y: top, w: Math.max(...boxes.map((b) => b.x + b.w)) - left, h: Math.max(...boxes.map((b) => b.y + b.h)) - top };
         const pressed = this.table.boxes.get(press.hit.id);
-        const anchor = pressed && moving.has(pressed.id) ? gridAnchor(pressed, pressed.kind === 'node') : gridAnchor(bounds, false);
+        const representative = pressed && moving.has(pressed.id) ? pressed : roots.map((id) => this.table.boxes.get(id)).find((b) => b.kind !== 'overlay');
+        const anchor = representative ? gridAnchor(representative, representative.kind === 'node') : gridAnchor(bounds, false);
         const excluded = new Set(moving);
         for (const id of roots) {
             for (const ancestor of this.table.ancestors(id)) {
@@ -3713,7 +3741,7 @@ class DiagramController {
         }
         const bounds = this.boundsOf(ids);
         if (bounds) {
-            this.fit(bounds, margin);
+            this.fitTo(bounds, margin);
         }
     }
 

@@ -25,6 +25,12 @@ public sealed partial class MusselDiagramView
     public DiagramGridStyle GridStyle { get; set; }
 
     [Parameter]
+    public int GridMajorInterval { get; set; } = 4;
+
+    [Parameter]
+    public double GridMajorLineWidth { get; set; } = 1;
+
+    [Parameter]
     public bool SnapToGrid { get; set; } = true;
 
     [Parameter]

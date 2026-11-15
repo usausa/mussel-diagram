@@ -244,6 +244,18 @@ public sealed class ViewConformanceTests : BunitContext
     }
 
     [Fact]
+    public void TheMajorGridLinesGoToTheScript()
+    {
+        Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.GridMajorInterval, 5).Add(static p => p.GridMajorLineWidth, 2.5));
+
+        var defaults = (JsonElement)module.Invocations["attach"][0].Arguments[2]!;
+        var options = (JsonElement)module.Invocations["attach"][1].Arguments[2]!;
+        Assert.Equal((4, 1d), (defaults.GetProperty("gridMajorInterval").GetInt32(), defaults.GetProperty("gridMajorLineWidth").GetDouble()));
+        Assert.Equal((5, 2.5), (options.GetProperty("gridMajorInterval").GetInt32(), options.GetProperty("gridMajorLineWidth").GetDouble()));
+    }
+
+    [Fact]
     public void ThePaletteDrawsTheShapeOfEachType()
     {
         var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));

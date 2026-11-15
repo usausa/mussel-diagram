@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
-    collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
+    collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
     keyName, nextZoom, stackOffsets,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
@@ -144,6 +144,32 @@ test('moving edges snap to the nearest line, then to the grid', () => {
     assert.equal(gridSnap(15, 10), 20);
     assert.deepEqual(gridAnchor({ x: 3, y: 4, w: 48, h: 64 }, true), { x: 27, y: 36 });
     assert.deepEqual(gridAnchor({ x: 3, y: 4, w: 48, h: 64 }, false), { x: 3, y: 4 });
+});
+
+test('grid tiles draw a major line every interval lines, away from the cut edges of the tile', () => {
+    assert.deepEqual(gridTile('lines', 10, 1, 4, 2), {
+        size: 40,
+        offset: -5,
+        shapes: [
+            { tag: 'path', class: 'mussel-diagram-grid-major', d: 'M5,0V40M0,5H40', 'stroke-width': 2 },
+            { tag: 'path', class: 'mussel-diagram-grid-minor', d: 'M15,0V40M0,15H40M25,0V40M0,25H40M35,0V40M0,35H40', 'stroke-width': 1 },
+        ],
+    });
+    assert.deepEqual(gridTile('lines', 20, 0.5, 3, 2).shapes.map((s) => s['stroke-width']), [4, 2]);
+    assert.deepEqual(gridTile('lines', 10, 1, 0, 2), {
+        size: 10,
+        offset: -5,
+        shapes: [{ tag: 'path', class: 'mussel-diagram-grid-minor', d: 'M5,0V10M0,5H10', 'stroke-width': 1 }],
+    });
+});
+
+test('grid tiles of dots mark one major dot every interval', () => {
+    const tile = gridTile('dots', 10, 2, 3, 4);
+    assert.equal(tile.size, 30);
+    assert.equal(tile.shapes.length, 9);
+    assert.deepEqual(tile.shapes[0], { tag: 'circle', class: 'mussel-diagram-grid-major', cx: 5, cy: 5, r: 0.5 });
+    assert.equal(tile.shapes.filter((s) => s.class === 'mussel-diagram-grid-major').length, 1);
+    assert.equal(gridTile('dots', 10, 1, 0, 2).shapes.filter((s) => s.class === 'mussel-diagram-grid-major').length, 0);
 });
 
 test('resizing keeps the minimum size and the children inside', () => {
