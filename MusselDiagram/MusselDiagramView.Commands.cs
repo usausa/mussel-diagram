@@ -18,14 +18,14 @@ public sealed partial class MusselDiagramView
 
     private bool Editable => !ReadOnly;
 
-    public ValueTask ZoomToSelectionAsync() => RunViewAsync(current => current.InvokeVoidAsync("fitSelection", FitMargin));
+    public ValueTask ZoomToSelectionAsync() => RunViewAsync("fitSelection", FitMargin);
 
-    public ValueTask CenterOnAsync(string id) => RunViewAsync(current => current.InvokeVoidAsync("centerOn", id));
+    public ValueTask CenterOnAsync(string id) => RunViewAsync("centerOn", id);
 
     public ValueTask OpenTypePickerAsync(DiagramPoint? position = null) =>
-        RunViewAsync(current => position is { } point ? current.InvokeVoidAsync("quickAdd", point.X, point.Y) : current.InvokeVoidAsync("quickAdd"));
+        position is { } point ? RunViewAsync("quickAdd", point.X, point.Y) : RunViewAsync("quickAdd");
 
-    public ValueTask FocusAsync() => RunViewAsync(current => current.InvokeVoidAsync("focus"));
+    public ValueTask FocusAsync() => RunViewAsync("focus");
 
     internal async Task ExecuteFromScriptAsync(string name, IEnumerable<string> selection)
     {
@@ -43,9 +43,9 @@ public sealed partial class MusselDiagramView
         Register(DiagramCommands.Cut, ["Ctrl+X"], c => Editable && (Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null) && (Deletion.Deletable(Snapshot, Diagram.Index, c.SelectedIds).Count > 0), CutAsync);
         Register(DiagramCommands.Copy, ["Ctrl+C"], c => Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null, CopyAsync);
         Register(DiagramCommands.Paste, ["Ctrl+V"], _ => Editable && (clipboard is not null), _ => PasteAsync());
-        Register(DiagramCommands.SelectAll, ["Ctrl+A"], _ => SelectionEnabled, _ => RunViewAsync(current => current.InvokeVoidAsync("selectAll")).AsTask(), true);
+        Register(DiagramCommands.SelectAll, ["Ctrl+A"], _ => SelectionEnabled, _ => RunViewAsync("selectAll").AsTask(), true);
         Register(DiagramCommands.ClearSelection, ["Ctrl+Shift+A"], c => c.SelectedIds.Count > 0, _ => ClearSelectionAsync().AsTask(), true);
-        Register(DiagramCommands.EditText, ["F2", "Enter"], c => Editable && TextEditEnabled && (FirstEditableSlot(c.SelectedIds) is not null), c => RunViewAsync(current => current.InvokeVoidAsync("editText", c.SelectedIds[0], FirstEditableSlot(c.SelectedIds))).AsTask());
+        Register(DiagramCommands.EditText, ["F2", "Enter"], c => Editable && TextEditEnabled && (FirstEditableSlot(c.SelectedIds) is not null), c => RunViewAsync("editText", c.SelectedIds[0], FirstEditableSlot(c.SelectedIds)).AsTask());
         Register(DiagramCommands.QuickAdd, ["Ctrl+Enter"], c => Editable && DropEnabled && (c.SelectedIds.Count == 0), c => OpenTypePickerAsync(c.Argument as DiagramPoint?).AsTask());
         Register(DiagramCommands.Group, ["Ctrl+G"], c => Editable && Grouping.CanGroup(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string), c => GroupAsync(() => Grouping.Group(Snapshot, Diagram.Index, c.SelectedIds, c.Argument as string)));
         Register(DiagramCommands.Ungroup, ["Ctrl+Shift+U"], c => Editable && Grouping.CanUngroup(Snapshot, Diagram.Index, c.SelectedIds), c => GroupAsync(() => Grouping.Ungroup(Snapshot, Diagram.Index, c.SelectedIds)));
@@ -73,9 +73,9 @@ public sealed partial class MusselDiagramView
             GetIsChecked = c => Lockable(c.SelectedIds) is { Count: > 0 } items && items.All(IsLocked),
             Execute = c => ToggleLockAsync(c.SelectedIds)
         });
-        Register(DiagramCommands.ZoomIn, ["Ctrl+Plus"], _ => ZoomEnabled, _ => RunViewAsync(current => current.InvokeVoidAsync("zoomStep", 1)).AsTask(), true);
-        Register(DiagramCommands.ZoomOut, ["Ctrl+Minus"], _ => ZoomEnabled, _ => RunViewAsync(current => current.InvokeVoidAsync("zoomStep", -1)).AsTask(), true);
-        Register(DiagramCommands.ResetZoom, ["Ctrl+0"], _ => ZoomEnabled, _ => RunViewAsync(current => current.InvokeVoidAsync("resetZoom")).AsTask(), true);
+        Register(DiagramCommands.ZoomIn, ["Ctrl+Plus"], _ => ZoomEnabled, _ => RunViewAsync("zoomStep", 1).AsTask(), true);
+        Register(DiagramCommands.ZoomOut, ["Ctrl+Minus"], _ => ZoomEnabled, _ => RunViewAsync("zoomStep", -1).AsTask(), true);
+        Register(DiagramCommands.ResetZoom, ["Ctrl+0"], _ => ZoomEnabled, _ => RunViewAsync("resetZoom").AsTask(), true);
         Register(DiagramCommands.ZoomToFit, ["Ctrl+Shift+H"], _ => true, _ => ZoomToFitAsync().AsTask(), true);
         Register(DiagramCommands.ZoomToSelection, [], c => c.SelectedIds.Count > 0, _ => ZoomToSelectionAsync().AsTask(), true);
         Register(DiagramCommands.NextIssue, ["F8"], _ => SelectionEnabled && HasIssues(), _ => ShowIssueAsync(true));
@@ -123,19 +123,25 @@ public sealed partial class MusselDiagramView
         var map = JsonSerializer.Serialize(
             Commands.All.Where(static x => x.Keys.Count > 0).Select(static x => new ScriptCommand { Name = x.Name, Keys = [.. x.Keys], Enabled = x.IsEnabled, Local = x.RunsLocally }).ToList(),
             ScriptJsonContext.Default.ListScriptCommand);
-        if (!string.Equals(map, sentCommands, StringComparison.Ordinal))
+        try
         {
-            sentCommands = map;
-            await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
-        }
+            if (!string.Equals(map, sentCommands, StringComparison.Ordinal))
+            {
+                sentCommands = map;
+                await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
+            }
 
-        var palette = Diagram.Index.Schema.Rules.InPalette is null
-            ? null
-            : JsonSerializer.Serialize(TypeSearch.PaletteTypes(Snapshot, Diagram.Index).Select(static x => x.Name).ToList(), ScriptJsonContext.Default.IReadOnlyListString);
-        if (!string.Equals(palette, sentPalette, StringComparison.Ordinal))
+            var palette = Diagram.Index.Schema.Rules.InPalette is null
+                ? null
+                : JsonSerializer.Serialize(TypeSearch.PaletteTypes(Snapshot, Diagram.Index).Select(static x => x.Name).ToList(), ScriptJsonContext.Default.IReadOnlyListString);
+            if (!string.Equals(palette, sentPalette, StringComparison.Ordinal))
+            {
+                sentPalette = palette;
+                await current.InvokeVoidAsync("setPaletteTypes", palette is null ? null : JsonElement.Parse(palette)).ConfigureAwait(true);
+            }
+        }
+        catch (JSDisconnectedException)
         {
-            sentPalette = palette;
-            await current.InvokeVoidAsync("setPaletteTypes", palette is null ? null : JsonElement.Parse(palette)).ConfigureAwait(true);
         }
     }
 
@@ -147,13 +153,7 @@ public sealed partial class MusselDiagramView
             return;
         }
 
-        try
-        {
-            await SyncCommandsAsync(controller).ConfigureAwait(true);
-        }
-        catch (JSDisconnectedException)
-        {
-        }
+        await SyncCommandsAsync(controller).ConfigureAwait(true);
     }
 
     private async Task RestoreAsync(bool undo)
@@ -215,7 +215,7 @@ public sealed partial class MusselDiagramView
         }
 
         await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
-        await RunViewAsync(current => current.InvokeVoidAsync("showReason", reason.Message ?? DiagramCultures.Reason(reason.Kind) ?? string.Empty)).ConfigureAwait(true);
+        await RunViewAsync("showReason", reason.Message ?? DiagramCultures.Reason(reason.Kind) ?? string.Empty).ConfigureAwait(true);
         return false;
     }
 

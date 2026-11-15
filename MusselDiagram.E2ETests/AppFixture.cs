@@ -141,7 +141,7 @@ public sealed partial class AppFixture : IAsyncLifetime
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        startInfo.ArgumentList.Add(published is null ? Path.Combine(project, "bin", Configuration, "net10.0", "Example.dll") : Path.Combine(published, "Example.dll"));
+        startInfo.ArgumentList.Add(published is null ? Path.Combine(project, "bin", Configuration, "net11.0", "Example.dll") : Path.Combine(published, "Example.dll"));
         startInfo.ArgumentList.Add("--urls");
         startInfo.ArgumentList.Add("http://127.0.0.1:0");
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = published is null ? "Development" : "Production";

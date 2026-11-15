@@ -208,14 +208,22 @@ public static class DiagramIconImport
 
     private static DiagramIconInfo DefaultMap(string path)
     {
+#if NET11_0_OR_GREATER
+        var slash = path.LastIndexOf('/', StringComparison.Ordinal);
+#else
         var slash = path.LastIndexOf('/');
+#endif
         var file = path[(slash + 1)..];
         var name = file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) ? file[..^4] : file;
         string? category = null;
         if (slash > 0)
         {
             var folder = path[..slash];
+#if NET11_0_OR_GREATER
+            category = folder[(folder.LastIndexOf('/', StringComparison.Ordinal) + 1)..];
+#else
             category = folder[(folder.LastIndexOf('/') + 1)..];
+#endif
         }
 
         return new DiagramIconInfo(name, name, category);

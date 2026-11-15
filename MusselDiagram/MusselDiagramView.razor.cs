@@ -36,7 +36,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private bool schemaChanged;
 
-    private Func<IJSObjectReference, ValueTask>? pendingView;
+    private (string Identifier, object?[] Args)? pendingView;
 
     private ShownSet? shown;
 
@@ -159,7 +159,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     };
 
     public ValueTask SetViewportAsync(double zoom, DiagramPoint center) =>
-        RunViewAsync(current => current.InvokeVoidAsync("setView", zoom, center.X, center.Y));
+        RunViewAsync("setView", zoom, center.X, center.Y);
 
     public ValueTask ZoomToFitAsync()
     {
@@ -172,7 +172,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         var left = boxes.Min(static x => x.X);
         var top = boxes.Min(static x => x.Y);
         var bounds = new ScriptBounds(left, top, boxes.Max(static x => x.Right) - left, boxes.Max(static x => x.Bottom) - top);
-        return RunViewAsync(current => current.InvokeVoidAsync("fit", ScriptJson.ToElement(bounds), FitMargin));
+        return RunViewAsync("fit", ScriptJson.ToElement(bounds), FitMargin);
     }
 
     public async ValueTask DisposeAsync()
@@ -240,11 +240,10 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates));
                 controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
                 await SyncCommandsAsync(controller).ConfigureAwait(true);
-                if (pendingView is not null)
+                if (pendingView is { } view)
                 {
-                    var view = pendingView;
                     pendingView = null;
-                    await view(controller).ConfigureAwait(true);
+                    await controller.InvokeVoidAsync(view.Identifier, view.Args).ConfigureAwait(true);
                 }
 
                 await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
@@ -351,17 +350,17 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         }
     }
 
-    private async ValueTask RunViewAsync(Func<IJSObjectReference, ValueTask> command)
+    private async ValueTask RunViewAsync(string identifier, params object?[] args)
     {
         if (controller is null)
         {
-            pendingView = command;
+            pendingView = (identifier, args);
             return;
         }
 
         try
         {
-            await command(controller).ConfigureAwait(true);
+            await controller.InvokeVoidAsync(identifier, args).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {

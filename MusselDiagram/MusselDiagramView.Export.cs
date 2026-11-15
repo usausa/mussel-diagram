@@ -90,6 +90,10 @@ public sealed partial class MusselDiagramView
                 }
             }
         }
+        catch (JSDisconnectedException)
+        {
+            return new DiagramExportResult(null, null, []);
+        }
         finally
         {
             exportRender = null;

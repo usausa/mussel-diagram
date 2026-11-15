@@ -9,7 +9,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 {
     private DiagramPage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm", "auto"];
+    public static TheoryData<string> ModeNames => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {

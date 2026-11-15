@@ -11,7 +11,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 {
     private DiagramPage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm", "auto"];
+    public static TheoryData<string> ModeNames => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {

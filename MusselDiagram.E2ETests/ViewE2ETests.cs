@@ -11,11 +11,10 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     public static TheoryData<string, string> Modes => new()
     {
         { "server", "server" },
-        { "wasm", "webassembly" },
-        { "auto", "auto" }
+        { "wasm", "webassembly" }
     };
 
-    public static TheoryData<string> ModeNames => ["server", "wasm", "auto"];
+    public static TheoryData<string> ModeNames => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {

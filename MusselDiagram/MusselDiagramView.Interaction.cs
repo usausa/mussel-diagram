@@ -125,23 +125,29 @@ public sealed partial class MusselDiagramView
 
     private async Task SyncScriptAsync(IJSObjectReference current, bool resend)
     {
-        if (resend)
+        try
         {
+            if (resend)
+            {
+                pendingChanges.Clear();
+                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
+                return;
+            }
+
+            if (pendingChanges.Count == 0)
+            {
+                return;
+            }
+
+            ScriptChanges[] changes = [.. pendingChanges];
             pendingChanges.Clear();
-            await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
-            return;
+            foreach (var change in changes)
+            {
+                await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(change)).ConfigureAwait(true);
+            }
         }
-
-        if (pendingChanges.Count == 0)
+        catch (JSDisconnectedException)
         {
-            return;
-        }
-
-        ScriptChanges[] changes = [.. pendingChanges];
-        pendingChanges.Clear();
-        foreach (var change in changes)
-        {
-            await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(change)).ConfigureAwait(true);
         }
     }
 }

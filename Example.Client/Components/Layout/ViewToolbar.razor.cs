@@ -88,8 +88,14 @@ public sealed partial class ViewToolbar
         await using (content)
         {
             using var stream = new DotNetStreamReference(content, true);
-            await using var module = await Runtime.InvokeAsync<IJSObjectReference>("import", "./js/download.js");
-            await module.InvokeVoidAsync("download", name, type, stream);
+            try
+            {
+                await using var module = await Runtime.InvokeAsync<IJSObjectReference>("import", "./js/download.js");
+                await module.InvokeVoidAsync("download", name, type, stream);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
         }
     }
 }

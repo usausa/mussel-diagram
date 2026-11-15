@@ -75,7 +75,9 @@ public sealed partial class WorkflowPage : IDisposable
         {
             while (current.Running)
             {
+#pragma warning disable BL0012
                 StateHasChanged();
+#pragma warning restore BL0012
                 await Task.Delay(StepTime, stop.Token);
                 current.Advance();
                 overlays = current.Overlays();

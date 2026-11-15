@@ -1,4 +1,4 @@
-namespace Example;
+namespace Example.Application;
 
 public static class RenderModes
 {
@@ -7,6 +7,4 @@ public static class RenderModes
     public const string Server = "server";
 
     public const string WebAssembly = "wasm";
-
-    public const string Auto = "auto";
 }

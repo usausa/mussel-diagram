@@ -10,7 +10,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 {
     private DiagramPage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm", "auto"];
+    public static TheoryData<string> ModeNames => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {

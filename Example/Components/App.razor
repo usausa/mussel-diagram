@@ -17,6 +17,15 @@
 <body>
     <Routes @rendermode="PageRenderMode" />
 
+    <div id="blazor-error-ui" data-nosnippet>
+        An unexpected error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <ReconnectModal />
+
+    <script type="module" src="@Assets["js/reconnect.js"]"></script>
     <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
@@ -27,11 +36,10 @@
     [CascadingParameter]
     public HttpContext HttpContext { get; set; } = default!;
 
-    private IComponentRenderMode PageRenderMode =>
-        HttpContext.Request.Cookies[RenderModes.CookieName] switch
-        {
-            RenderModes.WebAssembly => InteractiveWebAssembly,
-            RenderModes.Auto => InteractiveAuto,
-            _ => InteractiveServer
-        };
+    private IComponentRenderMode? PageRenderMode =>
+        !HttpContext.AcceptsInteractiveRouting()
+            ? null
+            : HttpContext.Request.Cookies[RenderModes.CookieName] == RenderModes.WebAssembly
+                ? InteractiveWebAssembly
+                : InteractiveServer;
 }

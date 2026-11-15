@@ -1,6 +1,6 @@
 @inherits LayoutComponentBase
 
-<MudThemeProvider Theme="Theme" IsDarkMode="dark" />
+<MudThemeProvider Theme="Styles.Theme" IsDarkMode="dark" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -30,15 +30,6 @@
 </div>
 
 @code {
-    private static readonly MudTheme Theme = new()
-    {
-        PaletteDark = new PaletteDark
-        {
-            Background = "#1F1F1D",
-            Surface = "#262624"
-        }
-    };
-
     private bool dark;
 
     private GridMode grid = GridMode.Lines;

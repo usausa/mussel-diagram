@@ -258,7 +258,11 @@ internal static partial class SvgSanitizer
             case "id":
                 return ids.GetValueOrDefault(value, value);
             case "href":
+#if NET11_0_OR_GREATER
+                if (value.StartsWith('#', StringComparison.Ordinal) && ids.TryGetValue(value[1..], out var target))
+#else
                 if (value.StartsWith('#') && ids.TryGetValue(value[1..], out var target))
+#endif
                 {
                     return "#" + target;
                 }
@@ -300,7 +304,11 @@ internal static partial class SvgSanitizer
         var result = UrlPattern().Replace(value, match =>
         {
             var target = match.Groups[1].Value.Trim().Trim('\'', '"');
+#if NET11_0_OR_GREATER
+            if (target.StartsWith('#', StringComparison.Ordinal) && ids.TryGetValue(target[1..], out var id))
+#else
             if (target.StartsWith('#') && ids.TryGetValue(target[1..], out var id))
+#endif
             {
                 return $"url(#{id})";
             }

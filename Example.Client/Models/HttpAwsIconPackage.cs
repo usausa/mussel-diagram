@@ -6,7 +6,7 @@ public sealed class HttpAwsIconPackage(HttpClient http) : IAwsIconPackage
 {
     public async Task<IReadOnlyList<string>> ListAsync(CancellationToken cancellationToken)
     {
-        using var response = await http.GetAsync(new Uri("aws-icons", UriKind.Relative), cancellationToken).ConfigureAwait(false);
+        using var response = await http.GetAsync(new Uri("api/aws-icons", UriKind.Relative), cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             return [];
@@ -22,7 +22,7 @@ public sealed class HttpAwsIconPackage(HttpClient http) : IAwsIconPackage
 
     public async Task<string?> ReadAsync(string path, CancellationToken cancellationToken)
     {
-        var uri = new Uri($"aws-icons/{string.Join('/', path.Split('/').Select(Uri.EscapeDataString))}", UriKind.Relative);
+        var uri = new Uri($"api/aws-icons/{string.Join('/', path.Split('/').Select(Uri.EscapeDataString))}", UriKind.Relative);
         using var response = await http.GetAsync(uri, cancellationToken).ConfigureAwait(false);
         return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false) : null;
     }
