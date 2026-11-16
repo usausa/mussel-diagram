@@ -18,6 +18,14 @@ public sealed partial class LookPanel : IDisposable
         ("#8E24AA", "紫")
     ];
 
+    private static readonly (string Value, string Text)[] Transparencies =
+    [
+        (string.Empty, "0%"),
+        ("BF", "25%"),
+        ("80", "50%"),
+        ("40", "75%")
+    ];
+
     private static readonly string[] Widths = ["1", "1.5", "2", "3", "4"];
 
     private static readonly (DiagramDash Value, string Text)[] Dashes =
@@ -92,6 +100,15 @@ public sealed partial class LookPanel : IDisposable
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var width) ? width : null;
 
     private static string? ReadColor(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+    private static string? ColorOf(string? fill) => HasAlpha(fill) ? fill[..7] : fill;
+
+    private static string AlphaOf(string? fill) => HasAlpha(fill) ? fill[7..].ToUpperInvariant() : Keep;
+
+    private static string? WithAlpha(string? color, string? alpha) =>
+        (color is ['#', _, _, _, _, _, _]) && !string.IsNullOrEmpty(alpha) ? color + alpha : color;
+
+    private static bool HasAlpha([NotNullWhen(true)] string? fill) => fill is ['#', _, _, _, _, _, _, _, _];
 
     private void ChangeLinks(Func<DiagramLinkLook, DiagramLinkLook> change)
     {

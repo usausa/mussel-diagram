@@ -132,14 +132,14 @@ public sealed partial class MusselDiagramView
                 : TextCommitted.InvokeAsync(new DiagramTextCommittedEventArgs(elementId, slot, oldText, newText, snapshot)));
     }
 
-    internal Task OnClickedAsync(string? id, DiagramPoint position, bool shift, bool ctrl, bool alt, bool meta, bool twice) =>
-        (id, twice) switch
+    internal async Task OnClickedAsync(string? id, DiagramPoint position, bool shift, bool ctrl, bool alt, bool meta, bool twice) =>
+        await ((id, twice) switch
         {
             (null, false) => BackgroundClicked.InvokeAsync(new DiagramPointerEventArgs(position, shift, ctrl, alt, meta)),
             (null, true) => BackgroundDoubleClicked.InvokeAsync(new DiagramPointerEventArgs(position, shift, ctrl, alt, meta)),
             (_, false) => ElementClicked.InvokeAsync(new DiagramElementPointerEventArgs(id, position, shift, ctrl, alt, meta)),
             _ => ElementDoubleClicked.InvokeAsync(new DiagramElementPointerEventArgs(id, position, shift, ctrl, alt, meta))
-        };
+        }).ConfigureAwait(true);
 
     internal IReadOnlyList<string> SearchTypes(string query, IEnumerable<string> names)
     {

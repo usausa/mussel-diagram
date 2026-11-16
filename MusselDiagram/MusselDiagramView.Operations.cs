@@ -216,8 +216,8 @@ public sealed partial class MusselDiagramView
             await SetSelectionAsync([.. selection.Where(IsSelectable)]).ConfigureAwait(true);
         }
 
-        var gate = Gate;
-        await gate.WaitAsync().ConfigureAwait(true);
+        var turn = await EnterGateAsync().ConfigureAwait(true);
+        turn?.Begin();
         try
         {
             if (rejectionsSeen < rejections)
@@ -229,7 +229,7 @@ public sealed partial class MusselDiagramView
             if (reason is null)
             {
                 var snapshot = Snapshot;
-                reason = await before().ConfigureAwait(true);
+                reason = await HandleAsync(turn, before).ConfigureAwait(true);
                 if ((reason is null) && !ReferenceEquals(snapshot, Snapshot))
                 {
                     reason = check();
@@ -239,19 +239,19 @@ public sealed partial class MusselDiagramView
             if (reason is not null)
             {
                 rejections++;
-                await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
+                await HandleAsync(turn, () => CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason))).ConfigureAwait(true);
                 return new ScriptCommitResult(false, Snapshot.Version, reason.Message ?? DiagramCultures.Reason(reason.Kind), rejections);
             }
 
             write();
             var result = Snapshot;
-            await after(result).ConfigureAwait(true);
+            await HandleAsync(turn, () => after(result)).ConfigureAwait(true);
             await RefreshCommandsAsync().ConfigureAwait(true);
             return new ScriptCommitResult(true, result.Version, null, rejections, elementId);
         }
         finally
         {
-            gate.Release();
+            turn?.End();
         }
     }
 

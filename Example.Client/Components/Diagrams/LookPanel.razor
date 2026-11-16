@@ -48,9 +48,15 @@
     @if (Boxes is [var box, ..])
     {
         <MudText Typo="Typo.subtitle2">図形</MudText>
-        <MudSelect T="string" Label="塗り" Value="@(box.Look?.Fill ?? Keep)" ValueChanged="@(v => ChangeBoxes(x => x with { Fill = ReadColor(v) }))" data-field="box-fill">
+        <MudSelect T="string" Label="塗り" Value="@(ColorOf(box.Look?.Fill) ?? Keep)" ValueChanged="@(v => ChangeBoxes(x => x with { Fill = WithAlpha(ReadColor(v), AlphaOf(x.Fill)) }))" data-field="box-fill">
             <MudSelectItem Value="@Keep">型のまま</MudSelectItem>
             @foreach (var (value, text) in Colors)
+            {
+                <MudSelectItem Value="@value">@text</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Label="塗りの透明度" Value="@AlphaOf(box.Look?.Fill)" ValueChanged="@(v => ChangeBoxes(x => x with { Fill = WithAlpha(ColorOf(x.Fill), v) }))" Disabled="@(box.Look?.Fill is null)" data-field="box-fill-opacity">
+            @foreach (var (value, text) in Transparencies)
             {
                 <MudSelectItem Value="@value">@text</MudSelectItem>
             }

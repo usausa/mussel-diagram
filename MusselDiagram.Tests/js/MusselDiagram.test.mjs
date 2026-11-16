@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, routeLink, toPath, DiagramTable,
+    wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
     keyName, nextZoom, stackOffsets,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
@@ -84,6 +84,15 @@ test('wheel deltas in lines and pages become pixels', () => {
     assert.deepEqual(wheelDelta({ deltaMode: 2, deltaX: 0, deltaY: 1 }, 600), { x: 0, y: 600 });
 });
 
+test('the wheel is left to the page when the diagram does not pan or zoom', () => {
+    const still = { wheelMode: 'pan', panEnabled: false, zoomEnabled: false };
+    assert.equal(wheelAction({}, still), null);
+    assert.equal(wheelAction({ ctrlKey: true }, still), null);
+    assert.equal(wheelAction({}, { ...still, panEnabled: true }), 'pan');
+    assert.equal(wheelAction({ ctrlKey: true }, { ...still, zoomEnabled: true }), 'zoom');
+    assert.equal(wheelAction({}, { ...still, wheelMode: 'zoom', zoomEnabled: true }), 'zoom');
+});
+
 const box = (id, x, y, ports) => ({ id, kind: 'node', x, y, w: 100, h: 50, ports });
 const service = (id, x, y) => box(id, x, y, [
     { id: 'in', side: 'left', ratio: 0.5, offset: 0 },
@@ -133,6 +142,17 @@ test('the table knows descendants, moving sets and links', () => {
     assert.equal(table.version, 4);
     assert.equal(table.linksOf(['a']).size, 0);
     assert.ok(table.boxes.has('c'));
+});
+
+test('links are framed by their ends and overlay groups by their members', () => {
+    const table = new DiagramTable({
+        version: 1,
+        boxes: [box('a', 0, 0), box('b', 500, 100), { ...box('asg', 0, 0), kind: 'overlay', members: ['b'] }],
+        links: [{ id: 'ab', source: 'a', target: 'b' }],
+    });
+    assert.deepEqual(elementBounds(table, ['ab']), { x: 0, y: 0, width: 600, height: 150 });
+    assert.deepEqual(elementBounds(table, ['asg']), { x: 500, y: 100, width: 100, height: 50 });
+    assert.equal(elementBounds(table, ['missing']), null);
 });
 
 test('moving edges snap to the nearest line, then to the grid', () => {

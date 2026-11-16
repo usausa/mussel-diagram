@@ -1,9 +1,16 @@
 namespace MusselDiagram;
 
+using System.Text.Json;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
+
 using MusselDiagram.Internal;
 
 public sealed class MusselDiagramViewTests : BunitContext
 {
+    private const string EmptyExport = "{\"missing\":[],\"empty\":true}";
+
     private static readonly DiagramSchema Schema = new()
     {
         NodeTypes =
@@ -148,6 +155,190 @@ public sealed class MusselDiagramViewTests : BunitContext
         controller.VerifyInvoke("setTable");
         Assert.Empty(controller.Invocations["applyChanges"]);
     }
+
+    [Fact]
+    public async Task AnExportKeepsEveryElementUntilTheOtherExportEnds()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var svg = controller.Setup<string>("exportDiagram", static x => FormatOf(x) == "svg");
+        var png = controller.Setup<string>("exportDiagram", static x => FormatOf(x) == "png");
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        await cut.InvokeAsync(() => cut.Instance.OnViewportChanged(1, -1000, 0, 200, 200));
+        Task<DiagramExportResult>[] exports = [];
+
+        await cut.InvokeAsync(() =>
+        {
+            exports = [cut.Instance.ExportSvgAsync(), cut.Instance.ExportImageAsync()];
+        });
+        await cut.InvokeAsync(() => svg.SetResult(EmptyExport));
+        await exports[0].WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Equal(2, cut.FindAll("g.mussel-diagram-node").Count);
+
+        await cut.InvokeAsync(() => png.SetResult(EmptyExport));
+        await exports[1].WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Empty(cut.FindAll("g.mussel-diagram-node"));
+    }
+
+    [Fact]
+    public async Task CallsAfterTheCircuitIsGoneDoNotThrow()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        controller.Setup<string>("exportDiagram", static _ => true).SetException(new JSDisconnectedException("gone"));
+        controller.SetupVoid("setView", static _ => true).SetException(new JSDisconnectedException("gone"));
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        Task<DiagramExportResult>? export = null;
+
+        await cut.InvokeAsync(() =>
+        {
+            export = cut.Instance.ExportSvgAsync();
+        });
+        await cut.InvokeAsync(() => cut.Instance.SetViewportAsync(1, new DiagramPoint(0, 0)).AsTask());
+        var result = await export!.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Null(result.Content);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task DisposingWhileTheScriptIsAttachingEndsQuietly()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var setCommands = controller.SetupVoid("setCommands", static _ => true);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(setCommands.SetVoidResult);
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.NotSame(Renderer.UnhandledException, ended);
+    }
+
+    [Fact]
+    public async Task DisposingWhileTheCommandsAreSentEndsQuietly()
+    {
+        var runtime = new LateRuntime { Module = { Hold = "setCommands" } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var diagram = new Diagram(Schema with { Rules = new DiagramAppRules { InPalette = static _ => true } });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(runtime.Module.Resume.SetResult);
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.NotSame(Renderer.UnhandledException, ended);
+    }
+
+    [Fact]
+    public async Task DisposingWhileTheOptionsAreSentEndsQuietly()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var setOptions = controller.SetupVoid("setOptions", static _ => true);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        cut.Render(static p => p.Add(static x => x.TooltipEnabled, false));
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(setOptions.SetVoidResult);
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.NotSame(Renderer.UnhandledException, ended);
+    }
+
+    [Fact]
+    public async Task TheScriptThatArrivesAfterTheViewIsGoneIsReleased()
+    {
+        var runtime = new LateRuntime();
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await cut.WaitForAssertionAsync(() => Assert.True(runtime.Module.Released));
+        Assert.DoesNotContain("attach", runtime.Module.Calls);
+    }
+
+    [Fact]
+    public async Task CallsBeforeTheScriptIsAttachedAreAppliedInOrder()
+    {
+        var runtime = new LateRuntime();
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+        await cut.InvokeAsync(() => cut.Instance.ZoomToFitAsync().AsTask());
+        await cut.InvokeAsync(() => cut.Instance.CenterOnAsync("b").AsTask());
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await cut.WaitForAssertionAsync(() => Assert.Contains("ready", runtime.Module.Calls));
+        Assert.Equal(["select", "fit", "centerOn", "ready"], runtime.Module.Calls.Where(static x => x is "select" or "fit" or "centerOn" or "ready"));
+    }
+
+    [Fact]
+    public async Task CallsWhileTheScriptIsAttachingKeepTheirOrder()
+    {
+        var runtime = new LateRuntime { Module = { Hold = "select" } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+        await cut.InvokeAsync(() => cut.Instance.ZoomToFitAsync().AsTask());
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await cut.WaitForAssertionAsync(() => Assert.Contains("select", runtime.Module.Calls));
+        await cut.InvokeAsync(() => cut.Instance.CenterOnAsync("b").AsTask());
+        await cut.InvokeAsync(runtime.Module.Resume.SetResult);
+
+        await cut.WaitForAssertionAsync(() => Assert.Contains("ready", runtime.Module.Calls));
+        Assert.Equal(["select", "fit", "centerOn", "ready"], runtime.Module.Calls.Where(static x => x is "select" or "fit" or "centerOn" or "ready"));
+    }
+
+    [Fact]
+    public async Task SourcesReleaseTheScriptThatArrivesAfterTheyAreGone()
+    {
+        var runtime = new LateRuntime();
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var palette = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, view.Instance));
+        var source = Render<MusselDiagramDragSource>(parameters => parameters.Add(p => p.View, view.Instance).Add(static p => p.Type, "service"));
+
+        await palette.InvokeAsync(() => palette.Instance.DisposeAsync().AsTask());
+        await source.InvokeAsync(() => source.Instance.DisposeAsync().AsTask());
+        await view.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await view.WaitForAssertionAsync(() => Assert.True(runtime.Module.Released));
+        Assert.DoesNotContain("attachSource", runtime.Module.Calls);
+    }
+
+    [Fact]
+    public async Task AnExceptionInAHandlerCalledFromTheScriptReachesTheRenderer()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.SelectionChanged, static _ => throw new InvalidOperationException("app")));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => bridge.OnSelectionChanged(["a"])));
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.Same(Renderer.UnhandledException, ended);
+        Assert.Same(thrown, await Renderer.UnhandledException.ConfigureAwait(true));
+    }
+
+    [Fact]
+    public async Task AnExceptionInTheViewportHandlerReachesTheRenderer()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.ViewportChanged, static _ => throw new InvalidOperationException("app")));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        await cut.InvokeAsync(() => bridge.OnViewportChanged(1, 0, 0, 200, 200));
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.Same(Renderer.UnhandledException, ended);
+        Assert.IsType<InvalidOperationException>(await Renderer.UnhandledException.ConfigureAwait(true));
+    }
+
+    private static string? FormatOf(JSRuntimeInvocation invocation) =>
+        invocation.Arguments is [JsonElement options, ..] ? options.GetProperty("format").GetString() : null;
 
     private static Diagram CreateDiagram()
     {

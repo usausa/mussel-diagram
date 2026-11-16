@@ -16,6 +16,13 @@
         <MudIconButton Icon="@Icons.Material.Filled.PanTool" Size="Size.Small" Color="@ColorOf(Tool == DiagramTool.Pan)" aria-label="手のひら" aria-pressed="@PressedOf(Tool == DiagramTool.Pan)" title="手のひら" data-tool="pan" OnClick="PanAsync" />
         <MudIconButton Icon="@Icons.Material.Filled.DoNotTouch" Size="Size.Small" Color="@ColorOf(Selects(DiagramBackgroundDragMode.None))" aria-label="何もしない" aria-pressed="@PressedOf(Selects(DiagramBackgroundDragMode.None))" title="何もしない" data-tool="none" OnClick="@(() => SelectAsync(DiagramBackgroundDragMode.None))" />
     </div>
+    @if (SnapToElementsChanged.HasDelegate)
+    {
+        <span class="view-toolbar-separator"></span>
+        <div class="view-toolbar-group">
+            <MudIconButton Icon="@Icons.Material.Filled.Straighten" Size="Size.Small" Color="@ColorOf(SnapToElements)" aria-label="位置合わせ" aria-pressed="@PressedOf(SnapToElements)" title="ほかの図形との位置合わせ" data-action="snap-to-elements" OnClick="ToggleSnapAsync" />
+        </div>
+    }
     <span class="view-toolbar-separator"></span>
     <div class="view-toolbar-group">
         <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Disabled="@(View is null)" aria-label="縮小" title="縮小" data-action="zoom-out" OnClick="@(() => ExecuteAsync(DiagramCommands.ZoomOut))" />

@@ -24,6 +24,5 @@
     <File Path="LICENSE" />
     <File Path="MusselDiagram.sln.DotSettings" />
     <File Path="README.md" />
-    <File Path="Settings.XamlStyler" />
   </Folder>
 </Solution>

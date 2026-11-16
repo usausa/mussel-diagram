@@ -19,5 +19,8 @@ public static class SettingEndpoints
         context.Response.Cookies.Append(name, value, new CookieOptions { Path = "/", MaxAge = TimeSpan.FromDays(30), IsEssential = true });
 
     private static IResult RedirectBack(string? redirect) =>
-        Results.LocalRedirect(string.IsNullOrEmpty(redirect) || !redirect.StartsWith('/', StringComparison.Ordinal) || redirect.StartsWith("//", StringComparison.Ordinal) ? "/" : redirect);
+        Results.LocalRedirect(IsLocal(redirect) ? redirect : "/");
+
+    private static bool IsLocal([NotNullWhen(true)] string? url) =>
+        (url is ['/'] or ['/', not ('/' or '\\'), ..]) && !url.Any(char.IsControl);
 }

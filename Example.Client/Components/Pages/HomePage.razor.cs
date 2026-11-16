@@ -14,6 +14,8 @@ public sealed partial class HomePage
 
     private DiagramTool tool;
 
+    private bool snapToElements = true;
+
     private double zoom = 1;
 
     private IReadOnlyList<string> selection = [];

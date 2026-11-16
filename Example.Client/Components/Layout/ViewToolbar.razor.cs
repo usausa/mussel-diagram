@@ -25,6 +25,12 @@ public sealed partial class ViewToolbar
     public EventCallback<DiagramBackgroundDragMode> ModeChanged { get; set; }
 
     [Parameter]
+    public bool SnapToElements { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> SnapToElementsChanged { get; set; }
+
+    [Parameter]
     public double Zoom { get; set; } = 1;
 
     [Inject]
@@ -43,6 +49,8 @@ public sealed partial class ViewToolbar
     private bool Selects(DiagramBackgroundDragMode mode) => (Tool == DiagramTool.Select) && (mode == Mode);
 
     private Task PanAsync() => ToolChanged.InvokeAsync(DiagramTool.Pan);
+
+    private Task ToggleSnapAsync() => SnapToElementsChanged.InvokeAsync(!SnapToElements);
 
     private async Task SelectAsync(DiagramBackgroundDragMode mode)
     {

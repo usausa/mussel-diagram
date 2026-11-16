@@ -38,25 +38,7 @@ public sealed partial class MusselDiagramDragSource
     public async ValueTask DisposeAsync()
     {
         disposed = true;
-        try
-        {
-            if (source is not null)
-            {
-                await source.InvokeVoidAsync("dispose").ConfigureAwait(true);
-                await source.DisposeAsync().ConfigureAwait(true);
-            }
-
-            if (module is not null)
-            {
-                await module.DisposeAsync().ConfigureAwait(true);
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-
-        source = null;
-        module = null;
+        await ReleaseAsync().ConfigureAwait(true);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -69,9 +51,52 @@ public sealed partial class MusselDiagramDragSource
         try
         {
             module = await Runtime.InvokeAsync<IJSObjectReference>("import", MusselDiagramView.ModulePath).ConfigureAwait(true);
+            if (disposed)
+            {
+                await ReleaseAsync().ConfigureAwait(true);
+                return;
+            }
+
             source = await module.InvokeAsync<IJSObjectReference>("attachSource", root, View.Root).ConfigureAwait(true);
+            if (disposed)
+            {
+                await ReleaseAsync().ConfigureAwait(true);
+            }
         }
         catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private async Task ReleaseAsync()
+    {
+        var attached = source;
+        var loaded = module;
+        source = null;
+        module = null;
+        try
+        {
+            if (attached is not null)
+            {
+                await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                await attached.DisposeAsync().ConfigureAwait(true);
+            }
+
+            if (loaded is not null)
+            {
+                await loaded.DisposeAsync().ConfigureAwait(true);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
         {
         }
     }

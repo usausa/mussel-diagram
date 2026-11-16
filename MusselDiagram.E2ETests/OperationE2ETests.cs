@@ -1,5 +1,7 @@
 namespace MusselDiagram.E2ETests;
 
+using System.Text.RegularExpressions;
+
 using static Microsoft.Playwright.Assertions;
 
 public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
@@ -28,6 +30,27 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 
         await Expect(node).ToHaveAttributeAsync("transform", "translate(282,190)");
         await Expect(opened.View.Locator(".mussel-diagram-overlay line.mussel-diagram-guide")).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBasicPageTurnsTheAlignmentWithOtherShapesOff(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var node = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        var toggle = opened.Page.Locator("[data-action='snap-to-elements']");
+        await Expect(toggle).ToHaveAttributeAsync("aria-pressed", "true");
+
+        await toggle.ClickAsync();
+        await Expect(toggle).ToHaveAttributeAsync("aria-pressed", "false");
+        await DragAsync(250, 170, 60, 40, false, async () =>
+            await Expect(opened.View.Locator(".mussel-diagram-overlay line.mussel-diagram-guide")).ToHaveCountAsync(0).ConfigureAwait(true));
+
+        await Expect(node).ToHaveAttributeAsync("transform", "translate(286,186)");
+
+        await opened.Page.GetByRole(AriaRole.Link, new() { Name = "大きな図" }).ClickAsync();
+        await Expect(opened.Page).ToHaveURLAsync(new Regex("/large$"));
+        await Expect(opened.Page.Locator("[data-action='snap-to-elements']")).ToHaveCountAsync(0);
     }
 
     [Theory]

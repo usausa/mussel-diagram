@@ -114,6 +114,28 @@ public sealed class IconTests : BunitContext
     }
 
     [Fact]
+    public async Task AnExportWaitingForIconsEndsWhenTheViewIsGone()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var read = new TaskCompletionSource<string?>();
+        var diagram = new Diagram(CreateSchema(Lazy("lazy", [], read.Task)));
+        diagram.Add(new DiagramNode { Id = "a", Type = "plain", Bounds = new DiagramRect(0, 0, 80, 40), Icon = "test:lazy" });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        Task<DiagramExportResult>? export = null;
+
+        await cut.InvokeAsync(() =>
+        {
+            export = cut.Instance.ExportSvgAsync();
+        });
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(() => read.SetResult(LazySvg));
+        var result = await export!.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Null(result.Content);
+        Assert.Empty(controller.Invocations["exportDiagram"]);
+    }
+
+    [Fact]
     public async Task NothingIsReadAfterTheViewIsGone()
     {
         var reads = new List<string>();

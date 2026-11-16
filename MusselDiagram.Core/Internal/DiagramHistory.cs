@@ -218,6 +218,7 @@ internal sealed class DiagramHistory
                     Label = Pick(a.Label, b.Label, box.Label),
                     Texts = SnapshotContent.SameTexts(a.Texts, b.Texts) ? box.Texts : b.Texts,
                     Icon = Pick(a.Icon, b.Icon, box.Icon),
+                    Look = Pick(a.Look, b.Look, box.Look),
                     Locked = Pick(a.Locked, b.Locked, box.Locked),
                     Permissions = Pick(a.Permissions, b.Permissions, box.Permissions)
                 };
@@ -238,6 +239,7 @@ internal sealed class DiagramHistory
                     Data = PickData(a.Data, b.Data, link.Data),
                     Source = (a.Source != b.Source) && (editor.Find(b.Source.ElementId) is DiagramBox) ? b.Source : link.Source,
                     Target = (a.Target != b.Target) && (editor.Find(b.Target.ElementId) is DiagramBox) ? b.Target : link.Target,
+                    Look = Pick(a.Look, b.Look, link.Look),
                     Locked = Pick(a.Locked, b.Locked, link.Locked),
                     Permissions = Pick(a.Permissions, b.Permissions, link.Permissions)
                 };

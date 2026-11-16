@@ -13,6 +13,8 @@ public sealed partial class MusselDiagramView
 
     private static readonly ConditionalWeakTable<Diagram, SemaphoreSlim> Gates = [];
 
+    private static readonly AsyncLocal<GateTurn?> CurrentTurn = new();
+
     private readonly Dictionary<long, DiagramSnapshot> history = [];
 
     private readonly List<ScriptChanges> pendingChanges = [];
@@ -72,6 +74,101 @@ public sealed partial class MusselDiagramView
 
     internal Task OnSelectionChangedAsync(IEnumerable<string> ids) => SetSelectionAsync([.. ids.Where(IsSelectable)]);
 
+    internal async Task ReportAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
+        {
+            Report(ex);
+            throw;
+        }
+    }
+
+    internal async Task<T> ReportAsync<T>(Task<T> task)
+    {
+        try
+        {
+            return await task.ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
+        {
+            Report(ex);
+            throw;
+        }
+    }
+
+    internal void Report(Exception exception)
+    {
+        if (!disposed)
+        {
+            _ = DispatchExceptionAsync(exception);
+        }
+    }
+
+    private static async Task<T> HandleAsync<T>(GateTurn? turn, Func<Task<T>> handler)
+    {
+        if (turn is null)
+        {
+            return await handler().ConfigureAwait(true);
+        }
+
+        turn.Handling = true;
+        try
+        {
+            return await handler().ConfigureAwait(true);
+        }
+        finally
+        {
+            turn.Handling = false;
+        }
+    }
+
+    private static async Task HandleAsync(GateTurn? turn, Func<Task> handler)
+    {
+        if (turn is null)
+        {
+            await handler().ConfigureAwait(true);
+            return;
+        }
+
+        turn.Handling = true;
+        try
+        {
+            await handler().ConfigureAwait(true);
+        }
+        finally
+        {
+            turn.Handling = false;
+        }
+    }
+
+    private async Task<GateTurn?> EnterGateAsync()
+    {
+        var gate = Gate;
+        if ((CurrentTurn.Value is { Handling: true } turn) && ReferenceEquals(turn.Gate, gate))
+        {
+            return null;
+        }
+
+        await gate.WaitAsync().ConfigureAwait(true);
+        return new GateTurn(gate);
+    }
+
+    private async Task NotifyAsync<T>(EventCallback<T> callback, T args)
+    {
+        try
+        {
+            await callback.InvokeAsync(args).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
+        {
+            Report(ex);
+        }
+    }
+
     private bool IsSelectable(string id) => Snapshot.Find(id) is DiagramBox or DiagramLink;
 
     private async Task SetSelectionAsync(IReadOnlyList<string> ids)
@@ -113,7 +210,7 @@ public sealed partial class MusselDiagramView
         if (SelectedIds.Any(x => !e.After.Contains(x)))
         {
             SelectedIds = [.. SelectedIds.Where(e.After.Contains)];
-            _ = SelectionChanged.InvokeAsync(SelectedIds);
+            _ = NotifyAsync(SelectionChanged, SelectedIds);
         }
 
         _ = InvokeAsync(() =>
@@ -144,10 +241,30 @@ public sealed partial class MusselDiagramView
             foreach (var change in changes)
             {
                 await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(change)).ConfigureAwait(true);
+                if (disposed)
+                {
+                    return;
+                }
             }
         }
         catch (JSDisconnectedException)
         {
+        }
+    }
+
+    private sealed class GateTurn(SemaphoreSlim gate)
+    {
+        public SemaphoreSlim Gate => gate;
+
+        public bool Handling { get; set; }
+
+        public void Begin() => CurrentTurn.Value = this;
+
+        public void End()
+        {
+            Handling = false;
+            CurrentTurn.Value = null;
+            gate.Release();
         }
     }
 }

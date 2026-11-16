@@ -11,11 +11,11 @@ public sealed partial class MusselDiagramView
 {
     private const long MaxExportSize = 1L << 30;
 
-    private bool exporting;
+    private readonly List<TaskCompletionSource> exportRenders = [];
+
+    private int exporting;
 
     private bool exportRendered;
-
-    private TaskCompletionSource? exportRender;
 
     public Task<DiagramExportResult> ExportSvgAsync(DiagramSvgExportOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -55,14 +55,24 @@ public sealed partial class MusselDiagramView
         var current = controller ?? throw new InvalidOperationException("The view is not shown yet.");
         WantIcons(null);
         await Symbols.WhenLoadedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+        if (disposed)
+        {
+            return new DiagramExportResult(null, null, []);
+        }
+
         var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        exportRender = rendered;
-        exporting = true;
+        exportRenders.Add(rendered);
+        exporting++;
         exportRendered = false;
         StateHasChanged();
         try
         {
             await rendered.Task.WaitAsync(cancellationToken).ConfigureAwait(true);
+            if (disposed)
+            {
+                return new DiagramExportResult(null, null, []);
+            }
+
             var json = await current.InvokeAsync<string>("exportDiagram", cancellationToken, ScriptJson.ToElement(options)).ConfigureAwait(true);
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
@@ -96,8 +106,8 @@ public sealed partial class MusselDiagramView
         }
         finally
         {
-            exportRender = null;
-            exporting = false;
+            exportRenders.Remove(rendered);
+            exporting--;
             if (!disposed)
             {
                 StateHasChanged();
@@ -107,9 +117,17 @@ public sealed partial class MusselDiagramView
 
     private void CompleteExportRender()
     {
-        if (exportRendered && (exportRender is { } rendered))
+        if (exportRendered)
         {
             exportRendered = false;
+            EndExportRenders();
+        }
+    }
+
+    private void EndExportRenders()
+    {
+        foreach (var rendered in exportRenders)
+        {
             rendered.TrySetResult();
         }
     }

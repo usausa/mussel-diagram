@@ -90,7 +90,7 @@ The `Example` project shows every feature on Server and WebAssembly: a sample of
 |---|---|
 | **Model** | Nodes, ports, links, tree groups, overlay groups that cross other groups, shared items, typed data, queries, undo and redo, and JSON with versions |
 | **Rules** | Connection rules by port, direction, kind and type, nesting, counts, permissions, locks, app rules and whole-diagram checks |
-| **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection or panning by dragging the background, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
+| **Editing** | Move, resize, connect and reconnect, snapping and guides, box selection or panning by dragging the background, a hand tool, align and distribute, order, copy and paste, group and ungroup, and text editing in place |
 | **Routes** | Orthogonal routes around obstacles, straight and curved lines, and a router that can be replaced |
 | **Palette** | Categories, search, dragging from the palette and from lists of the app, dropping on links, quick add by keys, and icon sets from Iconify JSON, zip files and folders, with large sets read icon by icon when shown |
 | **Commands** | A registry of commands with keys for toolbars and menus of the app |

@@ -2,8 +2,6 @@
 
 <MudThemeProvider Theme="Styles.Theme" IsDarkMode="dark" />
 <MudPopoverProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
 
 <div class="@LayoutClass">
     <header class="layout-bar">
@@ -24,12 +22,24 @@
     </header>
     <div class="layout-body">
         <CascadingValue Value="grid">
-            @Body
+            <ErrorBoundary @ref="errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent>
+                    <div class="pa-3">
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="my-2">このページでエラーが起きました。</MudAlert>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="Recover">再試行</MudButton>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </CascadingValue>
     </div>
 </div>
 
 @code {
+    private ErrorBoundary? errorBoundary;
+
     private bool dark;
 
     private GridMode grid = GridMode.Lines;
@@ -45,4 +55,8 @@
     private void ToggleDark() => dark = !dark;
 
     private void NextGrid() => grid = grid.Next();
+
+    private void Recover() => errorBoundary?.Recover();
+
+    protected override void OnParametersSet() => errorBoundary?.Recover();
 }

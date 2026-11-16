@@ -70,7 +70,7 @@ public sealed partial class MusselDiagramView
             DisplayName = DiagramCultures.Command(DiagramCommands.ToggleLock),
             Keys = ["Ctrl+L"],
             CanExecute = c => (subscribed is not null) && Editable && (Lockable(c.SelectedIds).Count > 0),
-            GetIsChecked = c => Lockable(c.SelectedIds) is { Count: > 0 } items && items.All(IsLocked),
+            GetIsChecked = c => (Lockable(c.SelectedIds) is { Count: > 0 } items) && items.All(IsLocked),
             Execute = c => ToggleLockAsync(c.SelectedIds)
         });
         Register(DiagramCommands.ZoomIn, ["Ctrl+Plus"], _ => ZoomEnabled, _ => RunViewAsync("zoomStep", 1).AsTask(), true);
@@ -129,6 +129,10 @@ public sealed partial class MusselDiagramView
             {
                 sentCommands = map;
                 await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
+                if (disposed)
+                {
+                    return;
+                }
             }
 
             var palette = Diagram.Index.Schema.Rules.InPalette is null
@@ -168,22 +172,22 @@ public sealed partial class MusselDiagramView
 
     private async Task WriteAsync(Action write)
     {
-        var gate = Gate;
-        await gate.WaitAsync().ConfigureAwait(true);
+        var turn = await EnterGateAsync().ConfigureAwait(true);
+        turn?.Begin();
         try
         {
             write();
         }
         finally
         {
-            gate.Release();
+            turn?.End();
         }
     }
 
     private async Task<bool> RunCommandAsync(DiagramOperation operation, Func<DiagramReason?> check, Func<Task<DiagramReason?>>? before, Action write, Func<DiagramSnapshot, Task>? after)
     {
-        var gate = Gate;
-        await gate.WaitAsync().ConfigureAwait(true);
+        var turn = await EnterGateAsync().ConfigureAwait(true);
+        turn?.Begin();
         DiagramReason? reason;
         try
         {
@@ -191,7 +195,7 @@ public sealed partial class MusselDiagramView
             if ((reason is null) && (before is not null))
             {
                 var snapshot = Snapshot;
-                reason = await before().ConfigureAwait(true);
+                reason = await HandleAsync(turn, before).ConfigureAwait(true);
                 if ((reason is null) && !ReferenceEquals(snapshot, Snapshot))
                 {
                     reason = check();
@@ -203,7 +207,7 @@ public sealed partial class MusselDiagramView
                 write();
                 if (after is not null)
                 {
-                    await after(Snapshot).ConfigureAwait(true);
+                    await HandleAsync(turn, () => after(Snapshot)).ConfigureAwait(true);
                 }
 
                 return true;
@@ -211,7 +215,7 @@ public sealed partial class MusselDiagramView
         }
         finally
         {
-            gate.Release();
+            turn?.End();
         }
 
         await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);

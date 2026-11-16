@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject NavigationManager Navigation
 
 @if (Visible)
@@ -15,7 +16,13 @@
         _ => "server"
     };
 
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
     private string ClassOf(string mode) => mode == Mode ? "mode active" : "mode";
 
     private string Link(string mode) => $"render-mode/{mode}?redirect={Uri.EscapeDataString($"/{Navigation.ToBaseRelativePath(Navigation.Uri)}")}";
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
 }

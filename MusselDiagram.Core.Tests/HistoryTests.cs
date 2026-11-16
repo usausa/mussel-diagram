@@ -82,6 +82,31 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void SkipLooksReachEveryStep()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 300, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        diagram.Move(["a"], new DiagramPoint(10, 0));
+
+        var box = new DiagramBoxLook { Fill = "#ffcdd2" };
+        var line = new DiagramLinkLook { Stroke = "#e53935" };
+        diagram.Replace(((DiagramNode)diagram.Find("a")!) with { Look = box }, Skip);
+        diagram.Replace(((DiagramLink)diagram.Find("ab")!) with { Look = line }, Skip);
+        diagram.Undo();
+
+        Assert.Equal(0, X(diagram, "a"));
+        Assert.Equal(box, ((DiagramNode)diagram.Find("a")!).Look);
+        Assert.Equal(line, ((DiagramLink)diagram.Find("ab")!).Look);
+
+        diagram.Redo();
+        Assert.Equal(10, X(diagram, "a"));
+        Assert.Equal(box, ((DiagramNode)diagram.Find("a")!).Look);
+        Assert.Equal(line, ((DiagramLink)diagram.Find("ab")!).Look);
+    }
+
+    [Fact]
     public void StepsThatSkipChangesEmptyAreDropped()
     {
         var diagram = new Diagram(Schema);

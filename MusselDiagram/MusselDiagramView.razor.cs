@@ -16,6 +16,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private readonly DiagramTemplateSet templates = new();
 
+    private readonly Queue<(string Identifier, object?[] Args)> pendingViews = new();
+
     private IJSObjectReference? module;
 
     private IJSObjectReference? controller;
@@ -35,8 +37,6 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     private bool tableChanged;
 
     private bool schemaChanged;
-
-    private (string Identifier, object?[] Args)? pendingView;
 
     private ShownSet? shown;
 
@@ -148,7 +148,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private RenderFragment Nodes => builder =>
     {
-        exportRendered = exporting;
+        exportRendered = exporting > 0;
         foreach (var node in Snapshot.Nodes)
         {
             if (IsShown(node.Id, node.Bounds))
@@ -178,6 +178,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         disposed = true;
+        EndExportRenders();
         Subscribe(null);
         symbols?.Dispose();
         await ReleaseAsync().ConfigureAwait(true);
@@ -207,7 +208,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         Viewport = new DiagramViewport(zoom, visible.Center, visible);
         area = new DiagramRect(visible.X - (visible.Width / 2), visible.Y - (visible.Height / 2), visible.Width * 2, visible.Height * 2);
         StateHasChanged();
-        _ = ViewportChanged.InvokeAsync(Viewport);
+        _ = NotifyAsync(ViewportChanged, Viewport);
     }
 
     protected override void OnParametersSet()
@@ -231,6 +232,11 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             if (firstRender)
             {
                 module = await Runtime.InvokeAsync<IJSObjectReference>("import", ModulePath).ConfigureAwait(true);
+                if (disposed)
+                {
+                    return;
+                }
+
                 self ??= DotNetObjectReference.Create(new DiagramScriptBridge(this));
                 sentOptions = options.GetRawText();
                 tableChanged = false;
@@ -240,17 +246,30 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates));
                 controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
                 await SyncCommandsAsync(controller).ConfigureAwait(true);
-                if (pendingView is { } view)
+                if (disposed)
                 {
-                    pendingView = null;
+                    return;
+                }
+
+                if (SelectedIds.Count > 0)
+                {
+                    await controller.InvokeVoidAsync("select", SelectedIds).ConfigureAwait(true);
+                }
+
+                while (!disposed && pendingViews.TryDequeue(out var view))
+                {
                     await controller.InvokeVoidAsync(view.Identifier, view.Args).ConfigureAwait(true);
                 }
 
-                await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
+                if (!disposed)
+                {
+                    await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
+                }
+
                 return;
             }
 
-            if (controller is null)
+            if (controller is not { } current)
             {
                 return;
             }
@@ -258,19 +277,32 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             if (!string.Equals(sentOptions, options.GetRawText(), StringComparison.Ordinal))
             {
                 sentOptions = options.GetRawText();
-                await controller.InvokeVoidAsync("setOptions", options).ConfigureAwait(true);
+                await current.InvokeVoidAsync("setOptions", options).ConfigureAwait(true);
+                if (disposed)
+                {
+                    return;
+                }
             }
 
             if (schemaChanged)
             {
                 schemaChanged = false;
-                await controller.InvokeVoidAsync("setSchema", ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates))).ConfigureAwait(true);
+                await current.InvokeVoidAsync("setSchema", ScriptJson.ToElement(ScriptTables.Schema(RenderContext, templates))).ConfigureAwait(true);
+                if (disposed)
+                {
+                    return;
+                }
             }
 
             var changed = tableChanged;
             tableChanged = false;
-            await SyncScriptAsync(controller, changed).ConfigureAwait(true);
-            await SyncCommandsAsync(controller).ConfigureAwait(true);
+            await SyncScriptAsync(current, changed).ConfigureAwait(true);
+            if (disposed)
+            {
+                return;
+            }
+
+            await SyncCommandsAsync(current).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {
@@ -299,7 +331,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     }
 
     private bool IsShown(string id, DiagramRect bounds) =>
-        exporting || (area is not { } visible) || bounds.Intersects(visible) || AlwaysShown().Contains(id);
+        (exporting > 0) || (area is not { } visible) || bounds.Intersects(visible) || AlwaysShown().Contains(id);
 
     private bool HasCulledShown() =>
         (area is { } visible) && AlwaysShown().Any(id => Snapshot.Find(id) switch
@@ -352,9 +384,9 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private async ValueTask RunViewAsync(string identifier, params object?[] args)
     {
-        if (controller is null)
+        if ((controller is null) || (pendingViews.Count > 0))
         {
-            pendingView = (identifier, args);
+            pendingViews.Enqueue((identifier, args));
             return;
         }
 
@@ -496,6 +528,15 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             }
         }
         catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
         {
         }
     }

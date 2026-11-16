@@ -170,6 +170,50 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task ClickingInTheEditorKeepsItOpen(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        var (left, top) = await OriginAsync();
+
+        await opened.Page.Mouse.DblClickAsync((float)left + 250, (float)top + 204);
+        await Expect(editor).ToHaveValueAsync("星 1");
+        await editor.ClickAsync();
+        await Expect(editor).ToBeFocusedAsync();
+        await opened.Page.Keyboard.PressAsync("End");
+        await opened.Page.Keyboard.TypeAsync("A");
+        await opened.Page.Keyboard.PressAsync("Enter");
+
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1A']")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task PanningWithTheMiddleButtonKeepsTheEditorOpen(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        var (left, top) = await OriginAsync();
+
+        await opened.Page.Mouse.DblClickAsync((float)left + 250, (float)top + 204);
+        await Expect(editor).ToHaveValueAsync("星 1");
+        await opened.Page.Mouse.MoveAsync((float)left + 700, (float)top + 470);
+        await opened.Page.Mouse.DownAsync(new() { Button = MouseButton.Middle });
+        await opened.Page.Mouse.MoveAsync((float)left + 640, (float)top + 470, new() { Steps = 4 });
+        await opened.Page.Mouse.UpAsync(new() { Button = MouseButton.Middle });
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(-60,0) scale(1)");
+        await Expect(editor).ToBeFocusedAsync();
+        await opened.Page.Keyboard.PressAsync("End");
+        await opened.Page.Keyboard.TypeAsync("B");
+        await opened.Page.Keyboard.PressAsync("Enter");
+
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1B']")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task TemplateTextIsEditedInPlace(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

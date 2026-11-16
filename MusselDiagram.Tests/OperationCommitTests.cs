@@ -85,6 +85,21 @@ public sealed class OperationCommitTests : BunitContext
     }
 
     [Fact]
+    public async Task AHandlerCanAwaitACommand()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        cut.Render(parameters => parameters.Add(p => p.Moved, _ => cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock)));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        var commit = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, diagram.Snapshot.Version, 0));
+        var result = await commit.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.True(result.Accepted);
+        Assert.True(((DiagramBox)diagram.Find("a")!).Locked);
+    }
+
+    [Fact]
     public async Task ConnectionsPassTheRulesAndTheEvents()
     {
         var diagram = CreateDiagram();

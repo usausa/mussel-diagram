@@ -305,7 +305,7 @@ const SETTLE_DELAY = 180;
 const WHEEL_ZOOM_RATE = 0.0015;
 const MOUSE_THRESHOLD = 4;
 const TOUCH_THRESHOLD = 8;
-const LONG_PRESS_DELAY = 250;
+const LONG_PRESS_DELAY = 400;
 const REASON_DURATION = 3000;
 const SELECTION_PADDING = 4;
 const HANDLE_SIZE = 8;
@@ -408,6 +408,34 @@ export function roundZoom(view, point) {
 export function wheelDelta(event, pageHeight) {
     const scale = event.deltaMode === 1 ? 16 : (event.deltaMode === 2 ? pageHeight : 1);
     return { x: event.deltaX * scale, y: event.deltaY * scale };
+}
+
+export function elementBounds(table, ids) {
+    const boxes = [];
+    for (const id of ids) {
+        const link = table.links.get(id);
+        const box = table.boxes.get(id);
+        const parts = link ? [link.source, link.target] : (box?.kind === 'overlay' ? (box.members ?? []) : [id]);
+        for (const part of parts) {
+            const found = table.boxes.get(part);
+            if (found && (found.kind !== 'overlay')) {
+                boxes.push(found);
+            }
+        }
+    }
+    if (boxes.length === 0) {
+        return null;
+    }
+    const left = Math.min(...boxes.map((b) => b.x));
+    const top = Math.min(...boxes.map((b) => b.y));
+    return { x: left, y: top, width: Math.max(...boxes.map((b) => b.x + b.w)) - left, height: Math.max(...boxes.map((b) => b.y + b.h)) - top };
+}
+
+export function wheelAction(event, options) {
+    if (event.ctrlKey || event.altKey || ((options.wheelMode === 'zoom') && !event.shiftKey)) {
+        return options.zoomEnabled ? 'zoom' : null;
+    }
+    return options.panEnabled ? 'pan' : null;
 }
 
 export function portPosition(box, side, ratio, offset, along) {
@@ -1651,14 +1679,15 @@ class DiagramController {
         if (event.target.closest?.('.mussel-diagram-nowheel, .mussel-diagram-picker')) {
             return;
         }
+        const action = wheelAction(event, this.options);
+        if (!action) {
+            return;
+        }
         event.preventDefault();
         const delta = wheelDelta(event, this.size.height);
-        const zooming = event.ctrlKey || event.altKey || ((this.options.wheelMode === 'zoom') && !event.shiftKey);
-        if (zooming) {
-            if (this.options.zoomEnabled) {
-                this.zoomBy(Math.exp(-delta.y * WHEEL_ZOOM_RATE), this.point(event));
-            }
-        } else if (this.options.panEnabled) {
+        if (action === 'zoom') {
+            this.zoomBy(Math.exp(-delta.y * WHEEL_ZOOM_RATE), this.point(event));
+        } else {
             this.foldGesture();
             const dx = event.shiftKey && (delta.x === 0) ? delta.y : delta.x;
             const dy = event.shiftKey && (delta.x === 0) ? 0 : delta.y;
@@ -1763,7 +1792,12 @@ class DiagramController {
             }
             this.closePicker();
         }
-        this.root.focus({ preventScroll: true });
+        if (this.editor?.input.contains(event.target)) {
+            return;
+        }
+        if (!this.editor || (event.button !== 1)) {
+            this.root.focus({ preventScroll: true });
+        }
         if (event.pointerType === 'touch') {
             this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
             if (this.touches.size > 1) {
@@ -2953,6 +2987,22 @@ class DiagramController {
         return svg('path', attributes);
     }
 
+    reconnectLine(element, d) {
+        const attributes = { class: 'mussel-diagram-link-line mussel-diagram-preview-link', d };
+        const style = element?.getAttribute('style');
+        if (style) {
+            attributes.style = style;
+        }
+        const line = element?.querySelector('.mussel-diagram-link-line');
+        for (const name of ['marker-start', 'marker-end']) {
+            const value = line?.getAttribute(name);
+            if (value) {
+                attributes[name] = value;
+            }
+        }
+        return svg('path', attributes);
+    }
+
     startReconnect(press) {
         const link = this.table.links.get(press.hit.id);
         if (!link?.connectable || !this.options.connectEnabled) {
@@ -3057,11 +3107,13 @@ class DiagramController {
         if (!target) {
             endAnchor.side = isHorizontal(startAnchor.side) ? (point.x >= startAnchor.x ? 'left' : 'right') : (point.y >= startAnchor.y ? 'top' : 'bottom');
         }
-        const type = this.schema.linkTypes.get(drag.linkType) ?? DEFAULT_LINK_TYPE;
-        const sourceAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? endAnchor : startAnchor;
-        const targetAnchor = (drag.kind === 'reconnect') && (drag.side === 'source') ? startAnchor : endAnchor;
-        const points = routeBetween(sourceAnchor, targetAnchor, type.form, type.stub, this.options.gridSize);
-        drag.preview = this.previewLine(drag.linkType, toPath(points, type.form, type.sourceCut, type.targetCut));
+        const reconnect = drag.kind === 'reconnect';
+        const route = reconnect ? drag.link : (this.schema.linkTypes.get(drag.linkType) ?? DEFAULT_LINK_TYPE);
+        const sourceAnchor = reconnect && (drag.side === 'source') ? endAnchor : startAnchor;
+        const targetAnchor = reconnect && (drag.side === 'source') ? startAnchor : endAnchor;
+        const points = routeBetween(sourceAnchor, targetAnchor, route.form, route.stub, this.options.gridSize);
+        const d = toPath(points, route.form, route.sourceCut, route.targetCut);
+        drag.preview = reconnect ? this.reconnectLine(drag.element, d) : this.previewLine(drag.linkType, d);
         this.layers.preview.replaceChildren(drag.preview);
     }
 
@@ -3149,7 +3201,7 @@ class DiagramController {
         const linkType = from ? this.linkTypeFor(from) : null;
         const items = [];
         for (const type of this.schema.list) {
-            if (type.overlay || ((type.max ?? null) !== null && (this.table.countOfType(type.name) >= type.max))) {
+            if (type.overlay || (((type.max ?? null) !== null) && (this.table.countOfType(type.name) >= type.max))) {
                 continue;
             }
             if (!from && !this.inPalette(type)) {
@@ -3351,7 +3403,7 @@ class DiagramController {
         if (!picker || event.isComposing) {
             return;
         }
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if ((event.key === 'ArrowDown') || (event.key === 'ArrowUp')) {
             event.preventDefault();
             const count = picker.shown.length;
             if (count > 0) {
@@ -3739,13 +3791,7 @@ class DiagramController {
     }
 
     boundsOf(ids) {
-        const boxes = ids.map((id) => this.table.boxes.get(id)).filter((b) => b && (b.kind !== 'overlay'));
-        if (boxes.length === 0) {
-            return null;
-        }
-        const left = Math.min(...boxes.map((b) => b.x));
-        const top = Math.min(...boxes.map((b) => b.y));
-        return { x: left, y: top, width: Math.max(...boxes.map((b) => b.x + b.w)) - left, height: Math.max(...boxes.map((b) => b.y + b.h)) - top };
+        return elementBounds(this.table, ids);
     }
 
     fitAll(margin) {
@@ -3756,16 +3802,7 @@ class DiagramController {
     }
 
     fitSelection(margin) {
-        const ids = [];
-        for (const id of this.selection) {
-            const link = this.table.links.get(id);
-            if (link) {
-                ids.push(link.source, link.target);
-            } else {
-                ids.push(id);
-            }
-        }
-        const bounds = this.boundsOf(ids);
+        const bounds = this.boundsOf([...this.selection]);
         if (bounds) {
             this.fitTo(bounds, margin);
         }

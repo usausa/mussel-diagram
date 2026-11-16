@@ -44,7 +44,7 @@ Esc or a lost pointer capture during a drag returns to idle without changing the
 | Package | Contents | References |
 |---|---|---|
 | `MusselDiagram.Core` | The diagram model, types and rules, validation, routing, undo, JSON reading and writing, icon import. No UI | .NET standard libraries only |
-| `MusselDiagram` | The view and palette components, the command registry, JS and CSS | `MusselDiagram.Core`, `Microsoft.AspNetCore.Components.Web` |
+| `MusselDiagram` | The view and palette components, the command registry, JS and CSS | `MusselDiagram.Core` (the same version), `Microsoft.AspNetCore.Components.Web` |
 
 With `MusselDiagram.Core` alone, a server, a worker or a command-line tool can create, validate and save diagrams.
 
@@ -508,7 +508,7 @@ Pointer Events take the mouse, the pen and touch together. The view has `touch-a
 |---|---|---|
 | Left mouse button, pen | Drag for box selection | Click to select, drag to move |
 | Middle mouse button, Space+left | Drag to pan | Drag to pan |
-| One finger | Drag to pan. After a long press (250 ms), drag for box selection | Tap to select, drag to move, long press to add to or remove from the selection |
+| One finger | Drag to pan. After a long press (400 ms), drag for box selection | Tap to select, drag to move, long press to add to or remove from the selection |
 | Two fingers | Pinch to zoom, move to pan | The same as on the background |
 
 - Nothing is a drag until the pointer moves 4 px on screen (8 px for touch). A release before that is a click (a tap)
@@ -722,7 +722,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 
 | Step | Behaviour |
 |---|---|
-| Press | With the mouse and the pen, pressing an item and moving 4 px starts a drag. On touch, moving after a long press (250 ms) starts it, and moving before that scrolls the palette |
+| Press | With the mouse and the pen, pressing an item and moving 4 px starts a drag. On touch, moving after a long press (400 ms) starts it, and moving before that scrolls the palette |
 | Outside the view | The icon of the item follows the pointer |
 | Over the view | A semi-transparent preview of the element (the shape and icon of the type) is drawn at its real size for the zoom. The center of the preview follows the pointer, with snapping and guides (Snapping and guides). For a type drawn by a template, the preview is a frame of the default size with the icon |
 | Target highlight | The group that will be the parent, and a link to splice into, show the drop target look. Where the element cannot be placed, the "not allowed" look and the reason show |
@@ -819,6 +819,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 
 - When a commit is rejected, the commits sent before JS received that answer are rejected too, without a reason
 - When the diagram changes while step 4 is awaited, steps 1 to 3 run again before writing
+- A built-in command that a handler of the before or after event, or of `CommitRejected`, awaits runs at once, inside the operation
 - App rules are synchronous functions. Checks that wait (asking a server, for example) belong in step 4
 
 ### Events
@@ -837,6 +838,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 - The before events carry what will be written, and the after events what was written and the snapshot. Elements deleted along with it are included
 - Align, distribute, order, lock, group and ungroup, and changing members raise no before or after events, but still pass the rules. To stop them, disable the command (Commands and keys)
 - Undo and redo pass neither the rules nor the before and after events (Undo)
+- An exception from a handler of an event raised from the script reaches `ErrorBoundary`, as with an ordinary Blazor event, and the script gets a failure
 
 ### Waiting
 

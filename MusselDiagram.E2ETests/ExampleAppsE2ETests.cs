@@ -7,6 +7,8 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
+    private static readonly HttpClient Client = new();
+
     private DiagramPage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
@@ -481,6 +483,55 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TheRenderModeSwitchFollowsThePage(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+
+        await opened.Page.Locator(".page-switch a[href='large']").ClickAsync();
+
+        await Expect(opened.Page.Locator(".mode-switch a").First).ToHaveAttributeAsync("href", new Regex("redirect=%2Flarge$"));
+    }
+
+    [Fact]
+    public async Task TheErrorPageAndUnknownAddressesAnswer()
+    {
+        Assert.SkipWhen(string.IsNullOrEmpty(app.BaseAddress), "Neither Edge nor Chrome was found, so the E2E test is skipped.");
+        var token = Xunit.TestContext.Current.CancellationToken;
+
+        using var error = await Client.GetAsync(new Uri($"{app.BaseAddress}error"), token);
+        using var missing = await Client.GetAsync(new Uri($"{app.BaseAddress}no-such"), token);
+        using var outside = await Client.GetAsync(new Uri($"{app.BaseAddress}render-mode/server?redirect=%2F%5Cexample.com"), token);
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, error.StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(new Uri(app.BaseAddress), outside.RequestMessage?.RequestUri);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ReconnectingALinkKeepsItsOwnLook(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var link = opened.View.Locator("g.mussel-diagram-link[data-id='rect-diamond']");
+        await ClickAsync("g.mussel-diagram-link[data-id='rect-diamond'] > path.mussel-diagram-link-hit");
+        await ChooseAsync("link-form", "曲線");
+        await Expect(link.Locator("path.mussel-diagram-link-line")).ToHaveAttributeAsync("d", new Regex("C"));
+        await ChooseAsync("link-stroke", "赤");
+        await Expect(link).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-link-stroke: #E53935;"));
+        var (x, y) = await CenterAsync(".mussel-diagram-overlay [data-end='target'][data-id='rect-diamond']");
+
+        await opened.Page.Mouse.MoveAsync(x, y);
+        await opened.Page.Mouse.DownAsync();
+        await opened.Page.Mouse.MoveAsync(x + 60, y + 40, new() { Steps = 5 });
+
+        var preview = opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-preview-link");
+        await Expect(preview).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-link-stroke: #E53935;"));
+        await Expect(preview).ToHaveAttributeAsync("d", new Regex("C"));
+        await opened.Page.Mouse.UpAsync();
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task TheBasicPageChangesTheLookOfSelectedShapesTogether(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -508,6 +559,26 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await opened.Page.Keyboard.PressAsync("Control+Z");
         await Expect(rect).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E5;"));
         await Expect(diamond).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E5;"));
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheBasicPageMakesTheFillOfSelectedShapesTranslucent(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        await ClickAsync("g.mussel-diagram-node[data-id='rect'] > .mussel-diagram-shape");
+        await Expect(opened.Page.Locator("[data-panel='look'] [data-field='box-fill-opacity']")).ToBeDisabledAsync();
+
+        await ChooseAsync("box-fill", "青");
+        await ChooseAsync("box-fill-opacity", "50%");
+        await Expect(rect).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #1E88E580;"));
+
+        await ChooseAsync("box-fill", "赤");
+        await Expect(rect).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #E5393580;"));
+
+        await ChooseAsync("box-fill-opacity", "0%");
+        await Expect(rect).ToHaveAttributeAsync("style", new Regex("--mussel-diagram-shape-fill: #E53935;"));
     }
 
     private static (double X, double Y) Translation(string? transform)
