@@ -414,12 +414,13 @@ export function elementBounds(table, ids) {
     const boxes = [];
     for (const id of ids) {
         const link = table.links.get(id);
-        const box = table.boxes.get(id);
-        const parts = link ? [link.source, link.target] : (box?.kind === 'overlay' ? (box.members ?? []) : [id]);
-        for (const part of parts) {
+        for (const part of link ? [link.source, link.target] : [id]) {
             const found = table.boxes.get(part);
-            if (found && (found.kind !== 'overlay')) {
-                boxes.push(found);
+            for (const member of found?.kind === 'overlay' ? (found.members ?? []) : [part]) {
+                const inner = table.boxes.get(member);
+                if (inner && (inner.kind !== 'overlay')) {
+                    boxes.push(inner);
+                }
             }
         }
     }
@@ -940,6 +941,55 @@ export class DiagramTable {
         return result;
     }
 
+    depth(id, memo) {
+        const chain = [];
+        let current = id;
+        while (current && !memo.has(current) && (chain.length <= this.boxes.size)) {
+            chain.push(current);
+            current = this.boxes.get(current)?.parent;
+        }
+        let depth = memo.has(current) ? memo.get(current) + 1 : 0;
+        for (let i = chain.length - 1; i >= 0; i--) {
+            memo.set(chain[i], depth);
+            depth += 1;
+        }
+        return memo.get(id);
+    }
+
+    outermost(ids, selected) {
+        const memo = new Map();
+        const covered = (start) => {
+            const chain = [];
+            let found = false;
+            for (let current = start; current && (chain.length <= this.boxes.size); current = this.boxes.get(current)?.parent) {
+                if (memo.has(current)) {
+                    found = memo.get(current);
+                    break;
+                }
+                chain.push(current);
+                if (selected.has(current)) {
+                    found = true;
+                    break;
+                }
+            }
+            for (const visited of chain) {
+                memo.set(visited, found);
+            }
+            return found;
+        };
+        return ids.filter((id) => !covered(this.boxes.get(id)?.parent));
+    }
+
+    ancestorsOf(ids) {
+        const result = new Set();
+        for (const id of ids) {
+            for (let current = this.boxes.get(id)?.parent; current && !result.has(current); current = this.boxes.get(current)?.parent) {
+                result.add(current);
+            }
+        }
+        return result;
+    }
+
     movingSet(roots) {
         const result = new Set();
         for (const id of roots) {
@@ -950,6 +1000,11 @@ export class DiagramTable {
                 for (const descendant of this.descendants(start)) {
                     result.add(descendant);
                 }
+            }
+        }
+        for (const box of this.boxes.values()) {
+            if ((box.kind === 'overlay') && (box.members?.length > 0) && box.members.every((id) => result.has(id))) {
+                result.add(box.id);
             }
         }
         return result;
@@ -1036,9 +1091,13 @@ function routeMidpoint(points) {
     return points[points.length - 1];
 }
 
-function restore(saved) {
+export function restore(saved, written = null) {
     for (const [element, value] of saved) {
+        const current = written?.get(element);
         for (const [attribute, old] of value) {
+            if (current && (element.getAttribute(attribute) !== current.get(attribute))) {
+                continue;
+            }
             if (old === null) {
                 element.removeAttribute(attribute);
             } else {
@@ -1379,11 +1438,14 @@ class DiagramController {
         this.gridLayer = root.querySelector('.mussel-diagram-grid');
         this.uid = Math.random().toString(36).slice(2, 10);
         this.layers = {};
-        for (const name of ['candidates', 'guides', 'selection', 'pending', 'preview', 'handles']) {
+        for (const name of ['candidates', 'guides', 'selection', 'pending', 'preview', 'handles', 'arrows']) {
             const layer = svg('g', { class: `mussel-diagram-layer-${name}` });
             this.overlay?.append(layer);
             this.layers[name] = layer;
         }
+        this.cover = document.createElement('div');
+        this.cover.className = 'mussel-diagram-cursor';
+        root.append(this.cover);
         this.view = { x: 0, y: 0, zoom: 1 };
         this.gesture = null;
         this.pan = null;
@@ -1393,10 +1455,9 @@ class DiagramController {
         this.picker = null;
         this.marks = [];
         this.selection = new Set();
-        this.marked = [];
+        this.marked = new Map();
         this.commits = Promise.resolve();
         this.pending = [];
-        this.lastVersion = this.table.version;
         this.rejections = 0;
         this.waiting = false;
         this.reason = null;
@@ -1601,7 +1662,7 @@ class DiagramController {
         if (!this.gridLayer) {
             return;
         }
-        if (!this.options.gridVisible) {
+        if (!this.options.gridVisible || !(this.options.gridSize > 0)) {
             if (this.gridKey !== 'off') {
                 this.gridLayer.replaceChildren();
                 this.gridKey = 'off';
@@ -1609,7 +1670,7 @@ class DiagramController {
             return;
         }
         const zoom = this.view.zoom;
-        let spacing = this.options.gridSize > 0 ? this.options.gridSize : 10;
+        let spacing = this.options.gridSize;
         while (spacing * zoom < GRID_MINIMUM) {
             spacing *= 2;
         }
@@ -1795,8 +1856,11 @@ class DiagramController {
         if (this.editor?.input.contains(event.target)) {
             return;
         }
-        if (!this.editor || (event.button !== 1)) {
+        const defer = Boolean(this.editor) && this.mayPanWhileEditing(event);
+        if (!defer) {
             this.root.focus({ preventScroll: true });
+        } else if (event.pointerType !== 'touch') {
+            event.preventDefault();
         }
         if (event.pointerType === 'touch') {
             this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1823,6 +1887,7 @@ class DiagramController {
             return;
         }
         this.root.setPointerCapture(event.pointerId);
+        this.foldGesture();
         const point = this.point(event);
         this.press = {
             pointerId: event.pointerId,
@@ -1836,6 +1901,7 @@ class DiagramController {
             keys: { shift: event.shiftKey, ctrl: event.ctrlKey, alt: event.altKey, meta: event.metaKey },
             threshold: event.pointerType === 'touch' ? TOUCH_THRESHOLD : MOUSE_THRESHOLD,
             touch: event.pointerType === 'touch',
+            focus: defer,
         };
         if (this.press.touch) {
             const press = this.press;
@@ -1893,6 +1959,7 @@ class DiagramController {
                 }
                 return;
             }
+            this.focusPressed(press);
             if (!this.startDrag(press)) {
                 return;
             }
@@ -1911,9 +1978,7 @@ class DiagramController {
             return;
         }
         if (this.pan?.pointerId === event.pointerId) {
-            this.pan = null;
-            this.root.classList.remove('mussel-diagram-panning');
-            this.settle();
+            this.endPan();
             return;
         }
         if (this.press?.pointerId !== event.pointerId) {
@@ -1927,6 +1992,7 @@ class DiagramController {
             this.drag.alt = event.altKey;
             this.finishDrag();
         } else if (!press.consumed) {
+            this.focusPressed(press);
             this.click(press);
             this.notifyClick(press, false);
         }
@@ -1940,14 +2006,26 @@ class DiagramController {
             return;
         }
         if (this.pan?.pointerId === event.pointerId) {
-            this.pan = null;
-            this.root.classList.remove('mussel-diagram-panning');
-            this.settle();
+            this.endPan();
         }
         if (this.press?.pointerId === event.pointerId) {
             clearTimeout(this.press.timer);
             this.press = null;
             this.cancelDrag();
+        }
+    }
+
+    mayPanWhileEditing(event) {
+        if ((event.button === 1) || (event.pointerType === 'touch')) {
+            return true;
+        }
+        return (event.button === 0) && this.options.panEnabled && (this.panTool() || ((this.options.backgroundDrag === 'pan') && (this.pressTarget(event).kind === 'background')));
+    }
+
+    focusPressed(press) {
+        if (press.focus) {
+            press.focus = false;
+            this.root.focus({ preventScroll: true });
         }
     }
 
@@ -1959,6 +2037,12 @@ class DiagramController {
         this.pan = { pointerId: event.pointerId, x: from?.x ?? event.clientX, y: from?.y ?? event.clientY };
         this.root.classList.add('mussel-diagram-panning');
         return true;
+    }
+
+    endPan() {
+        this.pan = null;
+        this.root.classList.remove('mussel-diagram-panning');
+        this.settle();
     }
 
     panTo(event) {
@@ -1982,6 +2066,7 @@ class DiagramController {
             return;
         }
         press.consumed = true;
+        this.focusPressed(press);
         const next = new Set(this.selection);
         if (next.has(hit.id)) {
             next.delete(hit.id);
@@ -2136,17 +2221,23 @@ class DiagramController {
     }
 
     markSelection() {
-        for (const element of this.marked) {
-            element.removeAttribute('data-selected');
-        }
-        this.marked = [];
+        const next = new Map();
         for (const id of this.selection) {
-            const element = this.element(id);
+            const known = this.marked.get(id);
+            const element = known?.isConnected ? known : this.element(id);
             if (element) {
-                element.setAttribute('data-selected', '');
-                this.marked.push(element);
+                next.set(id, element);
+                if (!element.hasAttribute('data-selected')) {
+                    element.setAttribute('data-selected', '');
+                }
             }
         }
+        for (const [id, element] of this.marked) {
+            if (next.get(id) !== element) {
+                element.removeAttribute('data-selected');
+            }
+        }
+        this.marked = next;
     }
 
     drawSelection() {
@@ -2189,7 +2280,12 @@ class DiagramController {
             frames.push(svg('rect', { class: 'mussel-diagram-drag-frame', x: bounds.x + drag.dx, y: bounds.y + drag.dy, width: bounds.w, height: bounds.h }));
         }
         this.layers.selection.replaceChildren(...frames);
-        this.layers.handles.replaceChildren(...handles, ...this.arrowElements());
+        this.layers.handles.replaceChildren(...handles);
+        this.drawArrows();
+    }
+
+    drawArrows() {
+        this.layers.arrows.replaceChildren(...this.arrowElements());
     }
 
     resizeHandles(box) {
@@ -2248,14 +2344,18 @@ class DiagramController {
 
     boxAt(point, filter, overlays) {
         let best = null;
+        let bestRank = -1;
         let bestDepth = -1;
+        const depths = new Map();
         for (const box of this.table.boxes.values()) {
             if (((box.kind === 'overlay') && !overlays) || !contains(box, point) || (filter && !filter(box))) {
                 continue;
             }
-            const depth = box.kind === 'node' ? 100000 : (box.kind === 'overlay' ? 50000 : this.table.ancestors(box.id).length);
-            if (depth >= bestDepth) {
+            const rank = box.kind === 'node' ? 2 : (box.kind === 'overlay' ? 1 : 0);
+            const depth = rank === 0 ? this.table.depth(box.id, depths) : 0;
+            if ((rank > bestRank) || ((rank === bestRank) && (depth >= bestDepth))) {
                 best = box;
+                bestRank = rank;
                 bestDepth = depth;
             }
         }
@@ -2304,7 +2404,7 @@ class DiagramController {
             return;
         }
         this.hover.shown = true;
-        this.drawSelection();
+        this.drawArrows();
     }
 
     clearHover() {
@@ -2315,7 +2415,7 @@ class DiagramController {
         const shown = this.hover.shown;
         this.hover = null;
         if (shown) {
-            this.drawSelection();
+            this.drawArrows();
         }
     }
 
@@ -2584,10 +2684,7 @@ class DiagramController {
             }
             ids = [press.hit.id];
         }
-        const roots = ids
-            .map((id) => this.table.boxes.get(id))
-            .filter((box) => box && box.movable && !this.table.ancestors(box.id).some((a) => this.selection.has(a)))
-            .map((box) => box.id);
+        const roots = this.table.outermost(ids.filter((id) => this.table.boxes.get(id)?.movable), this.selection);
         if (roots.length === 0) {
             return false;
         }
@@ -2605,10 +2702,8 @@ class DiagramController {
         const representative = pressed && moving.has(pressed.id) ? pressed : roots.map((id) => this.table.boxes.get(id)).find((b) => b.kind !== 'overlay');
         const anchor = representative ? gridAnchor(representative, representative.kind === 'node') : gridAnchor(bounds, false);
         const excluded = new Set(moving);
-        for (const id of roots) {
-            for (const ancestor of this.table.ancestors(id)) {
-                excluded.add(ancestor);
-            }
+        for (const ancestor of this.table.ancestorsOf(roots)) {
+            excluded.add(ancestor);
         }
         const rootBoxes = roots.map((id) => this.table.boxes.get(id));
         const parents = new Set(rootBoxes.map((b) => b.parent ?? null));
@@ -2632,8 +2727,7 @@ class DiagramController {
             dx: 0,
             dy: 0,
             saved: new Map(),
-            base: this.table.version,
-            queued: this.pending.length > 0,
+            origin: this.boxOrigin(roots.flatMap((id) => [id, ...this.table.descendants(id)])),
             elements: new Map(),
             badgeSets: new Map(),
             paths: new Map(),
@@ -2715,7 +2809,7 @@ class DiagramController {
             return;
         }
         state.split?.element?.removeAttribute('data-split-target');
-        state.split = split;
+        state.split = split ? { ...split, origin: this.linkOrigin(split.linkId) } : null;
         split?.element?.setAttribute('data-split-target', '');
     }
 
@@ -2753,13 +2847,13 @@ class DiagramController {
         };
         for (const [id, element] of drag.elements) {
             const box = this.table.boxes.get(id);
-            if (box && (box.kind !== 'overlay')) {
+            if (box) {
                 element.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
             }
         }
         for (const [id, set] of drag.badgeSets) {
             const box = this.table.boxes.get(id);
-            if (box && (box.kind !== 'overlay')) {
+            if (box) {
                 set.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
             }
         }
@@ -2807,8 +2901,9 @@ class DiagramController {
             this.table.index();
         }
         const splitLinkId = drag.split?.linkId ?? null;
+        const origin = { boxes: drag.origin, links: drag.split?.origin ?? [] };
         this.markSplit(drag, null);
-        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, this.baseOf(drag), this.rejections, [...this.selection]));
+        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, origin, this.rejections, [...this.selection]));
     }
 
     startResize(press) {
@@ -2835,8 +2930,7 @@ class DiagramController {
             saved: new Map(),
             startWorld: press.world,
             rect: { x: box.x, y: box.y, w: box.w, h: box.h },
-            base: this.table.version,
-            queued: this.pending.length > 0,
+            origin: this.boxOrigin([box.id]),
         };
         for (const link of links) {
             drag.paths.set(link.id, this.linkPaths(link.id, drag.saved));
@@ -2885,7 +2979,7 @@ class DiagramController {
         this.layers.pending.append(frame);
         const previous = new Map([[box.id, box]]);
         this.table.boxes.set(box.id, { ...box, ...rect });
-        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, this.baseOf(drag), this.rejections, [...this.selection]));
+        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, { boxes: drag.origin }, this.rejections, [...this.selection]));
     }
 
     connectionTargets(check) {
@@ -2929,8 +3023,6 @@ class DiagramController {
             targets: this.connectionTargets(check),
             target: null,
             saved: new Map(),
-            base: this.table.version,
-            queued: this.pending.length > 0,
         };
         this.root.classList.add('mussel-diagram-connecting');
         this.revealPorts(this.drag);
@@ -3025,8 +3117,7 @@ class DiagramController {
             target: null,
             element,
             saved: new Map(),
-            base: this.table.version,
-            queued: this.pending.length > 0,
+            origin: this.linkOrigin(link.id),
         };
         this.mark(element, 'data-reconnecting');
         this.root.classList.add('mussel-diagram-connecting');
@@ -3137,13 +3228,17 @@ class DiagramController {
         if ((drag.kind === 'connect') && (end.element === drag.from.element) && (end.port === (drag.from.port ?? null))) {
             return;
         }
+        if ((drag.kind === 'reconnect') && (end.element === (drag.side === 'source' ? drag.link.source : drag.link.target)) &&
+            (end.port === ((drag.side === 'source' ? drag.link.sourcePort : drag.link.targetPort) ?? null))) {
+            return;
+        }
         const overlays = drag.preview ? [drag.preview] : [];
         for (const overlay of overlays) {
             this.layers.pending.append(overlay);
         }
         if (drag.kind === 'connect') {
             this.commit(drag, { saved: new Map(), previous: new Map(), overlays }, () => this.dotnet.invokeMethodAsync(
-                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.baseOf(drag), this.rejections, [...this.selection]));
+                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.rejections, [...this.selection]));
             return;
         }
         const link = drag.link;
@@ -3154,7 +3249,7 @@ class DiagramController {
         this.table.links.set(link.id, drag.side === 'source' ? { ...link, source: end.element, sourcePort: end.port } : { ...link, target: end.element, targetPort: end.port });
         this.table.index();
         this.commit(drag, { saved, previous: new Map(), previousLinks, overlays, reconnecting: drag.element }, () => this.dotnet.invokeMethodAsync(
-            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, this.baseOf(drag), this.rejections, [...this.selection]));
+            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, { links: drag.origin }, this.rejections, [...this.selection]));
     }
 
     startBoxSelection(press) {
@@ -3304,6 +3399,7 @@ class DiagramController {
             const option = e.target.closest('[data-type]');
             if (option) {
                 e.preventDefault();
+                e.stopPropagation();
                 this.choosePicker(Number(option.getAttribute('data-index')));
             }
         });
@@ -3407,8 +3503,7 @@ class DiagramController {
             event.preventDefault();
             const count = picker.shown.length;
             if (count > 0) {
-                picker.active = (picker.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
-                this.renderPicker();
+                this.activatePicker((picker.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count);
             }
         } else if (event.key === 'Enter') {
             event.preventDefault();
@@ -3419,6 +3514,16 @@ class DiagramController {
             this.closePicker();
             this.root.focus({ preventScroll: true });
         }
+    }
+
+    activatePicker(index) {
+        const picker = this.picker;
+        picker.list.children[picker.active]?.setAttribute('aria-selected', 'false');
+        picker.active = index;
+        const option = picker.list.children[index];
+        option?.setAttribute('aria-selected', 'true');
+        option?.scrollIntoView({ block: 'nearest' });
+        this.drawPickerPreview();
     }
 
     choosePicker(index) {
@@ -3432,16 +3537,16 @@ class DiagramController {
         const frame = shapeElement(item.type, item.bounds, { class: 'mussel-diagram-place-frame' });
         this.layers.pending.append(frame);
         const center = centerOf(item.bounds);
-        const operation = { base: this.table.version, queued: this.pending.length > 0, point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
+        const operation = { point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
         if (!from) {
             this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, this.baseOf(operation), this.rejections, [...this.selection]));
+                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, {}, this.rejections, [...this.selection]));
             this.root.focus({ preventScroll: true });
             return;
         }
         const linkType = this.linkTypeFor(from);
         this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.baseOf(operation), this.rejections, [...this.selection]));
+            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.rejections, [...this.selection]));
         this.root.focus({ preventScroll: true });
     }
 
@@ -3456,14 +3561,30 @@ class DiagramController {
         this.layers.preview.replaceChildren();
     }
 
-    baseOf(operation) {
-        return operation.queued ? Math.max(operation.base, this.lastVersion) : operation.base;
+    boxOrigin(ids) {
+        const boxes = [];
+        for (const id of ids) {
+            const box = this.table.boxes.get(id);
+            if (box) {
+                boxes.push([id, box.x, box.y, box.w, box.h, box.parent ?? null]);
+            }
+        }
+        return boxes;
+    }
+
+    linkOrigin(id) {
+        const link = id ? this.table.links.get(id) : null;
+        return link ? [[id, link.source, link.sourcePort ?? null, link.target, link.targetPort ?? null]] : [];
     }
 
     commit(operation, entry, call) {
         entry.version = null;
         entry.overlays = entry.overlays ?? [];
         entry.elements = [...entry.saved.keys()];
+        entry.written = new Map(entry.elements.map((element) => [element, new Map([...entry.saved.get(element).keys()].map((attribute) => [attribute, element.getAttribute(attribute)]))]));
+        entry.boxes = new Map([...entry.previous.keys()].map((id) => [id, this.table.boxes.get(id)]));
+        entry.links = new Map([...(entry.previousLinks?.keys() ?? [])].map((id) => [id, this.table.links.get(id)]));
+        entry.writtenTexts = new Map((entry.texts ?? []).map(([node]) => [node, node.nodeValue]));
         this.pending.push(entry);
         if (!this.options.optimistic) {
             this.waiting = true;
@@ -3497,7 +3618,6 @@ class DiagramController {
         }
         if (result?.accepted) {
             entry.version = result.version;
-            this.lastVersion = Math.max(this.lastVersion, result.version);
             this.settlePending();
             if (entry.selectNew && result.elementId) {
                 this.selectNew(result.elementId);
@@ -3520,14 +3640,14 @@ class DiagramController {
         const reverted = this.pending.splice(index);
         let relinked = false;
         for (const item of reverted.reverse()) {
-            restore(item.saved);
+            restore(item.saved, item.written);
             for (const [id, box] of item.previous) {
-                if (this.table.boxes.has(id)) {
+                if (this.table.boxes.has(id) && (this.table.boxes.get(id) === item.boxes.get(id))) {
                     this.table.boxes.set(id, box);
                 }
             }
             for (const [id, link] of item.previousLinks ?? []) {
-                if (this.table.links.has(id)) {
+                if (this.table.links.has(id) && (this.table.links.get(id) === item.links.get(id))) {
                     this.table.links.set(id, link);
                     relinked = true;
                 }
@@ -3536,7 +3656,9 @@ class DiagramController {
                 overlay.remove();
             }
             for (const [node, text] of item.texts ?? []) {
-                node.nodeValue = text;
+                if (node.nodeValue === item.writtenTexts.get(node)) {
+                    node.nodeValue = text;
+                }
             }
             item.reconnecting?.removeAttribute('data-reconnecting');
         }
@@ -3597,7 +3719,7 @@ class DiagramController {
             const key = keyName(event, this.mac);
             const command = key ? this.commandMap.get(key) : undefined;
             if (command && !this.isTyping(event, key)) {
-                if (this.drag || (this.waiting && !command.local)) {
+                if (this.drag || this.pan || this.pinch || this.external || (this.waiting && !command.local)) {
                     event.preventDefault();
                     return;
                 }
@@ -3611,6 +3733,10 @@ class DiagramController {
         if (this.editor && (event.target === this.editor.input)) {
             return;
         }
+        if ((event.code === 'Space') && event.repeat && this.spaceDown) {
+            event.preventDefault();
+            return;
+        }
         if ((event.code === 'Space') && !event.repeat && this.options.panEnabled && !this.isTyping(event, 'Space')) {
             event.preventDefault();
             this.setSpace(true);
@@ -3622,7 +3748,12 @@ class DiagramController {
             } else if (this.drag) {
                 this.press = null;
                 this.cancelDrag();
-            } else if (this.options.selectionEnabled) {
+            } else if (this.pinch) {
+                this.pinch = null;
+                this.settle();
+            } else if (this.pan) {
+                this.endPan();
+            } else if (this.options.selectionEnabled && !event.defaultPrevented) {
                 this.setSelection([]);
             }
         }
@@ -3775,6 +3906,7 @@ class DiagramController {
         if (!this.options.zoomEnabled) {
             return;
         }
+        this.foldGesture();
         const zoom = nextZoom(this.view.zoom, direction, this.options.minZoom, this.options.maxZoom);
         this.view = zoomAround(this.view, zoom / this.view.zoom, this.centerPoint());
         this.applyView();
@@ -3785,7 +3917,8 @@ class DiagramController {
         if (!this.options.zoomEnabled) {
             return;
         }
-        this.view = zoomAround(this.view, 1 / this.view.zoom, this.centerPoint());
+        this.foldGesture();
+        this.view = zoomAround(this.view, limitFactor(this.view.zoom, 1 / this.view.zoom, this.options.minZoom, this.options.maxZoom), this.centerPoint());
         this.applyView();
         this.notifyViewport();
     }
@@ -3813,6 +3946,7 @@ class DiagramController {
         if (!bounds) {
             return;
         }
+        this.foldGesture();
         const zoom = this.view.zoom;
         this.view = { zoom, x: (this.size.width / 2) - ((bounds.x + (bounds.width / 2)) * zoom), y: (this.size.height / 2) - ((bounds.y + (bounds.height / 2)) * zoom) };
         this.applyView();
@@ -3906,20 +4040,31 @@ class DiagramController {
             : element.querySelector(`:scope > .mussel-diagram-label[data-slot="${name}"]`);
     }
 
+    currentText(id, slot, label) {
+        const texts = this.table.boxes.get(id)?.texts;
+        if (texts) {
+            return texts[slot] ?? '';
+        }
+        return label.hasAttribute('data-default') ? '' : (label.getAttribute('data-label') ?? '');
+    }
+
     editText(id, slot) {
         if (this.waiting || this.drag) {
             return;
         }
         const definition = this.editableSlots(id).find((x) => x.name === slot);
         const label = this.slotElement(this.element(id), slot);
-        if (!definition || !label) {
+        if (!definition || !label || ((this.editor?.id === id) && (this.editor.slot === slot))) {
             return;
         }
-        this.closeEditor();
+        this.finishEdit(true);
+        if (this.editor || this.waiting) {
+            return;
+        }
         this.hideReason();
         const texts = this.table.boxes.get(id)?.texts;
         const isDefault = texts ? !texts[slot] : label.hasAttribute('data-default');
-        const text = texts ? (texts[slot] ?? '') : (isDefault ? '' : (label.getAttribute('data-label') ?? ''));
+        const text = this.currentText(id, slot, label);
         const input = document.createElement('textarea');
         input.className = 'mussel-diagram-text-editor mussel-diagram-nowheel';
         input.value = text;
@@ -3928,7 +4073,7 @@ class DiagramController {
         input.spellcheck = false;
         input.setAttribute('aria-label', slot);
         this.root.append(input);
-        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, base: this.table.version, pending: false, template: !!texts };
+        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, pending: false, template: !!texts };
         label.setAttribute('data-editing', '');
         input.addEventListener('keydown', (e) => this.onEditorKey(e));
         input.addEventListener('input', () => this.placeEditor());
@@ -4050,8 +4195,9 @@ class DiagramController {
         const label = editor.label;
         const box = this.table.boxes.get(editor.id);
         const point = box ? { x: ((box.x + box.w / 2) * this.view.zoom) + this.view.x, y: ((box.y + box.h / 2) * this.view.zoom) + this.view.y } : null;
-        const operation = { base: editor.base, queued: this.pending.length > 0, point };
-        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, this.baseOf(operation), this.rejections, [...this.selection]);
+        const operation = { point };
+        const origin = { text: editor.text };
+        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, origin, this.rejections, [...this.selection]);
         if (!this.options.optimistic) {
             editor.pending = true;
             editor.input.readOnly = true;
@@ -4069,7 +4215,7 @@ class DiagramController {
                         editor.pending = false;
                         editor.input.readOnly = false;
                         editor.input.removeAttribute('data-pending');
-                        editor.base = this.table.version;
+                        editor.text = this.currentText(editor.id, editor.slot, editor.label);
                         editor.input.focus({ preventScroll: true });
                     }
                 },
@@ -4127,10 +4273,6 @@ class DiagramController {
         }
         const type = this.schema.types.get(node.type);
         const virtual = { ...node, id: '\u0000split', registered: true, connectable: type?.connectable ?? true, whole: type?.whole ?? true, ports: type?.ports };
-        const saved = this.table.boxes.get(exceptId);
-        if (saved) {
-            this.table.boxes.delete(exceptId);
-        }
         this.table.boxes.set(virtual.id, virtual);
         try {
             const candidates = [...(type?.ports ?? []).map((p) => p.id), ...(virtual.whole || !(type?.ports?.length) ? [null] : [])];
@@ -4139,9 +4281,6 @@ class DiagramController {
             return (into !== undefined) && (out !== undefined) ? { linkId: link.id, element: this.element(link.id) } : null;
         } finally {
             this.table.boxes.delete(virtual.id);
-            if (saved) {
-                this.table.boxes.set(exceptId, saved);
-            }
         }
     }
 
@@ -4150,7 +4289,10 @@ class DiagramController {
         if (!this.options.dropEnabled || this.waiting || this.drag || !type || type.overlay) {
             return null;
         }
-        this.closeEditor();
+        this.finishEdit(true);
+        if (this.editor || this.waiting) {
+            return null;
+        }
         this.closePicker();
         if (type.icon) {
             this.wantIcons([type.icon]);
@@ -4285,15 +4427,16 @@ class DiagramController {
         this.moveExternal(event);
         const { inside, allowed, bounds, parent, type, value } = external;
         const splitLinkId = external.split?.linkId ?? null;
+        const origin = { links: external.split?.origin ?? [] };
         this.cancelExternal();
         if (!inside || !allowed || !bounds) {
             return;
         }
         const frame = shapeElement(type, bounds, { class: 'mussel-diagram-place-frame' });
         this.layers.pending.append(frame);
-        const operation = { base: this.table.version, queued: this.pending.length > 0, point: external.point };
+        const operation = { point: external.point };
         this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, this.baseOf(operation), this.rejections, [...this.selection]));
+            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, origin, this.rejections, [...this.selection]));
         this.root.focus({ preventScroll: true });
     }
 
@@ -4421,6 +4564,7 @@ class DiagramController {
         this.cancelExternal();
         controllers.delete(this.root);
         this.stage.style.transform = '';
+        this.cover.remove();
         delete this.root.dataset.attached;
     }
 }

@@ -69,8 +69,8 @@ internal static class DiagramJsonFormat
         }
     }
 
-    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version, RouteBudget? budget = null) =>
-        new Reader(index).Read(document, version, budget);
+    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version, RouteBudget? budget = null, bool waitForRoutes = false, MusselDiagramOptions? options = null) =>
+        new Reader(index, options ?? MusselDiagramOptions.Default).Read(document, version, budget, waitForRoutes);
 
     private static DiagramJsonDocument Check(DiagramJsonDocument? document)
     {
@@ -203,13 +203,13 @@ internal static class DiagramJsonFormat
         return names;
     }
 
-    private sealed class Reader(SchemaIndex index)
+    private sealed class Reader(SchemaIndex index, MusselDiagramOptions options)
     {
         private readonly ImmutableArray<DiagramIssue>.Builder issues = ImmutableArray.CreateBuilder<DiagramIssue>();
 
         private readonly HashSet<string> seen = new(StringComparer.Ordinal);
 
-        public DiagramLoadResult Read(DiagramJsonDocument document, long version, RouteBudget? budget)
+        public DiagramLoadResult Read(DiagramJsonDocument document, long version, RouteBudget? budget, bool waitForRoutes)
         {
             var boxes = new List<DiagramBox>();
             var links = new List<DiagramLink>();
@@ -250,7 +250,7 @@ internal static class DiagramJsonFormat
             FixParents(boxes, byId);
             FixMembers(boxes, byId);
 
-            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, KeepMissingPorts = true, Budget = budget };
+            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, KeepMissingPorts = true, Budget = budget, WaitForRoutes = waitForRoutes };
             foreach (var group in ParentsFirst(boxes, byId))
             {
                 editor.Add(group);
@@ -582,21 +582,49 @@ internal static class DiagramJsonFormat
                 }
             }
 
+            var positions = new Dictionary<string, int>(boxes.Count, StringComparer.Ordinal);
             for (var i = 0; i < boxes.Count; i++)
             {
-                var box = boxes[i];
-                var current = box.ParentId;
-                for (var steps = 0; (current is not null) && (steps <= boxes.Count); steps++)
+                positions[boxes[i].Id] = i;
+            }
+
+            var states = new byte[boxes.Count];
+            var path = new List<int>();
+            var cycles = new List<int>();
+            for (var i = 0; i < boxes.Count; i++)
+            {
+                path.Clear();
+                var current = i;
+                while ((current >= 0) && (states[current] == 0))
                 {
-                    if (string.Equals(current, box.Id, StringComparison.Ordinal))
+                    states[current] = 1;
+                    path.Add(current);
+                    current = (boxes[current].ParentId is { } parentId) && positions.TryGetValue(parentId, out var next) ? next : -1;
+                }
+
+                if ((current >= 0) && (states[current] == 1))
+                {
+                    var first = current;
+                    for (var k = path.IndexOf(current); k < path.Count; k++)
                     {
-                        Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidParent, box.Id, box.ParentId!);
-                        Set(i, box with { ParentId = null });
-                        break;
+                        first = Math.Min(first, path[k]);
                     }
 
-                    current = byId[current].ParentId;
+                    cycles.Add(first);
                 }
+
+                foreach (var visited in path)
+                {
+                    states[visited] = 2;
+                }
+            }
+
+            cycles.Sort();
+            foreach (var position in cycles)
+            {
+                var box = boxes[position];
+                Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidParent, box.Id, box.ParentId!);
+                Set(position, box with { ParentId = null });
             }
 
             void Set(int position, DiagramBox box)
@@ -609,6 +637,7 @@ internal static class DiagramJsonFormat
         private void FixMembers(List<DiagramBox> boxes, Dictionary<string, DiagramBox> byId)
         {
             var dropped = new HashSet<string>(StringComparer.Ordinal);
+            var added = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < boxes.Count; i++)
             {
                 if (boxes[i] is not DiagramGroup { Kind: DiagramGroupKind.Overlay } group)
@@ -617,11 +646,12 @@ internal static class DiagramJsonFormat
                 }
 
                 var members = new List<string>();
+                added.Clear();
                 foreach (var memberId in group.MemberIds)
                 {
                     if (byId.GetValueOrDefault(memberId) is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree })
                     {
-                        if (!members.Contains(memberId, StringComparer.Ordinal))
+                        if (added.Add(memberId))
                         {
                             members.Add(memberId);
                         }
@@ -653,6 +683,6 @@ internal static class DiagramJsonFormat
         }
 
         private void Report(DiagramIssueSeverity severity, DiagramIssueKind kind, string elementId, params string[] arguments) =>
-            issues.Add(DiagramValidator.Issue(severity, kind, [elementId], [.. arguments]));
+            issues.Add(options.Localize(DiagramValidator.Issue(severity, kind, [elementId], [.. arguments])));
     }
 }

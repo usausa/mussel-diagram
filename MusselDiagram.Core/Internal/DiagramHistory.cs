@@ -54,12 +54,13 @@ internal sealed class DiagramHistory
         var step = redo[^1];
         redo.RemoveAt(redo.Count - 1);
         undo.Add(step);
+        Trim(Limit);
         return step;
     }
 
     private static DiagramSnapshot Apply(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
     {
-        var editor = new SnapshotEditor(target, index) { SkipKindCheck = true, SkipAppRouter = true };
+        var editor = new SnapshotEditor(target, index) { SkipKindCheck = true, SkipAppRouter = true, DeferRoutes = true };
         editor.Delete(changes.Deleted.Where(target.Contains));
 
         var added = changes.Added.ToHashSet(StringComparer.Ordinal);
@@ -111,7 +112,7 @@ internal sealed class DiagramHistory
         {
             if ((editor.Find(id) is { } current) && (before.Find(id) is { } from) && (after.Find(id) is { } to))
             {
-                var patched = Patch(from, to, current, editor, after);
+                var patched = Patch(from, to, current, editor, after, index);
                 if (!ReferenceEquals(patched, current))
                 {
                     try
@@ -148,7 +149,7 @@ internal sealed class DiagramHistory
     private static bool RoutesOnly(ChangeSet changes) =>
         (changes.Added.Count == 0) && (changes.Deleted.Count == 0) && changes.Updated.Values.All(static x => x == DiagramChangeParts.Route);
 
-    private static DiagramSnapshot ApplyRoutes(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes)
+    private static DiagramSnapshot ApplyRoutes(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
     {
         if (target.Nodes != before.Nodes)
         {
@@ -160,7 +161,7 @@ internal sealed class DiagramHistory
         {
             if ((target.Find(id) is DiagramLink mine) && (after.Find(id) is DiagramLink theirs) &&
                 (mine.Source == theirs.Source) && (mine.Target == theirs.Target) && string.Equals(mine.Type, theirs.Type, StringComparison.Ordinal) &&
-                SameEnd(mine.Source.ElementId) && SameEnd(mine.Target.ElementId))
+                SameForm(mine, theirs, index) && SameEnd(mine.Source.ElementId) && SameEnd(mine.Target.ElementId))
             {
                 patched[id] = mine with { Route = theirs.Route, RouteState = theirs.RouteState, RouteError = theirs.RouteError };
             }
@@ -187,7 +188,7 @@ internal sealed class DiagramHistory
             (target.Find(id) is { } mine) && (after.Find(id) is { } theirs) && SnapshotContent.Same(mine, theirs);
     }
 
-    private static DiagramElement Patch(DiagramElement from, DiagramElement to, DiagramElement current, SnapshotEditor editor, DiagramSnapshot after)
+    private static DiagramElement Patch(DiagramElement from, DiagramElement to, DiagramElement current, SnapshotEditor editor, DiagramSnapshot after, SchemaIndex index)
     {
         switch (current)
         {
@@ -244,7 +245,7 @@ internal sealed class DiagramHistory
                     Permissions = Pick(a.Permissions, b.Permissions, link.Permissions)
                 };
                 if ((!a.Route.SequenceEqual(b.Route) || (a.RouteState != b.RouteState)) &&
-                    (patchedLink.Source == b.Source) && (patchedLink.Target == b.Target) &&
+                    (patchedLink.Source == b.Source) && (patchedLink.Target == b.Target) && SameForm(patchedLink, b, index) &&
                     SameEnd(b.Source.ElementId) && SameEnd(b.Target.ElementId))
                 {
                     patchedLink = patchedLink with { Route = b.Route, RouteState = b.RouteState, RouteError = b.RouteError };
@@ -268,6 +269,9 @@ internal sealed class DiagramHistory
     }
 
     private static T Pick<T>(T from, T to, T current) => EqualityComparer<T>.Default.Equals(from, to) ? current : to;
+
+    private static bool SameForm(DiagramLink mine, DiagramLink theirs, SchemaIndex index) =>
+        LinkRouting.FormOf(index.FindLinkType(mine.Type), mine.Look) == LinkRouting.FormOf(index.FindLinkType(theirs.Type), theirs.Look);
 
     private static object? PickData(object? from, object? to, object? current) => SnapshotContent.SameData(from, to) ? current : to;
 
@@ -299,7 +303,7 @@ internal sealed class DiagramHistory
         {
             if (!rebased.TryGetValue(snapshot, out var result))
             {
-                result = RoutesOnly(changes) ? ApplyRoutes(snapshot, before, after, changes) : Apply(snapshot, before, after, changes, index);
+                result = RoutesOnly(changes) ? ApplyRoutes(snapshot, before, after, changes, index) : Apply(snapshot, before, after, changes, index);
                 rebased[snapshot] = result;
             }
 

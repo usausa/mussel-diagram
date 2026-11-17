@@ -19,6 +19,8 @@ public sealed partial class AwsPage
 
     private double zoom = 1;
 
+    private string? message;
+
     [Inject]
     private IAwsIconPackage Package { get; set; } = default!;
 
@@ -41,15 +43,29 @@ public sealed partial class AwsPage
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
-        using var buffer = new MemoryStream();
-        var source = e.File.OpenReadStream(MaxPackageSize);
-        await using (source.ConfigureAwait(true))
+        message = null;
+        if (e.File.Size > MaxPackageSize)
         {
-            await source.CopyToAsync(buffer).ConfigureAwait(true);
+            message = string.Create(CultureInfo.InvariantCulture, $"{MaxPackageSize / (1024 * 1024)} MB を超える zip は読み込めません。");
+            return;
         }
 
-        buffer.Position = 0;
-        Apply(DiagramIconImport.FromZip(buffer, AwsDiagrams.Prefix, AwsDiagrams.Map).IconSet);
+        try
+        {
+            using var buffer = new MemoryStream();
+            var source = e.File.OpenReadStream(MaxPackageSize);
+            await using (source.ConfigureAwait(true))
+            {
+                await source.CopyToAsync(buffer).ConfigureAwait(true);
+            }
+
+            buffer.Position = 0;
+            Apply(DiagramIconImport.FromZip(buffer, AwsDiagrams.Prefix, AwsDiagrams.Map).IconSet);
+        }
+        catch (DiagramException)
+        {
+            message = "zip ファイルとして読めませんでした。";
+        }
     }
 
     private void Apply(DiagramIconSet icons) => diagram.Schema = AwsDiagrams.CreateSchema(icons);

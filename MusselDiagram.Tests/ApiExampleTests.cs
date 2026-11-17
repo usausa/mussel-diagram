@@ -42,7 +42,7 @@ public sealed class ApiExampleTests : BunitContext
             .Add(p => p.Connected, e => connected.Add($"{e.Source.ElementId} -> {e.Target.ElementId}")));
         var palette = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, view.Instance));
 
-        var result = await view.InvokeAsync(() => view.Instance.CommitConnectAsync(new DiagramLinkEnd("web", "out"), new DiagramLinkEnd("db", "in"), "arrow", diagram.Snapshot.Version, 0));
+        var result = await view.InvokeAsync(() => view.Instance.CommitConnectAsync(new DiagramLinkEnd("web", "out"), new DiagramLinkEnd("db", "in"), "arrow", 0));
 
         Assert.True(result.Accepted);
         Assert.Equal(["web -> db"], connected);

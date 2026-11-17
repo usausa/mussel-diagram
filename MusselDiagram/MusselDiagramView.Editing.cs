@@ -60,18 +60,18 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramPointerEventArgs> BackgroundDoubleClicked { get; set; }
 
-    internal Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal async Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var element = NewBox(type, bounds, parentId, value);
         Splice? split = null;
-        return CommitAsync(
+        return await CommitAsync(
             DiagramOperation.Drop,
             rejectionsSeen,
             selection,
             () =>
             {
-                var reason = CheckDrop(element, baseVersion);
-                split = (reason is null) && (element is DiagramNode) ? SpliceOf(element.Id, splitLinkId, baseVersion, editor => editor.Add(element)) : null;
+                var reason = CheckDrop(element);
+                split = (reason is null) && (element is DiagramNode) ? SpliceOf(element.Id, splitLinkId, origin, editor => editor.Add(element)) : null;
                 return reason;
             },
             async () =>
@@ -92,10 +92,10 @@ public sealed partial class MusselDiagramView
                 }
             },
             snapshot => Dropped.InvokeAsync(new DiagramDroppedEventArgs(element!.Id, type, bounds, parentId, value, split?.Link.Id, snapshot)),
-            element?.Id);
+            element?.Id).ConfigureAwait(true);
     }
 
-    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, long baseVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var newText = text.Length == 0 ? null : text;
         string? oldText = null;
@@ -105,7 +105,7 @@ public sealed partial class MusselDiagramView
             selection,
             () =>
             {
-                var reason = CheckText(elementId, slot, baseVersion);
+                var reason = CheckText(elementId, slot, origin);
                 oldText = reason is null ? TextOf((DiagramBox)Snapshot.Find(elementId)!, slot) : null;
                 return reason;
             },
@@ -162,14 +162,14 @@ public sealed partial class MusselDiagramView
         return box with { Texts = text is null ? box.Texts.Remove(slot) : box.Texts.SetItem(slot, text) };
     }
 
-    private DiagramReason? CheckText(string elementId, string slot, long baseVersion)
+    private DiagramReason? CheckText(string elementId, string slot, ScriptOrigin origin)
     {
         if (ReadOnly || !TextEditEnabled)
         {
             return Reason(DiagramReasonKind.Permission);
         }
 
-        if ((SnapshotAt(baseVersion) is not { } origin) || (origin.Find(elementId) is not DiagramBox old) || (Snapshot.Find(elementId) is not DiagramBox box))
+        if (Snapshot.Find(elementId) is not DiagramBox box)
         {
             return Reason(DiagramReasonKind.Changed);
         }
@@ -191,21 +191,15 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Permission);
         }
 
-        var before = position == 0 ? old.Label : old.Texts.GetValueOrDefault(slot);
         var now = position == 0 ? box.Label : box.Texts.GetValueOrDefault(slot);
-        return string.Equals(before, now, StringComparison.Ordinal) ? null : Reason(DiagramReasonKind.Changed);
+        return string.Equals(origin.Text ?? string.Empty, now ?? string.Empty, StringComparison.Ordinal) ? null : Reason(DiagramReasonKind.Changed);
     }
 
-    private DiagramReason? CheckDrop(DiagramBox? element, long baseVersion)
+    private DiagramReason? CheckDrop(DiagramBox? element)
     {
         if (ReadOnly || !DropEnabled || (element is null))
         {
             return Reason(DiagramReasonKind.Permission);
-        }
-
-        if (SnapshotAt(baseVersion) is null)
-        {
-            return Reason(DiagramReasonKind.Changed);
         }
 
         var current = Snapshot;
@@ -224,11 +218,11 @@ public sealed partial class MusselDiagramView
         return DiagramRules.CheckNesting(current, index, null, element.Type, element.ParentId);
     }
 
-    private Splice? SpliceOf(string nodeId, string? splitLinkId, long baseVersion, Action<SnapshotEditor> change)
+    private Splice? SpliceOf(string nodeId, string? splitLinkId, ScriptOrigin origin, Action<SnapshotEditor> change)
     {
         if ((splitLinkId is null) ||
-            (SnapshotAt(baseVersion) is not { } origin) || (origin.Find(splitLinkId) is not DiagramLink old) ||
-            (Snapshot.Find(splitLinkId) is not DiagramLink link) || (old.Source != link.Source) || (old.Target != link.Target) ||
+            !origin.TryGetLink(splitLinkId, out var source, out var target) ||
+            (Snapshot.Find(splitLinkId) is not DiagramLink link) || (source != link.Source) || (target != link.Target) ||
             string.Equals(link.Source.ElementId, nodeId, StringComparison.Ordinal) || string.Equals(link.Target.ElementId, nodeId, StringComparison.Ordinal))
         {
             return null;

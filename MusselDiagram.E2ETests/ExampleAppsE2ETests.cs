@@ -9,7 +9,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 {
     private static readonly HttpClient Client = new();
 
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 
@@ -381,6 +381,36 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         var png = await DownloadAsync("PNG", "diagram.png");
         Assert.Equal([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], png[..8]);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarShowsWhyAnImageCannotBeMade(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        await page.EvaluateAsync("() => { HTMLCanvasElement.prototype.getContext = () => null; }");
+
+        await page.Locator("[data-action='export-menu'] button").First.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "PNG", Exact = true }).ClickAsync();
+
+        var message = page.GetByText("画像が大きすぎて、ブラウザーで描けません");
+        await Expect(message).ToBeVisibleAsync();
+        await page.Locator(".diagram-area .mud-alert-close button").ClickAsync();
+        await Expect(message).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task TheToolbarTellsOfImagesThatWereNotEmbedded(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        await opened.View.Locator("g.mussel-diagram-node").First.EvaluateAsync("node => { const image = document.createElementNS('http://www.w3.org/2000/svg', 'image'); image.setAttribute('href', 'http://127.0.0.1:1/missing.png'); node.append(image); }");
+
+        var png = await DownloadAsync("PNG", "diagram.png");
+
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], png[..8]);
+        await Expect(opened.Page.GetByText("埋め込めなかった画像があります。")).ToBeVisibleAsync();
     }
 
     [Theory]

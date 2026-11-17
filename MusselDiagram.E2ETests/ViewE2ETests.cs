@@ -6,7 +6,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string, string> Modes => new()
     {
@@ -76,6 +76,44 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         await opened.Page.Keyboard.UpAsync("Control");
         await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\.16\)$"));
         await Expect(opened.View.Locator(".mussel-diagram-stage")).ToHaveAttributeAsync("style", string.Empty);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ResettingTheZoomRightAfterAWheelZoomEndsAtOneHundredPercent(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        await Expect(viewport).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+        await opened.View.FocusAsync();
+
+        await opened.Page.Mouse.MoveAsync(600, 400);
+        await opened.Page.Keyboard.DownAsync("Control");
+        await opened.Page.Mouse.WheelAsync(0, -100);
+        await opened.Page.Keyboard.PressAsync("0");
+        await opened.Page.Keyboard.UpAsync("Control");
+
+        await Expect(opened.View.Locator(".mussel-diagram-stage")).ToHaveAttributeAsync("style", string.Empty);
+        await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\)$"));
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task APressRightAfterAWheelZoomStartsFromTheNewZoom(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var stage = opened.View.Locator(".mussel-diagram-stage");
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+
+        await opened.Page.Mouse.MoveAsync(600, 400);
+        await opened.Page.Keyboard.DownAsync("Control");
+        await opened.Page.Mouse.WheelAsync(0, -100);
+        await opened.Page.Keyboard.UpAsync("Control");
+        await opened.Page.Mouse.DownAsync();
+        var style = await stage.GetAttributeAsync("style");
+        await opened.Page.Mouse.UpAsync();
+
+        Assert.Equal(string.Empty, style);
     }
 
     [Theory]

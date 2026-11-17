@@ -293,66 +293,77 @@
     cursor: grab;
 }
 
-.mussel-diagram-space,
-.mussel-diagram-space * {
-    cursor: grab;
-}
-
 .mussel-diagram-pan-tool,
 .mussel-diagram-pan-tool * {
     cursor: grab;
 }
 
-.mussel-diagram-panning,
-.mussel-diagram-panning * {
+.mussel-diagram-cursor {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: none;
+    touch-action: none;
+}
+
+.mussel-diagram-space > .mussel-diagram-cursor,
+.mussel-diagram-panning > .mussel-diagram-cursor,
+.mussel-diagram-dragging > .mussel-diagram-cursor,
+.mussel-diagram-connecting > .mussel-diagram-cursor,
+.mussel-diagram-resizing-n > .mussel-diagram-cursor,
+.mussel-diagram-resizing-s > .mussel-diagram-cursor,
+.mussel-diagram-resizing-e > .mussel-diagram-cursor,
+.mussel-diagram-resizing-w > .mussel-diagram-cursor,
+.mussel-diagram-resizing-nw > .mussel-diagram-cursor,
+.mussel-diagram-resizing-se > .mussel-diagram-cursor,
+.mussel-diagram-resizing-ne > .mussel-diagram-cursor,
+.mussel-diagram-resizing-sw > .mussel-diagram-cursor,
+.mussel-diagram-selecting > .mussel-diagram-cursor,
+.mussel-diagram-not-allowed > .mussel-diagram-cursor {
+    display: block;
+}
+
+.mussel-diagram-space > .mussel-diagram-cursor {
+    cursor: grab;
+}
+
+.mussel-diagram-panning > .mussel-diagram-cursor {
     cursor: grabbing;
 }
 
-.mussel-diagram-dragging,
-.mussel-diagram-dragging * {
+.mussel-diagram-dragging > .mussel-diagram-cursor {
     cursor: move;
 }
 
-.mussel-diagram-connecting,
-.mussel-diagram-connecting * {
+.mussel-diagram-connecting > .mussel-diagram-cursor {
     cursor: crosshair;
 }
 
-.mussel-diagram-resizing-n,
-.mussel-diagram-resizing-n *,
-.mussel-diagram-resizing-s,
-.mussel-diagram-resizing-s * {
+.mussel-diagram-resizing-n > .mussel-diagram-cursor,
+.mussel-diagram-resizing-s > .mussel-diagram-cursor {
     cursor: ns-resize;
 }
 
-.mussel-diagram-resizing-e,
-.mussel-diagram-resizing-e *,
-.mussel-diagram-resizing-w,
-.mussel-diagram-resizing-w * {
+.mussel-diagram-resizing-e > .mussel-diagram-cursor,
+.mussel-diagram-resizing-w > .mussel-diagram-cursor {
     cursor: ew-resize;
 }
 
-.mussel-diagram-resizing-nw,
-.mussel-diagram-resizing-nw *,
-.mussel-diagram-resizing-se,
-.mussel-diagram-resizing-se * {
+.mussel-diagram-resizing-nw > .mussel-diagram-cursor,
+.mussel-diagram-resizing-se > .mussel-diagram-cursor {
     cursor: nwse-resize;
 }
 
-.mussel-diagram-resizing-ne,
-.mussel-diagram-resizing-ne *,
-.mussel-diagram-resizing-sw,
-.mussel-diagram-resizing-sw * {
+.mussel-diagram-resizing-ne > .mussel-diagram-cursor,
+.mussel-diagram-resizing-sw > .mussel-diagram-cursor {
     cursor: nesw-resize;
 }
 
-.mussel-diagram-selecting,
-.mussel-diagram-selecting * {
+.mussel-diagram-selecting > .mussel-diagram-cursor {
     cursor: default;
 }
 
-.mussel-diagram-not-allowed,
-.mussel-diagram-not-allowed * {
+.mussel-diagram-not-allowed > .mussel-diagram-cursor {
     cursor: not-allowed;
 }
 

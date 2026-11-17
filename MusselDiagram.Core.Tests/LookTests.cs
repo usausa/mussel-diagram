@@ -113,6 +113,8 @@ public sealed class LookTests
 
     [Theory]
     [InlineData("#abc")]
+    [InlineData("#abcd")]
+    [InlineData("#aabbcc")]
     [InlineData("#AABBCC80")]
     [InlineData("rgba(1, 2, 3, 0.5)")]
     [InlineData("hsl(120deg 50% 50%)")]
@@ -128,6 +130,16 @@ public sealed class LookTests
 
         Assert.Equal(color, ((DiagramBox)diagram.Find("a")!).Look!.Fill);
         Assert.Equal(color, ((DiagramLink)diagram.Find("ab")!).Look!.Stroke);
+    }
+
+    [Theory]
+    [InlineData("#abcde")]
+    [InlineData("#aabbcc8")]
+    public void HexColorsOfOtherLengthsAreRejected(string color)
+    {
+        var diagram = new Diagram(LookSchema);
+
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0) with { Look = new DiagramBoxLook { Fill = color } }));
     }
 
     [Theory]

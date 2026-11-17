@@ -5,16 +5,21 @@ using System.Globalization;
 
 internal static class DiagramValidator
 {
-    public static ImmutableArray<DiagramIssue> Validate(DiagramSnapshot snapshot, SchemaIndex index)
+    public static ImmutableArray<DiagramIssue> Validate(DiagramSnapshot snapshot, SchemaIndex index, MusselDiagramOptions options)
     {
         var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
-        CheckLinks(snapshot, index, issues);
-        CheckNesting(snapshot, index, issues);
+        CheckLinks(snapshot, index, options, issues);
+        CheckNesting(snapshot, index, options, issues);
         CheckCounts(snapshot, index, issues);
         CheckRequiredPorts(snapshot, index, issues);
         CheckSharedItems(snapshot, index, issues);
         CheckTypes(snapshot, index, issues);
         CheckIcons(snapshot, index, issues);
+        for (var i = 0; i < issues.Count; i++)
+        {
+            issues[i] = options.Localize(issues[i]);
+        }
+
         if (index.Schema.Rules.Check is { } check)
         {
             issues.AddRange(check(snapshot));
@@ -24,9 +29,9 @@ internal static class DiagramValidator
     }
 
     public static DiagramIssue Issue(DiagramIssueSeverity severity, DiagramIssueKind kind, ImmutableArray<string> elementIds, ImmutableArray<string> arguments, string? portId = null) =>
-        new(severity, kind, DiagramCultures.Issue(kind, arguments)) { ElementIds = elementIds, PortId = portId, Arguments = arguments };
+        new(severity, kind, null) { ElementIds = elementIds, PortId = portId, Arguments = arguments };
 
-    private static void CheckLinks(DiagramSnapshot snapshot, SchemaIndex index, ImmutableArray<DiagramIssue>.Builder issues)
+    private static void CheckLinks(DiagramSnapshot snapshot, SchemaIndex index, MusselDiagramOptions options, ImmutableArray<DiagramIssue>.Builder issues)
     {
         var positions = new Dictionary<string, int>(snapshot.Links.Length, StringComparer.Ordinal);
         for (var i = 0; i < snapshot.Links.Length; i++)
@@ -47,7 +52,7 @@ internal static class DiagramValidator
             var reason = DiagramRules.CheckConnection(snapshot, index, link.Source, link.Target, link.Type, x => positions[x.Id] < position, link.Id, false);
             if (reason is not null)
             {
-                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.ConnectionRule, [link.Id], [reason.Message ?? string.Empty]));
+                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.ConnectionRule, [link.Id], [options.Localize(reason).Message ?? string.Empty]));
             }
         }
 
@@ -55,7 +60,7 @@ internal static class DiagramValidator
             (end.PortId is not null) && (snapshot.Find(end.ElementId) is DiagramBox box) && (index.FindBoxType(box) is not null) && (index.FindPort(box, end.PortId) is null) ? end : null;
     }
 
-    private static void CheckNesting(DiagramSnapshot snapshot, SchemaIndex index, ImmutableArray<DiagramIssue>.Builder issues)
+    private static void CheckNesting(DiagramSnapshot snapshot, SchemaIndex index, MusselDiagramOptions options, ImmutableArray<DiagramIssue>.Builder issues)
     {
         foreach (var box in snapshot.Groups.Cast<DiagramBox>().Concat(snapshot.Nodes))
         {
@@ -67,7 +72,7 @@ internal static class DiagramValidator
             var reason = DiagramRules.CheckNesting(snapshot, index, box.Id, box.Type, box.ParentId);
             if (reason is not null)
             {
-                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.NestingRule, [box.Id], [reason.Message ?? string.Empty]));
+                issues.Add(Issue(DiagramIssueSeverity.Error, DiagramIssueKind.NestingRule, [box.Id], [options.Localize(reason).Message ?? string.Empty]));
             }
         }
     }

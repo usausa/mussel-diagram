@@ -133,6 +133,12 @@ public sealed class DiagramCommand
 
 public sealed class DiagramCommandRegistry
 {
+    private static readonly string[] KeyNames =
+    [
+        "Enter", "Tab", "Space", "Backspace", "Delete", "Insert", "Home", "End", "PageUp", "PageDown",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Plus", "Minus", "ContextMenu"
+    ];
+
     private readonly List<DiagramCommand> commands = [];
 
     private readonly Func<object?, DiagramCommandContext> createContext;
@@ -278,7 +284,25 @@ public sealed class DiagramCommandRegistry
             builder.Add("Shift");
         }
 
-        builder.Add(name.Length == 1 ? name.ToUpperInvariant() : name);
+        builder.Add(NameOf(name));
         return string.Join('+', builder);
+    }
+
+    private static string NameOf(string name)
+    {
+        if (name.Length == 1)
+        {
+            return name.ToUpperInvariant();
+        }
+
+        foreach (var known in KeyNames)
+        {
+            if (string.Equals(known, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return known;
+            }
+        }
+
+        return (name[0] == 'f') && !name.AsSpan(1).ContainsAnyExceptInRange('0', '9') ? string.Concat("F", name.AsSpan(1)) : name;
     }
 }

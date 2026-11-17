@@ -175,5 +175,5 @@ public sealed class ValidationTests
         Assert.Equal(issues.Length, diagram.Snapshot.Validate(diagram.Schema).Length);
     }
 
-    private static string? Reason(DiagramReasonKind kind) => DiagramCultures.Reason(kind);
+    private static string? Reason(DiagramReasonKind kind) => MusselDiagramOptions.Default.Reason(kind);
 }

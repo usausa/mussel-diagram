@@ -22,11 +22,36 @@ internal sealed class ChangeSet
 
     public bool HasChanges => (Added.Count > 0) || (Deleted.Count > 0) || (Updated.Count > 0);
 
-    public static ChangeSet Between(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded)
+    public static ChangeSet Between(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded) =>
+        Between(from, to, recorded, recorded.Added.Concat(recorded.Deleted).Concat(recorded.Updated.Keys));
+
+    public static ChangeSet Restored(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded) =>
+        Between(from, to, recorded, recorded.Added.Concat(recorded.Deleted).Concat(recorded.Updated.Keys).Concat(Differing(from, to)));
+
+    private static IEnumerable<string> Differing(DiagramSnapshot from, DiagramSnapshot to)
+    {
+        foreach (var (id, element) in from.Elements)
+        {
+            if (!to.Elements.TryGetValue(id, out var other) || !ReferenceEquals(element, other))
+            {
+                yield return id;
+            }
+        }
+
+        foreach (var id in to.Elements.Keys)
+        {
+            if (!from.Elements.ContainsKey(id))
+            {
+                yield return id;
+            }
+        }
+    }
+
+    private static ChangeSet Between(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded, IEnumerable<string> ids)
     {
         var result = new ChangeSet();
         result.Targets.UnionWith(recorded.Targets);
-        foreach (var id in recorded.Added.Concat(recorded.Deleted).Concat(recorded.Updated.Keys).Distinct(StringComparer.Ordinal))
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
         {
             var before = from.Find(id);
             var after = to.Find(id);

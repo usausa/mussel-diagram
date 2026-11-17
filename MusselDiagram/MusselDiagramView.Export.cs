@@ -55,7 +55,7 @@ public sealed partial class MusselDiagramView
         var current = controller ?? throw new InvalidOperationException("The view is not shown yet.");
         WantIcons(null);
         await Symbols.WhenLoadedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
-        if (disposed)
+        if (IsDisposed)
         {
             return new DiagramExportResult(null, null, []);
         }
@@ -68,12 +68,17 @@ public sealed partial class MusselDiagramView
         try
         {
             await rendered.Task.WaitAsync(cancellationToken).ConfigureAwait(true);
-            if (disposed)
+            if (IsDisposed)
             {
                 return new DiagramExportResult(null, null, []);
             }
 
             var json = await current.InvokeAsync<string>("exportDiagram", cancellationToken, ScriptJson.ToElement(options)).ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return new DiagramExportResult(null, null, []);
+            }
+
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
             var issues = MissingImages(root.GetProperty("missing"));
@@ -84,12 +89,17 @@ public sealed partial class MusselDiagramView
 
             if (root.GetProperty("tooLarge").GetBoolean())
             {
-                return new DiagramExportResult(null, new DiagramReason(DiagramReasonKind.TooLarge, DiagramCultures.Reason(DiagramReasonKind.TooLarge)), issues);
+                return new DiagramExportResult(null, Options.Localize(new DiagramReason(DiagramReasonKind.TooLarge)), issues);
             }
 
             var reference = await current.InvokeAsync<IJSStreamReference>("takeExport", cancellationToken, root.GetProperty("id").GetInt32()).ConfigureAwait(true);
             await using (reference.ConfigureAwait(true))
             {
+                if (IsDisposed)
+                {
+                    return new DiagramExportResult(null, null, []);
+                }
+
                 var source = await reference.OpenReadStreamAsync(MaxExportSize, cancellationToken).ConfigureAwait(true);
                 await using (source.ConfigureAwait(true))
                 {
@@ -104,11 +114,15 @@ public sealed partial class MusselDiagramView
         {
             return new DiagramExportResult(null, null, []);
         }
+        catch (Exception ex) when (IsDisposed && (ex is ObjectDisposedException or JSException))
+        {
+            return new DiagramExportResult(null, null, []);
+        }
         finally
         {
             exportRenders.Remove(rendered);
             exporting--;
-            if (!disposed)
+            if (!IsDisposed)
             {
                 StateHasChanged();
             }

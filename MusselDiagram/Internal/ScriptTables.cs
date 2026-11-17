@@ -1,5 +1,6 @@
 namespace MusselDiagram.Internal;
 
+using System.Collections.Immutable;
 using System.Text.Json;
 
 internal static class ScriptTables
@@ -30,7 +31,20 @@ internal static class ScriptTables
         return new ScriptChanges(change.After.Version, boxes, links, change.Deleted);
     }
 
-    public static ScriptSchema Schema(RenderContext context, DiagramTemplateSet? templates = null)
+    public static bool KeepsOrder(DiagramChangedEventArgs change)
+    {
+        foreach (var id in change.Updated)
+        {
+            if (((change.GetChanges(id) & DiagramChangeParts.Order) != 0) && (change.After.Find(id) is DiagramBox))
+            {
+                return false;
+            }
+        }
+
+        return EndsWithAdded(change, change.After.Groups) && EndsWithAdded(change, change.After.Nodes);
+    }
+
+    public static ScriptSchema Schema(RenderContext context, MusselDiagramOptions options, DiagramTemplateSet? templates = null)
     {
         var schema = context.Index.Schema;
         return new ScriptSchema(
@@ -38,10 +52,10 @@ internal static class ScriptTables
             [.. schema.LinkTypes.Select(x => LinkType(x, context))],
             schema.DefaultLinkType,
             Enum.GetValues<DiagramReasonKind>()
-                .Select(static x => (Kind: x, Text: DiagramCultures.Reason(x)))
+                .Select(x => (Kind: x, Text: options.Reason(x)))
                 .Where(static x => x.Text is not null)
                 .ToDictionary(static x => JsonNamingPolicy.CamelCase.ConvertName(x.Kind.ToString()), static x => x.Text!, StringComparer.Ordinal),
-            new ScriptTexts { SearchPlaceholder = DiagramCultures.SearchPlaceholder, NoMatches = DiagramCultures.NoMatches },
+            new ScriptTexts { SearchPlaceholder = options.SearchPlaceholder, NoMatches = options.NoMatches },
             [.. TypeSearch.InPaletteOrder([.. schema.NodeTypes, .. schema.GroupTypes], context.Index).Select(static x => x.Name)]);
     }
 
@@ -62,6 +76,36 @@ internal static class ScriptTables
         DiagramLineForm.Curved => "curved",
         _ => "orthogonal"
     };
+
+    private static bool EndsWithAdded<T>(DiagramChangedEventArgs change, ImmutableArray<T> boxes)
+        where T : DiagramBox
+    {
+        var index = boxes.Length;
+        foreach (var id in change.Added)
+        {
+            if (change.After.Find(id) is T)
+            {
+                index--;
+            }
+        }
+
+        foreach (var id in change.Added)
+        {
+            if (change.After.Find(id) is not T)
+            {
+                continue;
+            }
+
+            if (!string.Equals(boxes[index].Id, id, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            index++;
+        }
+
+        return true;
+    }
 
     private static ScriptBox Box(DiagramBox box, SchemaIndex index, DiagramTemplateSet? templates)
     {

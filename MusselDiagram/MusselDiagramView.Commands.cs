@@ -67,7 +67,7 @@ public sealed partial class MusselDiagramView
         commands.Register(new DiagramCommand
         {
             Name = DiagramCommands.ToggleLock,
-            DisplayName = DiagramCultures.Command(DiagramCommands.ToggleLock),
+            DisplayName = Options.Command(DiagramCommands.ToggleLock),
             Keys = ["Ctrl+L"],
             CanExecute = c => (subscribed is not null) && Editable && (Lockable(c.SelectedIds).Count > 0),
             GetIsChecked = c => (Lockable(c.SelectedIds) is { Count: > 0 } items) && items.All(IsLocked),
@@ -85,7 +85,7 @@ public sealed partial class MusselDiagramView
     }
 
     private void Register(string name, string[] keys, Func<DiagramCommandContext, bool> canExecute, Func<DiagramCommandContext, Task> execute, bool local = false) =>
-        commands!.Register(new DiagramCommand { Name = name, DisplayName = DiagramCultures.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
+        commands!.Register(new DiagramCommand { Name = name, DisplayName = Options.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
 
     private void RegisterAlign(string name, AlignEdge edge) =>
         Register(name, [], c => CanArrange(c.SelectedIds, 2), c => ArrangeAsync(() => Arrangement.Align(Snapshot, Diagram.Index, c.SelectedIds, edge)));
@@ -129,7 +129,7 @@ public sealed partial class MusselDiagramView
             {
                 sentCommands = map;
                 await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
-                if (disposed)
+                if (IsDisposed)
                 {
                     return;
                 }
@@ -218,8 +218,9 @@ public sealed partial class MusselDiagramView
             turn?.End();
         }
 
-        await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, reason)).ConfigureAwait(true);
-        await RunViewAsync("showReason", reason.Message ?? DiagramCultures.Reason(reason.Kind) ?? string.Empty).ConfigureAwait(true);
+        var localized = Options.Localize(reason);
+        await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, localized)).ConfigureAwait(true);
+        await RunViewAsync("showReason", localized.Message ?? string.Empty).ConfigureAwait(true);
         return false;
     }
 

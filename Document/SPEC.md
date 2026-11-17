@@ -33,7 +33,7 @@ The behaviour of the diagram. Parameters, types, theme variables and limits are 
 |---|---|---|
 | Idle | No operation | Loading, commit, undo, Esc |
 | Pressed | Pressed, but not moved past the threshold. Neither the model nor the display changes | Pressing an element, a port, the background or a palette item |
-| Dragging | The browser moves a preview: a move, a resize, a connection, a drop from the palette, a box selection or a pan | Moving past the threshold |
+| Dragging | The browser moves a preview: a move, a resize, a connection, a drop from the palette, a box selection, a pan or a pinch | Moving past the threshold |
 | Awaiting commit | The commit is sent and the view waits for C#. Only with `Wait`; with `Optimistic` the view returns to idle at once | Release |
 | Text editing | A label is edited in place | Double-click, F2, Enter |
 
@@ -168,7 +168,7 @@ Changing parents:
 
 | Event | When | Content |
 |---|---|---|
-| `Diagram.Changed` | Once after each change, whatever its origin | The snapshots before and after, the origin, the tag, the changed elements (added, deleted, changed) and what changed (position, size, ends, parent, members, label, data, order, route). Loading reports only that everything changed, without listing elements |
+| `Diagram.Changed` | Once after each change, whatever its origin | The snapshots before and after, the origin, the tag, the changed elements (added, deleted, changed) and what changed (position, size, ends, parent, members, label, data, order, route, look). Loading reports only that everything changed, without listing elements |
 | `…ing` of the view | Before a user operation is written | What will be written. `Cancel` stops it (Commit and validation) |
 | `…ed` of the view | After a user operation is written | What was written |
 
@@ -356,7 +356,7 @@ From back to front:
 | Zoom | Ctrl+wheel, Alt+wheel, pinch (keeping the point under the pointer still), and the zoom commands |
 | Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. The whole diagram includes the labels and badges drawn outside the elements. An element can also be brought to the center |
 
-- `WheelMode` makes the plain wheel zoom instead (Zoom with Mouse Wheel in draw.io)
+- `WheelMode` makes the plain wheel zoom instead
 - The zoom goes from `MinZoom` (default 0.05) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
 - The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
@@ -365,14 +365,14 @@ From back to front:
 
 ### Grid
 
-- `GridVisible` shows the grid, with the spacing `GridSize` of the schema (default 10). It is drawn as dots or lines. Lines are snapped to device pixels (`shape-rendering: crispEdges`)
+- `GridVisible` shows the grid, with the spacing `GridSize` of the schema (default 10; 0 shows no grid). It is drawn as dots or lines. Lines are snapped to device pixels (`shape-rendering: crispEdges`)
 - Every `GridMajorInterval`-th line (default 4), and every such dot in both directions, is drawn darker as a major line. Major lines are `GridMajorLineWidth` screen pixels wide (default 1), and other lines 1 pixel. 0 draws no major lines
 - At zoom levels where the spacing on screen is under 8 px, the spacing is doubled until it is not. Major lines are counted in the lines drawn. The snapping spacing does not change
 
 ### Culling
 
 - The visible area is extended by half its size on each side, and elements outside it are not drawn
-- When panning and zooming stop, the area is computed again and the missing elements are drawn
+- When zooming stops, or panning stops with the view reaching outside the area, the area is computed again and the missing elements are drawn. When the page draws again in `ViewportChanged`, that render serves as the view's
 - Selected elements, elements being moved, and links crossing the area (even with both ends outside) are always drawn
 
 ### Nodes and groups
@@ -448,7 +448,7 @@ C# and JS compute the port positions with the same formula from the type and the
 | A place where the dragged item cannot be placed or connected | `not-allowed` |
 | The text editor | `text` |
 
-CSS can change the cursors.
+CSS can change the cursors. While panning, moving, resizing and connecting (and while Space is held), the cursor is on `.mussel-diagram-cursor`, an element that covers the view, under a state class of the view such as `.mussel-diagram-dragging`.
 
 ## 🖱️ Selection and moving
 
@@ -582,7 +582,7 @@ Creating links and reconnecting their ends. The connection rules in Types and ru
 
 - Dragging an out or both port draws a link from it. A click on it is in Palette (adding a connected element). Links are not drawn from in ports (planned for the next version)
 - For a type that connects as a whole, resting the pointer on the element for 140 ms (on touch, selecting only that element) shows "connect arrows" above, below, left and right of it. Dragging an arrow draws a link from the whole element. A click on an arrow is in Palette (adding a connected element)
-- Ports are always shown. A type can declare ports that show only while a connection is dragged (the way draw.io uses its connection points)
+- Ports are always shown. A type can declare ports that show only while a connection is dragged
 - The type of the new link is in Types and rules: the declaration of the port, then the `LinkType` of the view, then the default of the schema, then the first link type
 
 ### Targets
@@ -661,17 +661,18 @@ The link type declares the form, and the `Look` of a link can change it for that
 ### When routes are computed again
 
 - When an element is added, deleted, moved or resized, the links attached to it, and the links whose routes pass within the margin of its rectangle before or after, are computed again. The routes of the other links do not change
+- When the ports of an element change, the links attached to it are computed again
 - The new routes are in the same change as the operation, for up to 20 ms of computing per change. Beyond that, a link whose simple route avoids the nodes gets it at once, and the others get a provisional simple route and are computed afterwards, 4 ms at a time with the browser drawing in between. Loading works the same way
 - The later results join the change without a new undo step. They are written together when all are done, or when the oldest has waited a second. A result that crosses a node added or moved in the meantime is computed again, and so are such links after undoing a step that moved nodes
-- Computing afterwards needs the browser (WebAssembly) or a `SynchronizationContext` (Blazor Server). Elsewhere, such as in a console or on a server without a view, every route is computed in the change
+- Computing afterwards needs the browser (WebAssembly) or a `SynchronizationContext` (Blazor Server). Elsewhere, such as in a console or on a server without a view, every route is computed in the change, and the change waits for asynchronous routers
 - While dragging, JS draws a simple route that does not avoid nodes (the same form, with 1 or 2 bends), and the route of C# replaces it after the commit
 - Computed routes are saved, and loading computes again only the links whose ends no longer match (Saving and export)
 
 ### Replacing the router and reading routes
 
 - The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type, the line form and the grid size, and returns a list of points or the reason it could not route
-- With an asynchronous router, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
-- The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo are asked for again
+- With an asynchronous router, where routes can be computed afterwards, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
+- The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo, and in a diagram made from a snapshot, are asked for again
 - A link knows whether its route is provisional or a result of the router, or why it could not be made
 - The app can read the points of a route and the drawn geometry (end positions, marker positions and directions, the path)
 
@@ -806,11 +807,11 @@ A user operation is shown by the browser first, then checked by C# and written t
 
 ### Commit flow
 
-On release (for a command, when it runs), JS sends the operation, the snapshot it was based on and the selection of that moment to C#, once. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
+On release (for a command, when it runs), JS sends the operation, the values it started from (what the operation writes) and the selection of that moment to C#, once. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
 
 | Order | Step | Reason for rejecting |
 |---|---|---|
-| 1 | What the operation writes (the positions and sizes of the moved elements, parents, ends, text) has not changed since the snapshot it was based on | The diagram changed |
+| 1 | What the operation writes (the positions and sizes of the moved elements, parents, ends, text) has not changed since the operation started | The diagram changed |
 | 2 | The declared rules (Types and rules) are checked again on the current snapshot | The reason of the rule |
 | 3 | The app rules | The reason of the app |
 | 4 | The before event (`…ing`). `Cancel` stops the operation, and a reason can be returned | The reason of the app, otherwise "Canceled" |
@@ -819,7 +820,7 @@ On release (for a command, when it runs), JS sends the operation, the snapshot i
 
 - When a commit is rejected, the commits sent before JS received that answer are rejected too, without a reason
 - When the diagram changes while step 4 is awaited, steps 1 to 3 run again before writing
-- A built-in command that a handler of the before or after event, or of `CommitRejected`, awaits runs at once, inside the operation
+- A built-in command that a handler of the before or after event, or of `CommitRejected`, starts runs at once, inside the operation, whether the handler awaits it or not. A command that is not awaited is inside the operation only until the handler returns
 - App rules are synchronous functions. Checks that wait (asking a server, for example) belong in step 4
 
 ### Events
@@ -923,6 +924,7 @@ A `Skip` change is not undone. It is applied to the snapshots of every step in t
 - An added element is added to the snapshots that have its parent and ends
 - A deleted element is removed from every snapshot, with its links and descendants
 - A changed element is changed, in what changed only, in the snapshots that have it. When a parent, an end or a member refers to an element that a snapshot does not have, that part is not applied there
+- Routes are not worked out again there. A link keeps its route while the route still meets its ends and goes around the nodes (as when it is taken from the change); otherwise it becomes provisional and is routed when undo or redo brings that snapshot back
 
 ### Undo and redo
 
@@ -966,8 +968,6 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - Moving elements with the arrow keys, and moving between elements with Tab, are planned for the next version
 
 ### Built-in commands
-
-The keys follow draw.io.
 
 | Command | Name | Keys |
 |---|---|---|
@@ -1049,7 +1049,7 @@ The keys follow draw.io.
 
 ## 💾 Saving and export
 
-The core saves and loads diagrams as JSON. The view exports SVG, PNG and JPEG, because export uses the rendering of the browser.
+The core saves and loads diagrams as JSON. The view exports SVG, PNG and JPEG.
 
 ### Saving and loading JSON
 
@@ -1094,7 +1094,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 
 - Computed routes are saved, only when they are results of the router. Provisional routes, and the fact that a route could not be made, are not written
 - Loading computes again only the links without a route, and the links whose route end points no longer match the end positions computed from the elements
-- With an asynchronous router, the diagram loads with simple routes, and the results replace them when they arrive. The replacements are not recorded for undo
+- With an asynchronous router, where routes can be computed afterwards, the diagram loads with simple routes, and the results replace them when they arrive. The replacements are not recorded for undo
 
 ### Modified flag
 
@@ -1106,7 +1106,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 
 - Loaded JSON and the SVG of icons are treated as untrusted
 - Labels, slot texts and tooltips are always drawn as text, never parsed as HTML
-- The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject` and references to external URLs are removed (the prefixes of the IDs inside are in Palette)
+- The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject`, references to external URLs and elements nested deeper than 256 levels are removed (the prefixes of the IDs inside are in Palette). So are values with CSS escapes, and values with functions that take URLs without `url()`, such as `image-set()`
 - The `Icon` URL of an element is used only when it is an http, https or relative URL, or a data URL of an image. Other URLs are not drawn
 - What was removed from icons, and the URLs they do not use, come back as issues (warnings) of the import. Element URLs that were not used come back from the whole-diagram check
 
@@ -1128,11 +1128,11 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - `ExportImageAsync` of the view takes the format (PNG or JPEG), the scale (default 1) and the background, draws the exported SVG on a canvas of the browser, and returns the image
 - The SVG it draws always embeds the fonts used among those the page loaded with `@font-face`
 - JPEG cannot be transparent, so the background is filled with the background color. The quality can be chosen
-- When the image would be larger than the canvas limits of the browser, nothing is exported and the reason (`TooLarge`) is returned. The limits are checked by drawing a test pixel, because a browser can keep an oversized canvas and draw nothing on it
+- When the image would be larger than the canvas limits of the browser, nothing is exported and the reason (`TooLarge`) is returned
 
 ### Sending large data
 
-- The results of export go from JS to C# as streams (`IJSStreamReference`), and to the app as streams, because they can be larger than what C# accepts in one message in Interactive Server (32 KB by default)
+- The results of export go from JS to C# as streams (`IJSStreamReference`), and to the app as streams
 - From C# to JS, the schema is sent only when it changes, an icon the first time something shows it, and elements only as changes
 
 ## 🏷️ State overlays
@@ -1212,7 +1212,7 @@ A group type declares the form of its header.
 
 - The app reads the Icon package, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
 - The user extracts the SVG files of the package into `AwsIcons/` at the root of the repository, which Git ignores. The build of the Example copies the files it reads (the table below) to `AwsIcons/` in the output folder
-- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read in full at once
+- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read in full at once, and for a zip it cannot read or one over 256 MB, the panel shows why
 - The ID is the file name without the release date and the size, with the prefix `aws`. It stays the same when a new release (three a year) replaces the package
 
 | File | ID | Size read |
@@ -1239,11 +1239,11 @@ A group type declares the form of its header.
 
 ## 🌐 Languages
 
-The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `DiagramCultures.Texts` of the core. English and Japanese are built in and need no registration.
+The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `MusselDiagramOptions.Cultures` of the core, in the same form as MusselSheet. English and Japanese are built in and need no registration.
 
 - Texts follow `CurrentUICulture`, looked up from the culture to its parents (`ja-JP`, `ja`, the empty name). Items not set and empty items do not count, and items found nowhere are English
 - The built-in languages are English under the empty name and Japanese under `ja`. Japanese uses only the public API and is a model for other languages. The app adds languages in the same form, and can replace the built-in texts
-- The registration is decided before the first diagram is created
+- A diagram follows its own `Diagram.Options`, set when it is made, then the options registered with `AddMusselDiagram` once a view shows it, then the built-in languages. The APIs that take no diagram (reading JSON, importing icons, `DiagramSnapshot.Validate`) use the built-in languages
 - Issues and rejection reasons have a kind and arguments. Their texts are format strings filled with the arguments (display names of types, counts and so on). Reasons returned by app rules use the text of the app as it is
 - The view sends the texts of the current language to JS as data (for rejection reasons while dragging)
 - The display names of types and categories, and the default texts of label slots, are passed by the app in the schema. The app makes the values for each language

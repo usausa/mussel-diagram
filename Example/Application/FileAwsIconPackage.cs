@@ -1,4 +1,4 @@
-namespace Example;
+namespace Example.Application;
 
 using Example.Client.Models;
 

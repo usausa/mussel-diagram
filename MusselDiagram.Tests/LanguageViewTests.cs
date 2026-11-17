@@ -43,4 +43,29 @@ public sealed class LanguageViewTests : BunitContext
             CultureInfo.CurrentUICulture = previous;
         }
     }
+
+    [Fact]
+    public void RegisteredOptionsGiveTheTextsAndADiagramCanHaveItsOwn()
+    {
+        Services.AddMusselDiagram(static options => options.Cultures[string.Empty] = new DiagramTexts
+        {
+            Commands = new Dictionary<string, string> { [DiagramCommands.BringToFront] = "Raise" },
+            Reasons = new Dictionary<DiagramReasonKind, string> { [DiagramReasonKind.NoConnectionPoint] = "Nowhere" },
+            SearchPlaceholder = "Find"
+        });
+        var own = new MusselDiagramOptions
+        {
+            Cultures = { [string.Empty] = new DiagramTexts { Commands = new Dictionary<string, string> { [DiagramCommands.BringToFront] = "Up" } } }
+        };
+
+        var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, new Diagram(Schema)));
+        var palette = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, view.Instance));
+        var other = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, new Diagram(Schema) { Options = own }));
+
+        Assert.Equal("Raise", view.Instance.Commands[DiagramCommands.BringToFront].DisplayName);
+        var schema = (JsonElement)module.Invocations["attach"][0].Arguments[4]!;
+        Assert.Equal("Nowhere", schema.GetProperty("reasons").GetProperty("noConnectionPoint").GetString());
+        Assert.Equal("Find", palette.Find("input").GetAttribute("placeholder"));
+        Assert.Equal("Up", other.Instance.Commands[DiagramCommands.BringToFront].DisplayName);
+    }
 }

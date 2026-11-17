@@ -107,6 +107,7 @@ public static class WorkflowDiagrams
             new DiagramLinkType { Name = "ai", Form = DiagramLineForm.Curved, TargetMarker = DiagramMarker.None, Look = new DiagramLook { Stroke = "#A855F7", Dash = DiagramDash.Dashed } }
         ],
         DefaultLinkType = "main",
+        Rules = new DiagramAppRules { Check = Issues },
         IconSets =
         [
             new DiagramIconSet
@@ -148,11 +149,8 @@ public static class WorkflowDiagrams
         return diagram;
     }
 
-    public static ImmutableArray<DiagramIssue> Check(Diagram diagram) =>
-        [
-            .. diagram.Validate(),
-            .. diagram.Snapshot.GetUnreachable(diagram.Schema).Select(static x => new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, "開始から届きません") { ElementIds = [x.Id] })
-        ];
+    private static IEnumerable<DiagramIssue> Issues(DiagramSnapshot snapshot) =>
+        snapshot.GetUnreachable(Schema).Select(static x => new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, "開始から届きません") { ElementIds = [x.Id] });
 
     private static DiagramNodeType Node(string name, string displayName, string category, ImmutableArray<DiagramPortDefinition> ports, JsonTypeInfo dataType, object defaultData) => new()
     {

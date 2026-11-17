@@ -33,6 +33,8 @@ public sealed class Diagram
 
     private DiagramChangeOrigin updateOrigin;
 
+    private MusselDiagramOptions? registeredOptions;
+
     public Diagram(DiagramSchema schema)
         : this(schema, DiagramSnapshot.Empty)
     {
@@ -43,6 +45,7 @@ public sealed class Diagram
         Index = SchemaIndex.For(schema);
         Snapshot = snapshot;
         saved = snapshot;
+        DeferProvisional();
     }
 
     public event EventHandler<DiagramChangedEventArgs>? Changed;
@@ -59,6 +62,8 @@ public sealed class Diagram
         }
     }
 
+    public MusselDiagramOptions? Options { get; init; }
+
     public DiagramSnapshot Snapshot { get; private set; }
 
     public bool CanUndo => (updateDepth == 0) && history.CanUndo;
@@ -74,6 +79,8 @@ public sealed class Diagram
     public bool IsModified => !SnapshotContent.Same(Snapshot, saved);
 
     internal SchemaIndex Index { get; private set; }
+
+    internal MusselDiagramOptions EffectiveOptions => Options ?? registeredOptions ?? MusselDiagramOptions.Default;
 
     internal TimeSpan RouteLimit { get; set; } = TimeSpan.FromMilliseconds(20);
 
@@ -132,7 +139,7 @@ public sealed class Diagram
 
     public void ClearHistory() => history.Clear();
 
-    public ImmutableArray<DiagramIssue> Validate() => DiagramValidator.Validate(Snapshot, Index);
+    public ImmutableArray<DiagramIssue> Validate() => DiagramValidator.Validate(Snapshot, Index, EffectiveOptions);
 
     public void Save(Stream stream) => DiagramJsonFormat.Write(stream, Snapshot, Index);
 
@@ -215,7 +222,7 @@ public sealed class Diagram
     private void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, RouteBudget? budget)
     {
         var before = Snapshot;
-        var editor = new SnapshotEditor(before, Index) { Budget = budget };
+        var editor = new SnapshotEditor(before, Index) { Budget = budget, WaitForRoutes = !CanDefer };
         edit(editor);
         editor.Complete();
         if (!editor.Changes.HasChanges)
@@ -238,6 +245,8 @@ public sealed class Diagram
         Track(editor.PendingRoutes);
         Defer(editor.DeferredLinks);
     }
+
+    internal void UseRegisteredOptions(MusselDiagramOptions? registered) => registeredOptions ??= registered;
 
     internal IDisposable BeginUpdate(DiagramWriteOptions? options, DiagramChangeOrigin origin)
     {
@@ -366,7 +375,7 @@ public sealed class Diagram
         var after = target.WithVersion(before.Version + 1);
         Snapshot = after;
         CancelRemovedRoutes();
-        Changed?.Invoke(this, ChangeSet.Between(before, after, recorded).ToArgs(before, after, origin, null));
+        Changed?.Invoke(this, ChangeSet.Restored(before, after, recorded).ToArgs(before, after, origin, null));
         DeferProvisional();
     }
 
@@ -489,7 +498,7 @@ public sealed class Diagram
 
     private ImmutableArray<DiagramIssue> Reset(DiagramJsonDocument document, DiagramWriteOptions? options)
     {
-        var result = DiagramJsonFormat.Read(document, Index, Snapshot.Version + 1, NewBudget(RouteLimit));
+        var result = DiagramJsonFormat.Read(document, Index, Snapshot.Version + 1, NewBudget(RouteLimit), !CanDefer, EffectiveOptions);
         var before = Snapshot;
         Snapshot = result.Snapshot;
         history.Clear();

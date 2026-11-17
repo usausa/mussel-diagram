@@ -9,7 +9,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 

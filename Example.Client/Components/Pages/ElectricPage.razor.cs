@@ -63,7 +63,7 @@ public sealed partial class ElectricPage : IDisposable
 
     private void Refresh()
     {
-        issues = ElectricDiagrams.Check(diagram);
+        issues = diagram.Validate();
         overlays = ElectricDiagrams.Overlays(diagram, today);
     }
 

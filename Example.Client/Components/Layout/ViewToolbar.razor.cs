@@ -9,6 +9,8 @@ public sealed partial class ViewToolbar
 {
     private static readonly double[] Levels = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
+    private string? message;
+
     [Parameter]
     public MusselDiagramView? View { get; set; }
 
@@ -88,6 +90,7 @@ public sealed partial class ViewToolbar
 
     private async Task DownloadAsync(DiagramExportResult result, string name, string type)
     {
+        message = result.Error is { } error ? error.Message ?? "書き出せませんでした。" : result.Issues.IsDefaultOrEmpty ? null : "埋め込めなかった画像があります。";
         if (result.Content is not { } content)
         {
             return;

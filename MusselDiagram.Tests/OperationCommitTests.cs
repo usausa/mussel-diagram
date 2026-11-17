@@ -46,9 +46,9 @@ public sealed class OperationCommitTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moving, moving.Add));
 
-        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(400, 0), true, "servers", null, diagram.Snapshot.Version, 0));
-        var nested = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(0, 10), true, "servers", null, diagram.Snapshot.Version, accepted.Rejections));
-        var pinned = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["pin"], new DiagramPoint(0, 10), true, null, null, diagram.Snapshot.Version, nested.Rejections));
+        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(400, 0), true, "servers", null, TestOrigin.Of(diagram.Snapshot), 0));
+        var nested = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(0, 10), true, "servers", null, TestOrigin.Of(diagram.Snapshot), accepted.Rejections));
+        var pinned = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["pin"], new DiagramPoint(0, 10), true, null, null, TestOrigin.Of(diagram.Snapshot), nested.Rejections));
 
         Assert.True(accepted.Accepted);
         Assert.Equal("servers", ((DiagramBox)diagram.Find("a")!).ParentId);
@@ -69,12 +69,12 @@ public sealed class OperationCommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Resized, resized.Add));
-        var version = diagram.Snapshot.Version;
+        var origin = TestOrigin.Of(diagram.Snapshot);
 
-        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 150, 80), version, 0));
-        var stale = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 160, 80), version, accepted.Rejections));
-        var tooSmall = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("tiny", new DiagramRect(0, 600, 20, 20), diagram.Snapshot.Version, stale.Rejections));
-        var content = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("fit", new DiagramRect(0, 0, 10, 10), diagram.Snapshot.Version, tooSmall.Rejections));
+        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 150, 80), origin, 0));
+        var stale = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 160, 80), origin, accepted.Rejections));
+        var tooSmall = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("tiny", new DiagramRect(0, 600, 20, 20), TestOrigin.Of(diagram.Snapshot), stale.Rejections));
+        var content = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("fit", new DiagramRect(0, 0, 10, 10), TestOrigin.Of(diagram.Snapshot), tooSmall.Rejections));
 
         Assert.True(accepted.Accepted);
         Assert.Equal(new DiagramRect(40, 80, 150, 80), ((DiagramBox)diagram.Find("a")!).Bounds);
@@ -92,11 +92,96 @@ public sealed class OperationCommitTests : BunitContext
         cut.Render(parameters => parameters.Add(p => p.Moved, _ => cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock)));
         await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
 
-        var commit = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, diagram.Snapshot.Version, 0));
+        var commit = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0));
         var result = await commit.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
 
         Assert.True(result.Accepted);
         Assert.True(((DiagramBox)diagram.Find("a")!).Locked);
+    }
+
+    [Fact]
+    public async Task ABeforeHandlerCanAwaitACommand()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        cut.Render(parameters => parameters.Add(p => p.Moving, _ => cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock)));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        var commit = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0));
+        var result = await commit.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.False(result.Accepted);
+        var box = (DiagramBox)diagram.Find("a")!;
+        Assert.True(box.Locked);
+        Assert.Equal(40, box.Bounds.X);
+    }
+
+    [Fact]
+    public async Task ARejectionHandlerCanAwaitACommand()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        cut.Render(parameters => parameters.Add(p => p.CommitRejected, _ => cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock)));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        var commit = cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("a"), new DiagramLinkEnd("blocked"), "arrow", 0));
+        var result = await commit.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.False(result.Accepted);
+        Assert.True(((DiagramBox)diagram.Find("a")!).Locked);
+    }
+
+    [Fact]
+    public async Task AHandlerOfACommandCanAwaitACommand()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0));
+        cut.Render(parameters => parameters.Add(p => p.Deleting, _ => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Undo)));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["p1"]).AsTask());
+
+        var delete = cut.InvokeAsync(() => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Delete));
+        await delete.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.False(diagram.Snapshot.Contains("p1"));
+        Assert.Equal(40, ((DiagramBox)diagram.Find("a")!).Bounds.X);
+    }
+
+    [Fact]
+    public async Task ACommandThatAHandlerDoesNotAwaitRunsAtOnce()
+    {
+        var diagram = CreateDiagram();
+        var lockedInHandler = false;
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        cut.Render(parameters => parameters.Add(p => p.Moved, args =>
+        {
+            _ = cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock);
+            lockedInHandler = ((DiagramBox)diagram.Find("a")!).Locked;
+        }));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        var commit = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0));
+        var result = await commit.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.True(result.Accepted);
+        Assert.True(lockedInHandler);
+    }
+
+    [Fact]
+    public async Task CallsFromTheScriptAfterDisposingDoNothing()
+    {
+        var diagram = CreateDiagram();
+        DiagramViewport? reported = null;
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram).Add(p => p.ViewportChanged, x => reported = x));
+        var bridge = new MusselDiagram.Internal.DiagramScriptBridge(cut.Instance);
+        var version = diagram.Snapshot.Version;
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, default, 0, [])));
+        await cut.InvokeAsync(() => bridge.OnViewportChanged(2, 0, 0, 100, 100));
+
+        Assert.Null(reported);
+        Assert.Equal(version, diagram.Snapshot.Version);
     }
 
     [Fact]
@@ -110,9 +195,9 @@ public sealed class OperationCommitTests : BunitContext
             .Add(p => p.Connected, connected.Add)
             .Add(p => p.CommitRejected, rejected.Add));
 
-        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("p1", "out"), new DiagramLinkEnd("p2", "in"), "arrow", diagram.Snapshot.Version, 0));
-        var full = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("a"), new DiagramLinkEnd("p2", "in"), "arrow", diagram.Snapshot.Version, accepted.Rejections));
-        var app = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("a"), new DiagramLinkEnd("blocked"), "arrow", diagram.Snapshot.Version, full.Rejections));
+        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("p1", "out"), new DiagramLinkEnd("p2", "in"), "arrow", 0));
+        var full = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("a"), new DiagramLinkEnd("p2", "in"), "arrow", accepted.Rejections));
+        var app = await cut.InvokeAsync(() => cut.Instance.CommitConnectAsync(new DiagramLinkEnd("a"), new DiagramLinkEnd("blocked"), "arrow", full.Rejections));
 
         Assert.True(accepted.Accepted);
         var link = (DiagramLink)diagram.Find(Assert.Single(connected).LinkId)!;
@@ -134,8 +219,8 @@ public sealed class OperationCommitTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Reconnected, reconnected.Add));
 
-        var same = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Source, new DiagramLinkEnd("a"), diagram.Snapshot.Version, 0));
-        var other = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Target, new DiagramLinkEnd("blocked"), diagram.Snapshot.Version, same.Rejections));
+        var same = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Source, new DiagramLinkEnd("a"), TestOrigin.Of(diagram.Snapshot), 0));
+        var other = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Target, new DiagramLinkEnd("blocked"), TestOrigin.Of(diagram.Snapshot), same.Rejections));
 
         Assert.True(same.Accepted);
         Assert.Equal(new DiagramLinkEnd("a"), ((DiagramLink)diagram.Find("l")!).Source);
@@ -153,8 +238,8 @@ public sealed class OperationCommitTests : BunitContext
             .Add(p => p.Connected, connected.Add));
         var version = diagram.Snapshot.Version;
 
-        var placed = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 0, 120, 60), null, new DiagramLinkEnd("a"), "arrow", version, 0));
-        var full = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 200, 120, 60), null, new DiagramLinkEnd("a"), "arrow", diagram.Snapshot.Version, placed.Rejections));
+        var placed = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 0, 120, 60), null, new DiagramLinkEnd("a"), "arrow", 0));
+        var full = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 200, 120, 60), null, new DiagramLinkEnd("a"), "arrow", placed.Rejections));
 
         Assert.True(placed.Accepted);
         var e = Assert.Single(connected);

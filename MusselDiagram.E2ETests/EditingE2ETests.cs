@@ -4,7 +4,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 
@@ -102,6 +102,35 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task TryingASpliceKeepsTheOrderOfOverlappingNodes(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var selected = opened.View.Locator("g.mussel-diagram-node[data-selected]");
+        var star = page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']");
+        await DragInAsync(star, 120, 500);
+        await Expect(selected).ToHaveCountAsync(1);
+        var back = await selected.GetAttributeAsync("data-id");
+        await DragInAsync(star, 150, 500);
+        await Expect(selected).Not.ToHaveAttributeAsync("data-id", back!);
+        var front = await selected.GetAttributeAsync("data-id");
+
+        var (left, top) = await OriginAsync();
+        await page.Mouse.MoveAsync((float)left + 104, (float)top + 500);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync((float)left + 130, (float)top + 180, new() { Steps = 12 });
+        await Expect(opened.View.Locator("g.mussel-diagram-link[data-split-target]")).ToHaveCountAsync(1);
+        await page.Mouse.MoveAsync((float)left + 104, (float)top + 500, new() { Steps = 12 });
+        await page.Mouse.UpAsync();
+        await page.Mouse.MoveAsync((float)left + 400, (float)top + 650);
+        await page.Mouse.MoveAsync((float)left + 135, (float)top + 500);
+
+        await Expect(opened.View.Locator($".mussel-diagram-arrow[data-id='{front}']")).Not.ToHaveCountAsync(0);
+        await Expect(opened.View.Locator($".mussel-diagram-arrow[data-id='{back}']")).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task WaitModeKeepsTheEditorUntilTheAnswer(string mode)
     {
         opened = await app.OpenAsync("?wait=true", mode);
@@ -116,6 +145,57 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
         await Expect(editor).ToHaveCountAsync(0);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='Star B']")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task KeysDoNotRunWhileThePointerPans(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var selected = opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]");
+        await ClickAsync(250, 170);
+        await Expect(selected).ToHaveCountAsync(1);
+
+        var (left, top) = await OriginAsync();
+        await page.Mouse.MoveAsync((float)left + 700, (float)top + 470);
+        await page.Mouse.DownAsync(new() { Button = MouseButton.Middle });
+        await page.Mouse.MoveAsync((float)left + 650, (float)top + 450, new() { Steps = 4 });
+        await page.Keyboard.PressAsync("Delete");
+        await page.Keyboard.PressAsync("Escape");
+        await page.Mouse.MoveAsync((float)left + 600, (float)top + 430, new() { Steps = 4 });
+        await page.Mouse.UpAsync(new() { Button = MouseButton.Middle });
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(-50,-20) scale(1)");
+        await Expect(nodes).ToHaveCountAsync(9);
+        await Expect(selected).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task KeysDoNotRunWhileAPaletteItemIsDragged(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var selected = opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]");
+        var source = page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']");
+        await ClickAsync(250, 170);
+        await Expect(selected).ToHaveCountAsync(1);
+        await source.Locator("xpath=ancestor-or-self::*[@data-attached][1]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        var from = await source.BoundingBoxAsync() ?? throw new InvalidOperationException("The source is not shown.");
+        var (left, top) = await OriginAsync();
+
+        await page.Mouse.MoveAsync(from.X + (from.Width / 2), from.Y + (from.Height / 2));
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync((float)left + 120, (float)top + 500, new() { Steps = 12 });
+        await page.Keyboard.PressAsync("Delete");
+        await page.Keyboard.PressAsync("Escape");
+        await page.Mouse.UpAsync();
+
+        await Expect(nodes).ToHaveCountAsync(9);
+        await Expect(selected).ToHaveCountAsync(1);
     }
 
     [Theory]
@@ -214,6 +294,54 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
     [Theory]
     [MemberData(nameof(ModeNames))]
+    public async Task EditingKeysAndPaletteDragsKeepTheTypedText(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        var (left, top) = await OriginAsync();
+
+        await opened.Page.Mouse.DblClickAsync((float)left + 250, (float)top + 204);
+        await Expect(editor).ToHaveValueAsync("星 1");
+        await opened.Page.Keyboard.PressAsync("End");
+        await opened.Page.Keyboard.TypeAsync("E");
+        await opened.Page.Keyboard.PressAsync("F2");
+
+        await Expect(editor).ToHaveValueAsync("星 1E");
+        await opened.Page.Keyboard.TypeAsync("F");
+        await DragInAsync(opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']"), 300, 520);
+
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1EF']")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node")).ToHaveCountAsync(10);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task PanningTheBackgroundKeepsTheEditorOpen(string mode)
+    {
+        opened = await app.OpenAsync("?backgroundpan=true", mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        var (left, top) = await OriginAsync();
+
+        await opened.Page.Mouse.DblClickAsync((float)left + 250, (float)top + 204);
+        await Expect(editor).ToHaveValueAsync("星 1");
+        await opened.Page.Mouse.MoveAsync((float)left + 700, (float)top + 470);
+        await opened.Page.Mouse.DownAsync();
+        await opened.Page.Mouse.MoveAsync((float)left + 640, (float)top + 470, new() { Steps = 4 });
+        await opened.Page.Mouse.UpAsync();
+
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(-60,0) scale(1)");
+        await Expect(editor).ToBeFocusedAsync();
+        await opened.Page.Keyboard.PressAsync("End");
+        await opened.Page.Keyboard.TypeAsync("C");
+        await opened.Page.Mouse.ClickAsync((float)left + 700, (float)top + 470);
+
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1C']")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
     public async Task TemplateTextIsEditedInPlace(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -281,6 +409,57 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
         await Expect(nodes).ToHaveCountAsync(10);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-type='diamond'][data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ThePressThatChoosesInTheQuickAddListEndsThere(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        await ClickAsync(700, 470);
+        await opened.Page.Keyboard.PressAsync("Control+Enter");
+        await opened.Page.Keyboard.TypeAsync("diamond");
+        var item = opened.View.Locator(".mussel-diagram-picker-item[data-type='diamond']");
+        await Expect(item).ToBeVisibleAsync();
+        var box = await item.BoundingBoxAsync() ?? throw new InvalidOperationException("The item is not shown.");
+
+        await opened.Page.Mouse.MoveAsync(box.X + 10, box.Y + 10);
+        await opened.Page.Mouse.DownAsync();
+        await opened.Page.Mouse.MoveAsync(box.X - 60, box.Y - 60, new() { Steps = 4 });
+        await Expect(opened.View.Locator("rect.mussel-diagram-box-selection")).ToHaveCountAsync(0);
+        await opened.Page.Mouse.UpAsync();
+
+        await Expect(nodes).ToHaveCountAsync(10);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-type='diamond'][data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ArrowKeysInTheQuickAddListKeepTheChoiceInView(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        await ClickAsync(700, 470);
+        await opened.Page.Keyboard.PressAsync("Control+Enter");
+        var list = opened.View.Locator(".mussel-diagram-picker-list");
+        await Expect(list).ToBeVisibleAsync();
+        var count = await list.Locator(".mussel-diagram-picker-item").CountAsync();
+        await list.EvaluateAsync("list => { window.firstOption = list.firstElementChild; }");
+
+        for (var i = 1; i < count; i++)
+        {
+            await opened.Page.Keyboard.PressAsync("ArrowDown");
+        }
+
+        var shown = await list.EvaluateAsync<bool[]>(
+            """
+            list => {
+                const box = list.getBoundingClientRect();
+                const item = list.querySelector('[aria-selected="true"]').getBoundingClientRect();
+                return [list.scrollHeight > list.clientHeight, (item.top >= box.top - 1) && (item.bottom <= box.bottom + 1), window.firstOption.isConnected];
+            }
+            """);
+        Assert.Equal([true, true, true], shown);
     }
 
     [Theory]

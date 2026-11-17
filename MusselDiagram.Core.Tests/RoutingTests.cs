@@ -196,6 +196,53 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void RoutersThatFailAtOnceGiveFailedRoutes()
+    {
+        IDiagramRouter[] routers =
+        [
+            new AnsweringRouter(static () => throw new InvalidOperationException("Broken")),
+            new AnsweringRouter(static () => ValueTask.FromException<DiagramRouteResult>(new InvalidOperationException("Broken"))),
+            new AnsweringRouter(static () => ValueTask.FromResult<DiagramRouteResult>(null!)),
+            new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult())),
+            new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult { Points = [new DiagramPoint(Double.NaN, 25), new DiagramPoint(400, 25)] }))
+        ];
+
+        var errors = new List<string?>();
+        foreach (var router in routers)
+        {
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+
+            diagram.Connect(Link("ab", "a", "b"));
+
+            Assert.Equal(DiagramRouteState.Failed, LinkOf(diagram).RouteState);
+            Assert.NotNull(diagram.ToJson());
+            errors.Add(LinkOf(diagram).RouteError);
+        }
+
+        Assert.Equal(["Broken", "Broken"], errors[..2]);
+    }
+
+    [Fact]
+    public void ReplacingABoxReroutesItsLinksOnlyWhenTheirEndsCanMove()
+    {
+        var router = new FixedRouter();
+        var diagram = new Diagram(Schema with { Router = router });
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 400, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        var asked = router.Requests.Count;
+
+        diagram.Replace((DiagramNode)diagram.Find("a")! with { Label = "Web", Locked = true, Look = new DiagramBoxLook { Fill = "#ffeecc" } });
+        var kept = router.Requests.Count;
+        diagram.Replace((DiagramNode)diagram.Find("a")! with { Bounds = new DiagramRect(0, 40, 100, 50) });
+
+        Assert.Equal(asked, kept);
+        Assert.Equal(asked + 1, router.Requests.Count);
+    }
+
+    [Fact]
     public void AsynchronousRoutesReplaceTheSimpleRoute()
     {
         RunWith(static context =>
@@ -216,6 +263,26 @@ public sealed class RoutingTests
             Assert.False(diagram.Snapshot.Contains("ab"));
             diagram.Redo();
             Assert.Equal(3, LinkOf(diagram).Route.Length);
+        });
+    }
+
+    [Fact]
+    public void ADiagramMadeFromASnapshotAsksForItsProvisionalRoutes()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var first = new Diagram(Schema with { Router = router });
+            first.Add(Node("a", 0, 0));
+            first.Add(Node("b", 400, 0));
+            first.Connect(Link("ab", "a", "b"));
+
+            var second = new Diagram(first.Schema, first.Snapshot);
+
+            Assert.Equal(2, router.Count);
+            router.Complete(1, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(second).RouteState);
         });
     }
 
@@ -243,6 +310,29 @@ public sealed class RoutingTests
             context.RunOne();
             Assert.Equal(new DiagramPoint(250, 225), LinkOf(diagram).Route[1]);
             Assert.Equal(2, router.Count);
+        });
+    }
+
+    [Fact]
+    public void LateRoutesDoNotReachVersionsOfAnotherForm()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Connect(Link("ab", "a", "b") with { Look = new DiagramLinkLook { Form = DiagramLineForm.Straight } });
+            diagram.Replace(LinkOf(diagram) with { Look = new DiagramLinkLook { Form = DiagramLineForm.Orthogonal } });
+
+            router.Complete(router.Count - 1, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+            Assert.Equal(3, LinkOf(diagram).Route.Length);
+
+            diagram.Undo();
+
+            Assert.Equal(DiagramLineForm.Straight, LinkOf(diagram).Look?.Form);
+            Assert.Equal(2, LinkOf(diagram).Route.Length);
         });
     }
 
@@ -391,6 +481,41 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void SkipChangesLeaveTheRoutesOfOlderStepsForLater()
+    {
+        RunWithoutContext(static () =>
+        {
+            var diagram = new Diagram(Schema);
+            using (diagram.BeginUpdate(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }))
+            {
+                diagram.Add(Node("a", 0, 0));
+                diagram.Add(Node("c", 0, 300));
+                diagram.Add(Node("d", 300, 300));
+                diagram.Connect(Link("ad", "a", "d"));
+                diagram.Connect(Link("cd", "c", "d"));
+            }
+
+            diagram.Move(["a"], new DiagramPoint(0, 100));
+            diagram.Move(["d"], new DiagramPoint(0, 60), new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+            var moved = Route(diagram, "cd");
+            DiagramSnapshot? undone = null;
+            diagram.Changed += (_, e) =>
+            {
+                if (e.Origin == DiagramChangeOrigin.Undo)
+                {
+                    undone = e.After;
+                }
+            };
+
+            diagram.Undo();
+
+            Assert.Equal(DiagramRouteState.Provisional, ((DiagramLink)undone!.Find("ad")!).RouteState);
+            Assert.Equal(moved, ((DiagramLink)undone.Find("cd")!).Route);
+            Assert.Equal(DiagramRouteState.Routed, ((DiagramLink)diagram.Find("ad")!).RouteState);
+        });
+    }
+
+    [Fact]
     public void LoadedRoutesOverTheBudgetFollowInSteps()
     {
         RunWith(static context =>
@@ -405,6 +530,61 @@ public sealed class RoutingTests
             context.RunOne();
             Assert.Equal(Route(source, "ab"), LinkOf(diagram).Route);
             Assert.False(diagram.CanUndo);
+        });
+    }
+
+    [Fact]
+    public void AsynchronousRoutesAreInTheChangeWithoutAContext()
+    {
+        RunWithoutContext(static () =>
+        {
+            var diagram = new Diagram(Schema with { Router = new GatheringRouter() });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            var changes = 0;
+            diagram.Changed += (_, _) => changes++;
+
+            diagram.Connect(Link("ab", "a", "b"));
+
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+            Assert.Equal(GatheringRouter.Middle, LinkOf(diagram).Route[1]);
+            Assert.Equal(1, changes);
+        });
+    }
+
+    [Fact]
+    public void RoutesWithoutAContextAreAllAskedForBeforeWaiting()
+    {
+        RunWithoutContext(static () =>
+        {
+            var router = new GatheringRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Add(Node("c", 400, 200));
+            diagram.Connect(Link("ab", "a", "b"));
+            diagram.Connect(Link("ac", "a", "c"));
+            router.Gather = 2;
+
+            diagram.Move(["a"], new DiagramPoint(0, 10));
+
+            Assert.Equal(DiagramRouteState.Routed, ((DiagramLink)diagram.Find("ab")!).RouteState);
+            Assert.Equal(DiagramRouteState.Routed, ((DiagramLink)diagram.Find("ac")!).RouteState);
+        });
+    }
+
+    [Fact]
+    public void LoadingWithoutAContextWaitsForTheRoutes()
+    {
+        RunWithoutContext(static () =>
+        {
+            var json = CreateBlocked().ToJson().Replace("\"route\":", "\"ignored\":", StringComparison.Ordinal);
+            var diagram = new Diagram(Schema with { Router = new GatheringRouter() });
+
+            diagram.LoadJson(json);
+
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+            Assert.Equal(GatheringRouter.Middle, LinkOf(diagram).Route[1]);
         });
     }
 
@@ -440,6 +620,20 @@ public sealed class RoutingTests
         }
     }
 
+    private static void RunWithoutContext(Action test)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            test();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
     private static DiagramLink LinkOf(Diagram diagram) => (DiagramLink)diagram.Find("ab")!;
 
     private static ImmutableArray<DiagramPoint> Route(Diagram diagram, string id) => ((DiagramLink)diagram.Find(id)!).Route;
@@ -459,6 +653,11 @@ public sealed class RoutingTests
             Requests.Add(request);
             return ValueTask.FromResult(Error is null ? new DiagramRouteResult { Points = Points } : new DiagramRouteResult { Error = Error });
         }
+    }
+
+    private sealed class AnsweringRouter(Func<ValueTask<DiagramRouteResult>> answer) : IDiagramRouter
+    {
+        public ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken) => answer();
     }
 
     private sealed class QueueContext : SynchronizationContext
@@ -513,5 +712,37 @@ public sealed class RoutingTests
         }
 
         public void Complete(int call, ImmutableArray<DiagramPoint> points) => calls[call].SetResult(new DiagramRouteResult { Points = points });
+    }
+
+    private sealed class GatheringRouter : IDiagramRouter
+    {
+        public static readonly DiagramPoint Middle = new(250, 300);
+
+        private readonly List<(TaskCompletionSource<DiagramRouteResult> Completion, DiagramRouteRequest Request)> waiting = [];
+
+        public int Gather { get; set; } = 1;
+
+        public ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken)
+        {
+            var completion = new TaskCompletionSource<DiagramRouteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            waiting.Add((completion, request));
+            if (waiting.Count >= Gather)
+            {
+                var ready = waiting.ToArray();
+                waiting.Clear();
+                _ = Task.Run(
+                    async () =>
+                    {
+                        await Task.Delay(20, CancellationToken.None).ConfigureAwait(false);
+                        foreach (var (each, asked) in ready)
+                        {
+                            each.SetResult(new DiagramRouteResult { Points = [asked.Source.Position, Middle, asked.Target.Position] });
+                        }
+                    },
+                    CancellationToken.None);
+            }
+
+            return new ValueTask<DiagramRouteResult>(completion.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken));
+        }
     }
 }

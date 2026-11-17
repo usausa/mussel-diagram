@@ -2,6 +2,8 @@ namespace MusselDiagram;
 
 using System.Text.Json;
 
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 
@@ -138,6 +140,38 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
+    public async Task PansInsideTheDrawnAreaDoNotDrawAgain()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        await cut.InvokeAsync(() => cut.Instance.OnViewportChanged(1, 0, 0, 200, 200));
+        var renders = cut.RenderCount;
+
+        await cut.InvokeAsync(() => cut.Instance.OnViewportChanged(1, -50, -50, 200, 200));
+
+        Assert.Equal(renders, cut.RenderCount);
+        Assert.Equal(new DiagramPoint(150, 150), cut.Instance.Center);
+
+        await cut.InvokeAsync(() => cut.Instance.OnViewportChanged(1, -500, 0, 200, 200));
+
+        Assert.True(cut.RenderCount > renders);
+    }
+
+    [Fact]
+    public async Task AnAppThatDrawsOnViewportChangesDrawsTheViewOnce()
+    {
+        var plain = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var host = Render<ViewportHost>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var view = host.FindComponent<MusselDiagramView>();
+        var (alone, hosted) = (plain.RenderCount, view.RenderCount);
+
+        await plain.InvokeAsync(() => plain.Instance.OnViewportChanged(2, 0, 0, 200, 200));
+        await host.InvokeAsync(() => view.Instance.OnViewportChanged(2, 0, 0, 200, 200));
+
+        Assert.Equal(plain.RenderCount - alone, view.RenderCount - hosted);
+        Assert.Equal(2, host.Instance.Zoom);
+    }
+
+    [Fact]
     public async Task LoadingSendsTheWholeTableAgain()
     {
         var controller = module.SetupModule("attach", static _ => true);
@@ -154,6 +188,28 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.Empty(cut.Instance.SelectedIds);
         controller.VerifyInvoke("setTable");
         Assert.Empty(controller.Invocations["applyChanges"]);
+    }
+
+    [Fact]
+    public async Task ChangesOfTheOrderSendTheWholeTableAgain()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var tables = controller.Invocations["setTable"].Count;
+
+        await cut.InvokeAsync(() => diagram.Move(["b"], new DiagramPoint(10, 0)));
+        await cut.InvokeAsync(() => diagram.Add(new DiagramNode { Id = "c", Type = "service", Bounds = new DiagramRect(300, 200, 80, 40) }));
+        var appended = controller.Invocations["setTable"].Count;
+        await cut.InvokeAsync(() => diagram.SendToBack(["c"]));
+        var reordered = controller.Invocations["setTable"].Count;
+        await cut.InvokeAsync(() => diagram.Delete(["a"]));
+        await cut.InvokeAsync(diagram.Undo);
+        var restored = controller.Invocations["setTable"].Count;
+
+        Assert.Equal(tables, appended);
+        Assert.Equal(appended + 1, reordered);
+        Assert.Equal(reordered + 1, restored);
     }
 
     [Fact]
@@ -199,6 +255,28 @@ public sealed class MusselDiagramViewTests : BunitContext
 
         Assert.Null(result.Content);
         Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task AnExportEndsQuietlyWhenTheViewIsGoneWhileTheScriptExports()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var exporting = controller.Setup<string>("exportDiagram", static _ => true);
+        controller.Setup<IJSStreamReference>("takeExport", static _ => true).SetException(new ObjectDisposedException("controller"));
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        Task<DiagramExportResult>? export = null;
+
+        await cut.InvokeAsync(() =>
+        {
+            export = cut.Instance.ExportImageAsync();
+        });
+        await cut.WaitForAssertionAsync(() => controller.VerifyInvoke("exportDiagram"));
+        await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        await cut.InvokeAsync(() => exporting.SetResult("{\"missing\":[],\"empty\":false,\"tooLarge\":false,\"id\":1}"));
+        var result = await export!.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Null(result.Content);
+        Assert.Empty(controller.Invocations["takeExport"]);
     }
 
     [Fact]
@@ -337,6 +415,24 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.IsType<InvalidOperationException>(await Renderer.UnhandledException.ConfigureAwait(true));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnExceptionFromTheContentOfANewBoxReachesTheRenderer(bool place)
+    {
+        var schema = new DiagramSchema { NodeTypes = [new DiagramNodeType { Name = "broken", CreateContent = static _ => throw new InvalidOperationException("app") }] };
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, new Diagram(schema)));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => place
+            ? bridge.CommitPlaceAsync("broken", 0, 0, 80, 40, null, "a", null, "flow", 0, [])
+            : bridge.CommitDropAsync("broken", 0, 0, 80, 40, null, null, null, default, 0, [])));
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.Same(Renderer.UnhandledException, ended);
+        Assert.Same(thrown, await Renderer.UnhandledException.ConfigureAwait(true));
+    }
+
     private static string? FormatOf(JSRuntimeInvocation invocation) =>
         invocation.Arguments is [JsonElement options, ..] ? options.GetProperty("format").GetString() : null;
 
@@ -348,5 +444,23 @@ public sealed class MusselDiagramViewTests : BunitContext
         diagram.Add(new DiagramNode { Id = "b", Type = "legacy", Bounds = new DiagramRect(300, 60, 80, 40) });
         diagram.Connect(new DiagramLink { Id = "ab", Type = "flow", Source = new DiagramLinkEnd("a", "out"), Target = new DiagramLinkEnd("b") });
         return diagram;
+    }
+
+    public sealed class ViewportHost : ComponentBase
+    {
+        [Parameter]
+        public Diagram Diagram { get; set; } = default!;
+
+        public double Zoom { get; private set; }
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<MusselDiagramView>(0);
+            builder.AddComponentParameter(1, nameof(MusselDiagramView.Diagram), Diagram);
+            builder.AddComponentParameter(2, nameof(MusselDiagramView.ViewportChanged), EventCallback.Factory.Create<DiagramViewport>(this, OnViewportChanged));
+            builder.CloseComponent();
+        }
+
+        private void OnViewportChanged(DiagramViewport viewport) => Zoom = viewport.Zoom;
     }
 }

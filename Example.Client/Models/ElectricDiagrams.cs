@@ -109,6 +109,7 @@ public static class ElectricDiagrams
             new DiagramLinkType { Name = "lv", TargetMarker = DiagramMarker.None, Look = new DiagramLook { Stroke = "var(--example-electric-line)", StrokeWidth = 1.5 } }
         ],
         DefaultLinkType = "lv",
+        Rules = new DiagramAppRules { Check = Issues },
         IconSets =
         [
             new DiagramIconSet
@@ -201,29 +202,6 @@ public static class ElectricDiagrams
         return diagram;
     }
 
-    public static ImmutableArray<DiagramIssue> Check(Diagram diagram)
-    {
-        var snapshot = diagram.Snapshot;
-        var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
-        issues.AddRange(diagram.Validate());
-        issues.AddRange(snapshot.GetUnreachable(diagram.Schema).Select(static x => new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, "受電点からつながっていません") { ElementIds = [x.Id] }));
-        foreach (var transformer in snapshot.Nodes.Where(static x => string.Equals(x.Type, "transformer", StringComparison.Ordinal)))
-        {
-            if (transformer.Data is not EquipmentData { Capacity: { } capacity })
-            {
-                continue;
-            }
-
-            var load = Downstream(snapshot, transformer.Id).Sum(static x => x is { Type: "motor" or "lighting", Data: EquipmentData { Capacity: { } value } } ? value : 0);
-            if (load > capacity)
-            {
-                issues.Add(new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, string.Create(CultureInfo.InvariantCulture, $"負荷の合計 {load} kVA が容量 {capacity} kVA を超えています")) { ElementIds = [transformer.Id] });
-            }
-        }
-
-        return issues.ToImmutable();
-    }
-
     public static Dictionary<string, DiagramOverlay> Overlays(Diagram diagram, DateOnly today)
     {
         var snapshot = diagram.Snapshot;
@@ -263,6 +241,27 @@ public static class ElectricDiagrams
         }
 
         return result;
+    }
+
+    private static List<DiagramIssue> Issues(DiagramSnapshot snapshot)
+    {
+        var issues = new List<DiagramIssue>();
+        issues.AddRange(snapshot.GetUnreachable(Schema).Select(static x => new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, "受電点からつながっていません") { ElementIds = [x.Id] }));
+        foreach (var transformer in snapshot.Nodes.Where(static x => string.Equals(x.Type, "transformer", StringComparison.Ordinal)))
+        {
+            if (transformer.Data is not EquipmentData { Capacity: { } capacity })
+            {
+                continue;
+            }
+
+            var load = Downstream(snapshot, transformer.Id).Sum(static x => x is { Type: "motor" or "lighting", Data: EquipmentData { Capacity: { } value } } ? value : 0);
+            if (load > capacity)
+            {
+                issues.Add(new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, string.Create(CultureInfo.InvariantCulture, $"負荷の合計 {load} kVA が容量 {capacity} kVA を超えています")) { ElementIds = [transformer.Id] });
+            }
+        }
+
+        return issues;
     }
 
     private static (HashSet<string> Nodes, HashSet<string> Links) Energized(Diagram diagram)

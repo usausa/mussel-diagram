@@ -21,13 +21,9 @@ internal static class Clipboard
             }
 
             roots.Add(box.Id);
-            boxes.Add(box.Id);
-            if (box is DiagramGroup)
+            if (boxes.Add(box.Id) && (box is DiagramGroup))
             {
-                foreach (var descendant in snapshot.GetDescendants(box.Id))
-                {
-                    boxes.Add(descendant.Id);
-                }
+                snapshot.AddDescendants(box.Id, boxes);
             }
         }
 
@@ -44,6 +40,7 @@ internal static class Clipboard
             {
                 overlays.Add(group with { MemberIds = members });
                 roots.Add(group.Id);
+                boxes.Add(group.Id);
             }
         }
 
@@ -160,5 +157,5 @@ internal static class Clipboard
         }
     }
 
-    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind, DiagramCultures.Reason(kind));
+    private static DiagramReason Reason(DiagramReasonKind kind) => new(kind);
 }

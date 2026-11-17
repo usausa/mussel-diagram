@@ -2,6 +2,7 @@ namespace MusselDiagram;
 
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 
 using MusselDiagram.Internal;
 
@@ -87,6 +88,71 @@ public sealed class IconImportTests
         Assert.Empty(result.IconSet.Icons);
         Assert.Equal(2, result.Issues.Length);
         Assert.Throws<DiagramException>(() => DiagramIconImport.FromIconify(new MemoryStream("{}"u8.ToArray())));
+    }
+
+    [Fact]
+    public void MalformedSetsAreReportedOrRejected()
+    {
+        const string json = """
+            {
+              "prefix": "demo",
+              "width": 1e400,
+              "icons": {
+                "number": 1,
+                "nobody": { "width": 10 },
+                "text": { "body": 2 },
+                "box": { "body": "<rect width=\"10\" height=\"10\"/>" }
+              },
+              "aliases": { "loose": 3, "orphan": { "parent": 4 } },
+              "categories": { "Shapes": ["box", 5] }
+            }
+            """;
+
+        var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+        Assert.Equal(["box"], result.IconSet.Icons.Select(static x => x.Id));
+        Assert.Equal("Shapes", result.IconSet.Icons[0].Category);
+        Assert.Equal(5, result.Issues.Length);
+        Assert.Throws<DiagramException>(() => DiagramIconImport.FromIconify(new MemoryStream("""{ "prefix": 1, "icons": {} }"""u8.ToArray())));
+        Assert.Throws<DiagramException>(() => DiagramIconImport.FromZip(new MemoryStream("not a zip"u8.ToArray()), "demo"));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DeeplyNestedContentIsRemoved()
+    {
+        const int levels = 400_000;
+        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">" + string.Concat(Enumerable.Repeat("<g>", levels)) + "<path d=\"M0 0\"/>" + string.Concat(Enumerable.Repeat("</g>", levels)) + "</svg>";
+
+        var result = await Task.Run(() => DiagramIconImport.FromZip(Zip(("deep.svg", svg)), "demo"), TestContext.Current.CancellationToken);
+
+        var icon = Assert.Single(result.IconSet.Icons);
+        Assert.Equal(256, Regex.Count(icon.Body, "<g>"));
+        Assert.DoesNotContain("<path", icon.Body, StringComparison.Ordinal);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal((DiagramIssueKind.RemovedSvgContent, "g"), (issue.Kind, issue.Arguments[1]));
+    }
+
+    [Fact]
+    public void UrlsHiddenByEscapesOrImageSetsAreRemoved()
+    {
+        const string svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M0 0" fill="u\rl(https://example.com/a.svg#p)"/>
+              <path d="M0 0" stroke="\75 rl(https://example.com/b.svg#p)"/>
+              <rect width="1" height="1" style="mask-image:image-set('https://example.com/c.png' 1x);stroke:#fff"/>
+              <rect width="1" height="1" style="mask-image:-WEBKIT-IMAGE-SET('https://example.com/d.png' 1x)"/>
+            </svg>
+            """;
+
+        var result = DiagramIconImport.FromZip(Zip(("hidden.svg", svg)), "demo");
+
+        var icon = Assert.Single(result.IconSet.Icons);
+        Assert.DoesNotContain("example.com", icon.Body, StringComparison.Ordinal);
+        Assert.Contains("style=\"stroke:#fff\"", icon.Body, StringComparison.Ordinal);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal(DiagramIssueKind.RejectedUrl, issue.Kind);
+        Assert.Contains("u\\rl(https://example.com/a.svg#p)", issue.Arguments[1], StringComparison.Ordinal);
+        Assert.Contains("-WEBKIT-IMAGE-SET('https://example.com/d.png' 1x)", issue.Arguments[1], StringComparison.Ordinal);
     }
 
     [Fact]

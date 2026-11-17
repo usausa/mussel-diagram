@@ -77,6 +77,6 @@ internal static partial class LookValues
         return false;
     }
 
-    [GeneratedRegex(@"^(#[0-9a-f]{3,8}|[a-z]+|var\(--[a-z0-9_-]+\)|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\([0-9a-z.,% /+-]*\))$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|[a-z]+|var\(--[a-z0-9_-]+\)|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\([0-9a-z.,% /+-]*\))$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ColorPattern();
 }

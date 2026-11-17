@@ -6,7 +6,7 @@ internal sealed class ObstacleIndex
 
     private const int MaxCells = 4096;
 
-    private readonly Dictionary<(int X, int Y), List<int>> cells = [];
+    private readonly Dictionary<(int X, int Y), List<int>> cells;
 
     private readonly List<int> large = [];
 
@@ -16,6 +16,7 @@ internal sealed class ObstacleIndex
 
     public ObstacleIndex(IReadOnlyList<DiagramNode> nodes)
     {
+        cells = new Dictionary<(int X, int Y), List<int>>(nodes.Count);
         rects = new DiagramRect[nodes.Count];
         ids = new string[nodes.Count];
         var left = double.PositiveInfinity;

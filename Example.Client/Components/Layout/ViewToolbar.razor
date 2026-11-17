@@ -69,3 +69,7 @@
         </MudMenu>
     </div>
 </div>
+@if (message is not null)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" ShowCloseIcon="true" CloseIconClicked="@(() => message = null)" Class="mb-1">@message</MudAlert>
+}

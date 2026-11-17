@@ -47,6 +47,17 @@ public sealed class CommandTests : BunitContext
     }
 
     [Fact]
+    public void NamedKeysTakeTheNamesOfTheBrowser()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var commands = cut.Instance.Commands;
+
+        commands.Add(new DiagramCommand { Name = "Mine", Keys = ["alt+enter", "shift+arrowup", "f5", "ctrl+pagedown", "alt+space", "ctrl+plus"], Execute = static _ => Task.CompletedTask });
+
+        Assert.Equal(["Alt+Enter", "Shift+ArrowUp", "F5", "Ctrl+PageDown", "Alt+Space", "Ctrl+Plus"], commands["Mine"].Keys);
+    }
+
+    [Fact]
     public async Task ChecksAndActionsCanBeChanged()
     {
         var diagram = CreateDiagram();
@@ -140,11 +151,12 @@ public sealed class CommandTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.TextCommitted, committed.Add));
         var version = diagram.Snapshot.Version;
+        var origin = TestOrigin.Of(diagram.Snapshot);
 
-        var label = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", version, 0));
-        var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", diagram.Snapshot.Version, 0));
-        var fixedSlot = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "body", "No", diagram.Snapshot.Version, 0));
-        var stale = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Old", version, fixedSlot.Rejections));
+        var label = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", origin, 0));
+        var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", TestOrigin.Of(diagram.Snapshot, "Hello"), 0));
+        var fixedSlot = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "body", "No", TestOrigin.Of(diagram.Snapshot), 0));
+        var stale = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Old", origin, fixedSlot.Rejections));
 
         Assert.True(label.Accepted);
         Assert.True(same.Accepted);
@@ -165,7 +177,7 @@ public sealed class CommandTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Dropped, dropped.Add));
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(180, 0, 100, 50), null, "From list", "ab", diagram.Snapshot.Version, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(180, 0, 100, 50), null, "From list", "ab", TestOrigin.Of(diagram.Snapshot), 0));
 
         Assert.True(result.Accepted);
         var node = (DiagramNode)diagram.Find(result.ElementId!)!;

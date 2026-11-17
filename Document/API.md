@@ -1,5 +1,7 @@
 # MusselDiagram API reference
 
+The components, `AddMusselDiagram` and what only the view uses (commands, templates, overlays, export, the viewport and the event arguments of the view) are in `MusselDiagram`. Everything else is in `MusselDiagram.Core`, which has no UI and also works on a server.
+
 The behaviour is in the [specification](SPEC.md). Coordinates and sizes are in world coordinates (CSS pixels at 100% zoom, y pointing down) unless a row says screen pixels.
 
 ## 📋 MusselDiagramView
@@ -116,6 +118,7 @@ Wraps HTML of the app so that a drag into the view starts from it.
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
 Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. On Mac, `Ctrl` matches ⌘.  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp` or `F2`, in any case. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`.  
 
 ## 🧱 Diagram
 
@@ -125,6 +128,7 @@ The model. It works without a view. Writing is not thread-safe.
 |---|---|
 | `new Diagram(schema)`, `new Diagram(schema, snapshot)` | An empty diagram, or one that starts from a snapshot, with an empty history |
 | `Schema` | The `DiagramSchema`; setting it replaces it and keeps the snapshot and the history |
+| `Options` | The `MusselDiagramOptions` the diagram and its views follow, set when the diagram is made. If not set, the registered ones once a view shows the diagram, and the built-in languages until then |
 | `Snapshot`, `Find(id)` | The current `DiagramSnapshot`, and an element of it |
 | `Add(element)`, `Delete(ids)`, `Replace(element)` | Adds, deletes, and replaces with a record made by `with` |
 | `Move(ids, offset)`, `Resize(id, bounds)` | Moves (descendants and members follow, parents stay) and resizes |
@@ -249,7 +253,7 @@ An immutable record.
 ### Routing
 
 `IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
-`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason.  
+`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason. When the router throws or is canceled, or the result is `null` or has fewer than two finite points, the link keeps the simple route as `Failed`.  
 
 ## 🖼️ Icons
 
@@ -262,7 +266,7 @@ An immutable record.
 | `DiagramIconImport.FromFiles(paths, read, prefix, map)` | Lists SVG files without reading them and returns a `DiagramIconSet`. `read(path, cancellationToken)` returns the text of a file the first time its icon is shown |
 | `DiagramIconImport.CreateNodeTypes(set, baseType, filter)`, `CreateGroupTypes(set, baseType, filter)` | A type per icon, named `prefix:ID` |
 
-`FromIconify`, `FromZip` and `FromFolder` return a `DiagramIconImportResult` with `IconSet` and `Issues` (what sanitizing removed). An icon read later is not drawn when it cannot be read, and is not reported.  
+`FromIconify`, `FromZip` and `FromFolder` return a `DiagramIconImportResult` with `IconSet` and `Issues` (icons that could not be read, and what sanitizing removed). A stream that is not an Iconify icon set or a zip file throws `DiagramException`. An icon read later is not drawn when it cannot be read, and is not reported.  
 
 ## 🔎 Issues and reasons
 
@@ -318,6 +322,7 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 ## 🖼️ Export
 
 `ExportSvgAsync` and `ExportImageAsync` return a `DiagramExportResult`: `Content` (a `Stream` at its start that the app disposes, or `null` when nothing was exported), `Error` (a `DiagramReason` of the kind `TooLarge`) and `Issues` (`ImageNotEmbedded` for images that could not be embedded).  
+Before JS is attached to the view (`data-attached`), both throw `InvalidOperationException`.  
 Tooltips, classes and styles are not exported; `data-id` and `data-type` are kept.  
 
 | `DiagramSvgExportOptions` | Default | Description |
@@ -331,11 +336,12 @@ Tooltips, classes and styles are not exported; `data-id` and `data-type` are kep
 
 ## 🌐 Languages
 
-`DiagramCultures.Texts` maps culture names (case-insensitive) to `DiagramTexts`. The empty name (`DiagramTexts.English`) and `ja` (`JapaneseLanguage.Texts`) are built in. Register before the first diagram is created.  
+`MusselDiagramOptions.Cultures` maps culture names (case-insensitive) to `DiagramTexts`. The empty name (`DiagramTexts.English`) and `ja` (`JapaneseLanguage.Texts`) are built in.  
+`services.AddMusselDiagram(options => …)` sets what applies to every diagram a view shows and registers the `MusselDiagramOptions`. A diagram with its own `Diagram.Options` follows those instead. It is optional; without it the built-in languages apply. The APIs that take no diagram (`DiagramJson.Read`, `DiagramIconImport`, `DiagramSnapshot.Validate`) use the built-in languages.  
 Each item is looked up from the culture to its parents; a missing or empty item falls back, and English is the last resort. So a language can set only some items, and the built-in texts change with `with`.  
 
 ```csharp
-DiagramCultures.Texts["ja"] = JapaneseLanguage.Texts with { NoMatches = "該当なし" };
+builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseLanguage.Texts with { NoMatches = "該当なし" });
 ```
 
 | `DiagramTexts` | Description |

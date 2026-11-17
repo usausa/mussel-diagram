@@ -44,7 +44,7 @@ public sealed partial class WorkflowPage : IDisposable
 
     protected override void OnInitialized()
     {
-        issues = WorkflowDiagrams.Check(diagram);
+        issues = diagram.Validate();
         diagram.Changed += OnDiagramChanged;
     }
 
@@ -59,7 +59,7 @@ public sealed partial class WorkflowPage : IDisposable
 
     private void OnDiagramChanged(object? sender, DiagramChangedEventArgs e)
     {
-        issues = WorkflowDiagrams.Check(diagram);
+        issues = diagram.Validate();
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -67,6 +67,7 @@ public sealed partial class WorkflowPage : IDisposable
 
     private async Task RunAsync()
     {
+        var token = stop.Token;
         var current = new WorkflowRun(diagram);
         run = current;
         current.Start();
@@ -78,7 +79,7 @@ public sealed partial class WorkflowPage : IDisposable
 #pragma warning disable BL0012
                 StateHasChanged();
 #pragma warning restore BL0012
-                await Task.Delay(StepTime, stop.Token);
+                await Task.Delay(StepTime, token);
                 current.Advance();
                 overlays = current.Overlays();
             }

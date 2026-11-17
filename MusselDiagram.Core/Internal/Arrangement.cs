@@ -75,7 +75,36 @@ internal static class Arrangement
         var selected = selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramBox>()
             .Where(static x => x is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree }).ToList();
         var ids = selected.Select(static x => x.Id).ToHashSet(StringComparer.Ordinal);
-        return [.. selected.Where(x => !snapshot.GetAncestors(x.Id).Any(a => ids.Contains(a.Id)))];
+        var covered = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var chain = new List<string>();
+        return [.. selected.Where(x => !Covered(x.ParentId))];
+
+        bool Covered(string? id)
+        {
+            chain.Clear();
+            var found = false;
+            for (var current = id; current is not null; current = snapshot.GetParent(current)?.Id)
+            {
+                if (covered.TryGetValue(current, out found))
+                {
+                    break;
+                }
+
+                chain.Add(current);
+                if (ids.Contains(current))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            foreach (var visited in chain)
+            {
+                covered[visited] = found;
+            }
+
+            return found;
+        }
     }
 
     private static double Center(DiagramBox box, bool horizontal) => horizontal ? box.Bounds.Center.X : box.Bounds.Center.Y;

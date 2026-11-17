@@ -6,7 +6,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 
@@ -200,6 +200,31 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 
         await Expect(node).ToHaveAttributeAsync("transform", "translate(286,186)");
         await Expect(node).Not.ToHaveAttributeAsync("data-pending", string.Empty);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task HoldingSpaceKeepsThePageInPlace(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        await ClickAsync(700, 470);
+        await opened.Page.EvaluateAsync(
+            """
+            () => {
+                window.spaces = [];
+                window.addEventListener('keydown', e => {
+                    if (e.code === 'Space') {
+                        window.spaces.push(`${e.repeat ? 'repeat' : 'first'}:${e.defaultPrevented}`);
+                    }
+                });
+            }
+            """);
+
+        await opened.Page.Keyboard.DownAsync("Space");
+        await opened.Page.Keyboard.DownAsync("Space");
+        await opened.Page.Keyboard.UpAsync("Space");
+
+        Assert.Equal(["first:true", "repeat:true"], await opened.Page.EvaluateAsync<string[]>("() => window.spaces"));
     }
 
     [Theory]

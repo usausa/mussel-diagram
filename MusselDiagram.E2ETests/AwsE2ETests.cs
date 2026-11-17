@@ -8,7 +8,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 
@@ -41,6 +41,46 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
         await Expect(opened.Page.Locator(".mussel-diagram-palette-item")).ToHaveCountAsync(2);
         await Expect(opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='aws:Res_Amazon-EC2_Instance']")).ToHaveTextAsync("Amazon EC2 Instance");
         await Expect(Symbols(view)).ToHaveCountAsync(6);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task AnUnreadablePackageShowsAMessage(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+
+        await opened.Page.Locator("[data-action='import']").SetInputFilesAsync(new FilePayload { Name = "broken.zip", MimeType = "application/zip", Buffer = "not a zip"u8.ToArray() });
+
+        var message = opened.Page.GetByText("zip ファイルとして読めませんでした。");
+        await Expect(message).ToBeVisibleAsync();
+        await Expect(opened.Page.GetByText("このページでエラーが起きました。")).ToHaveCountAsync(0);
+        await Expect(opened.View).ToBeVisibleAsync();
+        await opened.Page.Locator(".diagram-sidebar .mud-alert-close button").ClickAsync();
+        await Expect(message).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ATooLargePackageShowsTheLimit(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.zip");
+        try
+        {
+            using (var handle = File.OpenHandle(path, FileMode.CreateNew, FileAccess.Write))
+            {
+                RandomAccess.SetLength(handle, (256L * 1024 * 1024) + 1);
+            }
+
+            await opened.Page.Locator("[data-action='import']").SetInputFilesAsync(path);
+
+            await Expect(opened.Page.GetByText("256 MB を超える zip は読み込めません。")).ToBeVisibleAsync();
+            await Expect(opened.Page.GetByText("このページでエラーが起きました。")).ToHaveCountAsync(0);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Theory]
@@ -128,6 +168,26 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
         await page.Mouse.UpAsync();
 
         await Expect(links).ToHaveCountAsync(6);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task OverlayGroupsFollowWhileTheyAreDragged(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+        var view = opened.View;
+        var page = opened.Page;
+        await Expect(view.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).Not.ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+        var group = view.Locator("g.mussel-diagram-group[data-id='scaling']");
+        var before = await group.GetAttributeAsync("transform") ?? string.Empty;
+        var (labelX, labelY) = await CenterAsync(group.Locator("> text.mussel-diagram-label").First);
+
+        await page.Mouse.MoveAsync(labelX, labelY);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(labelX + 40, labelY + 30, new() { Steps = 8 });
+
+        await Expect(group).Not.ToHaveAttributeAsync("transform", before);
+        await page.Mouse.UpAsync();
     }
 
     [Theory]

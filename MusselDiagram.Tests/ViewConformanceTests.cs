@@ -49,7 +49,7 @@ public sealed class ViewConformanceTests : BunitContext
             .Add(p => p.Reconnecting, reconnecting.Add)
             .Add(p => p.Reconnected, reconnected.Add));
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Target, new DiagramLinkEnd("p3", "in"), diagram.Snapshot.Version, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("l", DiagramLinkEndSide.Target, new DiagramLinkEnd("p3", "in"), TestOrigin.Of(diagram.Snapshot), 0));
 
         Assert.True(result.Accepted);
         var before = Assert.Single(reconnecting);
@@ -67,7 +67,7 @@ public sealed class ViewConformanceTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Connected, connected.Add));
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 400, 120, 60), null, new DiagramLinkEnd("p3", "out"), "arrow", diagram.Snapshot.Version, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("process", new DiagramRect(900, 400, 120, 60), null, new DiagramLinkEnd("p3", "out"), "arrow", 0));
 
         Assert.True(result.Accepted);
         Assert.Equal(Assert.Single(connected).PlacedElement!.Id, result.ElementId);
@@ -132,8 +132,8 @@ public sealed class ViewConformanceTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.CommitRejected, rejected.Add));
 
-        var moved = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(-400, 100), true, "x", null, diagram.Snapshot.Version, 0));
-        var dropped = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(20, 20, 80, 40), "x", null, null, diagram.Snapshot.Version, moved.Rejections));
+        var moved = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(-400, 100), true, "x", null, TestOrigin.Of(diagram.Snapshot), 0));
+        var dropped = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(20, 20, 80, 40), "x", null, null, TestOrigin.Of(diagram.Snapshot), moved.Rejections));
 
         Assert.False(moved.Accepted);
         Assert.False(dropped.Accepted);
@@ -147,7 +147,7 @@ public sealed class ViewConformanceTests : BunitContext
         var diagram = CreateDiagram();
         diagram.ClearHistory();
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
-        await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, diagram.Snapshot.Version, 0));
+        await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0));
         await cut.InvokeAsync(() => cut.Instance.SelectAsync(["p3"]).AsTask());
 
         await cut.InvokeAsync(() => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Undo));
@@ -177,10 +177,10 @@ public sealed class ViewConformanceTests : BunitContext
         var second = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moved, _ => order.Add("second")));
-        var version = diagram.Snapshot.Version;
+        var origin = TestOrigin.Of(diagram.Snapshot);
 
-        var waiting = first.InvokeAsync(() => first.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, version, 0));
-        var queued = second.InvokeAsync(() => second.Instance.CommitMoveAsync(["p3"], new DiagramPoint(10, 0), false, null, null, version, 0));
+        var waiting = first.InvokeAsync(() => first.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, origin, 0));
+        var queued = second.InvokeAsync(() => second.Instance.CommitMoveAsync(["p3"], new DiagramPoint(10, 0), false, null, null, origin, 0));
 
         Assert.False(queued.IsCompleted);
         release.SetResult();
@@ -201,7 +201,7 @@ public sealed class ViewConformanceTests : BunitContext
             .Add(p => p.Moving, _ => seen = views[0].SelectedIds));
         views.Add(cut.Instance);
 
-        await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, diagram.Snapshot.Version, 0, ["p1", "p2", "settings"]));
+        await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(diagram.Snapshot), 0, ["p1", "p2", "settings"]));
 
         Assert.Equal(["p1", "p2"], seen);
         Assert.Equal(["p1", "p2"], cut.Instance.SelectedIds);

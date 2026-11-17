@@ -1,12 +1,13 @@
 # MusselDiagram - Diagram editor for Blazor
 
 [![NuGet](https://img.shields.io/nuget/v/MusselDiagram.svg)](https://www.nuget.org/packages/MusselDiagram/)
+[![NuGet](https://img.shields.io/nuget/v/MusselDiagram.Core.svg?label=MusselDiagram.Core)](https://www.nuget.org/packages/MusselDiagram.Core/)
 [![Demo](https://img.shields.io/badge/demo-WebAssembly-blue.svg)](https://usausa.github.io/mussel-diagram/)
 
 ## 🐚 What is this?
 
 A diagram editor for Blazor, made to be built into applications.  
-Types and rules decide what can be placed where and what can be connected, and a model without UI checks and saves the diagram on servers too.  
+Types and rules decide what can be placed where and what can be connected, and the model without UI (`MusselDiagram.Core`) checks and saves the diagram on servers too.  
 
 | 🧩 Editing | 🏷️ States and issues | 🌙 Dark theme |
 |:-:|:-:|:-:|
@@ -20,7 +21,7 @@ Link the stylesheet in the page head.
 <link rel="stylesheet" href="_content/MusselDiagram/MusselDiagram.css" />
 ```
 
-Register the types, create a `Diagram` and show it in an interactive component.  
+Register the types, create a `Diagram` and show it in an interactive component. The view fills the height of its parent.  
 
 ```razor
 @page "/"
@@ -30,7 +31,9 @@ Register the types, create a `Diagram` and show it in an interactive component.
 {
     <MusselDiagramPalette View="view" />
 }
-<MusselDiagramView @ref="view" Diagram="diagram" Connected="OnConnected" />
+<div style="height: 640px">
+    <MusselDiagramView @ref="view" Diagram="diagram" Connected="OnConnected" />
+</div>
 
 @code {
     private static readonly DiagramSchema Schema = new()
@@ -72,7 +75,7 @@ Register the types, create a `Diagram` and show it in an interactive component.
 ```
 
 The diagram works without a view as well: `diagram.Validate()` checks the whole diagram, and `diagram.ToJson()` and `diagram.LoadJson(json)` save and load it.  
-The `Example` project shows every feature on Server and WebAssembly: a sample of shapes, groups and lines, a large office network, and sample apps for workflows, ER diagrams, device monitoring, electrical single-line diagrams and AWS architecture diagrams.  
+The `Example` project shows the main features on Server and WebAssembly: a sample of shapes, groups and lines, a large office network, and sample apps for workflows, ER diagrams, device monitoring, electrical single-line diagrams and AWS architecture diagrams.  
 
 ## 🎨 Look
 

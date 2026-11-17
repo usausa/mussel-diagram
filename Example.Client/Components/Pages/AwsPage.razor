@@ -7,6 +7,10 @@
         <div class="diagram-actions">
             <InputFile OnChange="ImportAsync" accept=".zip" class="diagram-import" data-action="import" />
         </div>
+        @if (message is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" ShowCloseIcon="true" CloseIconClicked="@(() => message = null)" Class="my-2">@message</MudAlert>
+        }
         @if (view is not null)
         {
             <MusselDiagramPalette View="view" />

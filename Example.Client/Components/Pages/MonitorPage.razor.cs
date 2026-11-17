@@ -48,8 +48,9 @@ public sealed partial class MonitorPage : IDisposable
     {
         if (firstRender && (view is not null))
         {
+            var token = stop.Token;
             await view.ZoomToFitAsync();
-            _ = RunAsync();
+            _ = RunAsync(token);
         }
     }
 
@@ -60,12 +61,12 @@ public sealed partial class MonitorPage : IDisposable
         _ => "正常"
     };
 
-    private async Task RunAsync()
+    private async Task RunAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1.5));
         try
         {
-            while (await timer.WaitForNextTickAsync(stop.Token))
+            while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 overlays = simulation.Next();
                 StateHasChanged();

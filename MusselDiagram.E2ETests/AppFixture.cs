@@ -100,7 +100,7 @@ public sealed partial class AppFixture : IAsyncLifetime
         }
     }
 
-    public async Task<DiagramPage> OpenAsync(string path, string mode, bool touch = false)
+    public async Task<SamplePage> OpenAsync(string path, string mode, bool touch = false)
     {
         if (browser is null)
         {
@@ -108,7 +108,7 @@ public sealed partial class AppFixture : IAsyncLifetime
         }
 
         var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = touch }).ConfigureAwait(false);
-        var page = new DiagramPage(context, await context.NewPageAsync().ConfigureAwait(false), Log);
+        var page = new SamplePage(context, await context.NewPageAsync().ConfigureAwait(false), Log);
         page.Watch();
         var response = await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
         page.InitialHtml = response is null ? string.Empty : await response.TextAsync().ConfigureAwait(false);

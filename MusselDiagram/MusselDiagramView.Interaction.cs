@@ -9,13 +9,9 @@ using MusselDiagram.Internal;
 
 public sealed partial class MusselDiagramView
 {
-    private const int HistoryLimit = 64;
-
     private static readonly ConditionalWeakTable<Diagram, SemaphoreSlim> Gates = [];
 
     private static readonly AsyncLocal<GateTurn?> CurrentTurn = new();
-
-    private readonly Dictionary<long, DiagramSnapshot> history = [];
 
     private readonly List<ScriptChanges> pendingChanges = [];
 
@@ -82,7 +78,11 @@ public sealed partial class MusselDiagramView
         }
         catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
         {
-            Report(ex);
+            if (!IsDisposed)
+            {
+                await DispatchExceptionAsync(ex).ConfigureAwait(true);
+            }
+
             throw;
         }
     }
@@ -95,14 +95,18 @@ public sealed partial class MusselDiagramView
         }
         catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
         {
-            Report(ex);
+            if (!IsDisposed)
+            {
+                await DispatchExceptionAsync(ex).ConfigureAwait(true);
+            }
+
             throw;
         }
     }
 
     internal void Report(Exception exception)
     {
-        if (!disposed)
+        if (!IsDisposed)
         {
             _ = DispatchExceptionAsync(exception);
         }
@@ -188,16 +192,9 @@ public sealed partial class MusselDiagramView
         await RefreshCommandsAsync().ConfigureAwait(true);
     }
 
-    private void Remember(DiagramSnapshot snapshot)
-    {
-        history[snapshot.Version] = snapshot;
-        history.Remove(snapshot.Version - HistoryLimit);
-    }
-
     private void OnDiagramChanged(object? sender, DiagramChangedEventArgs e)
     {
-        Remember(e.After);
-        if (e.IsReset)
+        if (e.IsReset || !ScriptTables.KeepsOrder(e))
         {
             pendingChanges.Clear();
             tableChanged = true;
@@ -241,7 +238,7 @@ public sealed partial class MusselDiagramView
             foreach (var change in changes)
             {
                 await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(change)).ConfigureAwait(true);
-                if (disposed)
+                if (IsDisposed)
                 {
                     return;
                 }

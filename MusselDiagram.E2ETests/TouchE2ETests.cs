@@ -7,7 +7,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     private ICDPSession? session;
 
@@ -77,7 +77,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
 
         await TouchAsync("touchStart", (250, 300));
-        await Task.Delay(320, TestContext.Current.CancellationToken);
+        await Task.Delay(280, TestContext.Current.CancellationToken);
         await TouchAsync("touchEnd");
 
         await Expect(selected).ToHaveCountAsync(1);
@@ -206,6 +206,34 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-tool"));
         await Expect(arrows).ToHaveCountAsync(0);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='diamond'][data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task PanningAndPinchingKeepTheEditorOpen(string mode)
+    {
+        await OpenAsync(mode);
+        var editor = opened!.View.Locator("textarea.mussel-diagram-text-editor");
+        var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        await opened.Page.Mouse.DblClickAsync((float)origin.X + 250, (float)origin.Y + 204);
+        await Expect(editor).ToHaveValueAsync("星 1");
+
+        await TouchAsync("touchStart", (700, 470));
+        await MoveAsync([(700, 470)], [(640, 470)]);
+        await TouchAsync("touchEnd");
+        await Expect(viewport).ToHaveAttributeAsync("transform", new Regex(@"^translate\(-[1-9]\d*,0\) scale\(1\)$"));
+        await Expect(editor).ToBeFocusedAsync();
+
+        await TouchAsync("touchStart", (600, 400), (700, 400));
+        await MoveAsync([(600, 400), (700, 400)], [(550, 400), (750, 400)]);
+        await TouchAsync("touchEnd");
+        await Expect(viewport).Not.ToHaveAttributeAsync("transform", new Regex(@"scale\(1\)$"));
+        await Expect(editor).ToBeFocusedAsync();
+        await opened.Page.Keyboard.PressAsync("End");
+        await opened.Page.Keyboard.TypeAsync("D");
+        await opened.Page.Keyboard.PressAsync("Enter");
+
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1D']")).ToHaveCountAsync(1);
     }
 
     private async Task OpenAsync(string mode, bool pan = false)

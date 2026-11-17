@@ -62,6 +62,21 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void UndoReportsElementsThatSkippedChangesBroughtIn()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Node("n", 10, 10, "g"), Skip);
+        var events = new List<DiagramChangedEventArgs>();
+        diagram.Changed += (_, e) => events.Add(e);
+
+        diagram.Undo();
+
+        Assert.Empty(diagram.Snapshot.Elements);
+        Assert.Equal(["g", "n"], events[^1].Deleted.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void SkipChangesReachEveryStep()
     {
         var diagram = new Diagram(Schema);
@@ -162,6 +177,33 @@ public sealed class HistoryTests
         Assert.False(diagram.CanUndo);
         diagram.ClearHistory();
         Assert.False(diagram.CanRedo);
+    }
+
+    [Fact]
+    public void RedoKeepsTheUndoLimit()
+    {
+        var diagram = new Diagram(Schema);
+        foreach (var id in new[] { "a", "b", "c", "d" })
+        {
+            diagram.Add(Node(id, 0, 0));
+        }
+
+        while (diagram.CanUndo)
+        {
+            diagram.Undo();
+        }
+
+        diagram.UndoLimit = 2;
+        while (diagram.CanRedo)
+        {
+            diagram.Redo();
+        }
+
+        diagram.Undo();
+        diagram.Undo();
+
+        Assert.False(diagram.CanUndo);
+        Assert.Equal(["a", "b"], diagram.Snapshot.Nodes.Select(x => x.Id));
     }
 
     [Fact]

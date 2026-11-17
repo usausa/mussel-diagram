@@ -45,6 +45,8 @@ public sealed class DiagramWriteTests
         Assert.Throws<DiagramException>(() => diagram.Add(Group("g", 0, 0, 10, 10) with { Kind = DiagramGroupKind.Overlay }));
         Assert.Throws<DiagramException>(() => diagram.Add(Group("g", 0, 0, 10, 10) with { MemberIds = ["a"] }));
         Assert.Throws<DiagramException>(() => diagram.Add(new DiagramGroup { Id = "g", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["vpc", "asg"] }));
+        Assert.Throws<DiagramException>(() => diagram.Add(new DiagramGroup { Id = "g", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["a", "vpc", "a"] }));
+        Assert.Throws<DiagramException>(() => diagram.Replace((DiagramGroup)diagram.Find("asg")! with { MemberIds = ["a", "a"] }));
         Assert.Throws<DiagramException>(() => diagram.Add(Link("l", "a", "missing")));
         Assert.Throws<DiagramException>(() => diagram.Add(Link("l", "a", "a", sourcePort: "none")));
         Assert.Throws<DiagramException>(() => diagram.Replace(Group("vpc", 0, 0, 400, 300, "vpc")));
@@ -52,6 +54,19 @@ public sealed class DiagramWriteTests
         Assert.Throws<DiagramException>(() => diagram.Replace(Node("missing", 0, 0)));
 
         Assert.Same(before, diagram.Snapshot);
+    }
+
+    [Fact]
+    public void MovesThatLeaveTheFiniteNumbersThrow()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("far", 1e308, 0));
+        var before = diagram.Snapshot;
+
+        Assert.Throws<DiagramException>(() => diagram.Move(["far"], new DiagramPoint(1e308, 0)));
+
+        Assert.Same(before, diagram.Snapshot);
+        Assert.NotNull(diagram.ToJson());
     }
 
     [Fact]

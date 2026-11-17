@@ -1,6 +1,7 @@
 namespace MusselDiagram;
 
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 
 using MusselDiagram.Internal;
 
@@ -161,9 +162,33 @@ public sealed class DiagramSnapshot
         return [.. SharedItems.Where(x => !used.Contains(x.Id))];
     }
 
-    public ImmutableArray<DiagramIssue> Validate(DiagramSchema schema) => DiagramValidator.Validate(this, SchemaIndex.For(schema));
+    public ImmutableArray<DiagramIssue> Validate(DiagramSchema schema) => DiagramValidator.Validate(this, SchemaIndex.For(schema), MusselDiagramOptions.Default);
 
     internal DiagramSnapshot WithVersion(long version) => new(version, Elements, Nodes, Groups, Links, SharedItems, CachedObstacles);
+
+    internal bool TryGetChildren(string id, [NotNullWhen(true)] out List<DiagramBox>? children) =>
+        Index.ChildrenByParent.TryGetValue(id, out children);
+
+    internal void AddDescendants(string id, HashSet<string> into)
+    {
+        var stack = new Stack<string>();
+        stack.Push(id);
+        while (stack.Count > 0)
+        {
+            if (!Index.ChildrenByParent.TryGetValue(stack.Pop(), out var children))
+            {
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                if (into.Add(child.Id))
+                {
+                    stack.Push(child.Id);
+                }
+            }
+        }
+    }
 
     private IEnumerable<DiagramElement> AllElements() =>
         Groups.Cast<DiagramElement>().Concat(Nodes).Concat(Links).Concat(SharedItems);

@@ -2,7 +2,7 @@ namespace MusselDiagram.E2ETests;
 
 using System.Collections.Concurrent;
 
-public sealed class DiagramPage(IBrowserContext context, IPage page, Func<string> appLog) : IAsyncDisposable
+public sealed class SamplePage(IBrowserContext context, IPage page, Func<string> appLog) : IAsyncDisposable
 {
     private readonly ConcurrentQueue<string> events = new();
 

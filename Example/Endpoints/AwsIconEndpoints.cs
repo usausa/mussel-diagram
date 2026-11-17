@@ -1,5 +1,7 @@
 namespace Example.Endpoints;
 
+using Example.Application;
+
 public static class AwsIconEndpoints
 {
     public static void MapAwsIconEndpoints(this WebApplication app)

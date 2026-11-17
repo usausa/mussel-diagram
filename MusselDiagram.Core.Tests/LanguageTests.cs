@@ -15,56 +15,73 @@ public sealed class LanguageTests
     [Fact]
     public void MessagesFollowTheUserInterfaceCulture()
     {
+        var options = new MusselDiagramOptions();
         var english = CreateDiagram().Validate().Single();
         var japanese = InCulture(Japanese, static () => CreateDiagram().Validate().Single());
 
         Assert.Equal("The type 'legacy' is not registered.", english.Message);
         Assert.Equal("型「legacy」は登録されていません", japanese.Message);
         Assert.Equal(english.Arguments, japanese.Arguments);
-        Assert.Equal("ここにはつなぐ所がありません", InCulture(Japanese, static () => DiagramCultures.Reason(DiagramReasonKind.NoConnectionPoint)));
-        Assert.Equal("最前面へ移動", InCulture(Japanese, static () => DiagramCultures.Command("BringToFront")));
-        Assert.Equal("前面へ移動", InCulture(Japanese, static () => DiagramCultures.Command("BringForward")));
-        Assert.Equal("Mine", InCulture(Japanese, static () => DiagramCultures.Command("Mine")));
+        Assert.Equal("ここにはつなぐ所がありません", InCulture(Japanese, () => options.Reason(DiagramReasonKind.NoConnectionPoint)));
+        Assert.Equal("最前面へ移動", InCulture(Japanese, () => options.Command("BringToFront")));
+        Assert.Equal("前面へ移動", InCulture(Japanese, () => options.Command("BringForward")));
+        Assert.Equal("Mine", InCulture(Japanese, () => options.Command("Mine")));
     }
 
     [Fact]
     public void EachTextIsSearchedFromTheCultureToItsParents()
     {
-        var culture = Japanese;
-        var name = culture.Name;
-        DiagramCultures.Texts[name] = new DiagramTexts
+        var options = new MusselDiagramOptions
         {
-            Reasons = new Dictionary<DiagramReasonKind, string> { [DiagramReasonKind.Cycle] = "循環はできません", [DiagramReasonKind.Limit] = string.Empty },
-            NoMatches = string.Empty
+            Cultures =
+            {
+                [Japanese.Name] = new DiagramTexts
+                {
+                    Reasons = new Dictionary<DiagramReasonKind, string> { [DiagramReasonKind.Cycle] = "循環はできません", [DiagramReasonKind.Limit] = string.Empty },
+                    NoMatches = string.Empty
+                }
+            }
         };
-        try
-        {
-            Assert.Equal("循環はできません", InCulture(culture, static () => DiagramCultures.Reason(DiagramReasonKind.Cycle)));
-            Assert.Equal(JapaneseLanguage.Texts.Reasons[DiagramReasonKind.Limit], InCulture(culture, static () => DiagramCultures.Reason(DiagramReasonKind.Limit)));
-            Assert.Equal(JapaneseLanguage.Texts.NoMatches, InCulture(culture, static () => DiagramCultures.NoMatches));
-            Assert.Equal(DiagramTexts.English.Reasons[DiagramReasonKind.Cycle], DiagramCultures.Reason(DiagramReasonKind.Cycle));
-        }
-        finally
-        {
-            DiagramCultures.Texts.Remove(name);
-        }
+
+        Assert.Equal("循環はできません", InCulture(Japanese, () => options.Reason(DiagramReasonKind.Cycle)));
+        Assert.Equal(JapaneseLanguage.Texts.Reasons[DiagramReasonKind.Limit], InCulture(Japanese, () => options.Reason(DiagramReasonKind.Limit)));
+        Assert.Equal(JapaneseLanguage.Texts.NoMatches, InCulture(Japanese, () => options.NoMatches));
+        Assert.Equal(DiagramTexts.English.Reasons[DiagramReasonKind.Cycle], options.Reason(DiagramReasonKind.Cycle));
     }
 
     [Fact]
     public void LanguagesWithoutATextFallBackToEnglish()
     {
+        var options = new MusselDiagramOptions { Cultures = { ["fr"] = new DiagramTexts { SearchPlaceholder = "Rechercher" } } };
         var culture = CultureInfo.GetCultureInfo("fr-FR");
-        DiagramCultures.Texts["fr"] = new DiagramTexts { SearchPlaceholder = "Rechercher" };
-        try
+
+        Assert.Equal("Rechercher", InCulture(culture, () => options.SearchPlaceholder));
+        Assert.Equal("No matches", InCulture(culture, () => options.NoMatches));
+        Assert.Equal("The overlay group has no members.", InCulture(culture, () => options.Issue(DiagramIssueKind.NoMembers, [])));
+    }
+
+    [Fact]
+    public void TheOptionsOfADiagramChooseItsTexts()
+    {
+        var options = new MusselDiagramOptions
         {
-            Assert.Equal("Rechercher", InCulture(culture, static () => DiagramCultures.SearchPlaceholder));
-            Assert.Equal("No matches", InCulture(culture, static () => DiagramCultures.NoMatches));
-            Assert.Equal("The overlay group has no members.", InCulture(culture, static () => DiagramCultures.Issue(DiagramIssueKind.NoMembers, [])));
-        }
-        finally
-        {
-            DiagramCultures.Texts.Remove("fr");
-        }
+            Cultures =
+            {
+                [string.Empty] = new DiagramTexts
+                {
+                    Issues = new Dictionary<DiagramIssueKind, string> { [DiagramIssueKind.UnregisteredType] = "No type {0}", [DiagramIssueKind.InvalidParent] = "Parent fixed" }
+                }
+            }
+        };
+        const string json = """{ "format": "mussel-diagram", "version": 1, "nodes": [{ "id": "a", "type": "server", "x": 0, "y": 0, "width": 40, "height": 40, "parent": "nowhere" }] }""";
+
+        var own = CreateDiagram(options);
+        var loaded = new Diagram(Schema) { Options = options };
+
+        Assert.Equal("No type legacy", own.Validate().Single().Message);
+        Assert.Equal("Parent fixed", loaded.LoadJson(json).Single().Message);
+        Assert.Equal("The type 'legacy' is not registered.", CreateDiagram().Validate().Single().Message);
+        Assert.Equal("The type 'legacy' is not registered.", own.Snapshot.Validate(Schema).Single().Message);
     }
 
     [Fact]
@@ -85,9 +102,9 @@ public sealed class LanguageTests
         Assert.Equal(DiagramTexts.English.Commands.Keys.Order(StringComparer.Ordinal), JapaneseLanguage.Texts.Commands.Keys.Order(StringComparer.Ordinal));
     }
 
-    private static Diagram CreateDiagram()
+    private static Diagram CreateDiagram(MusselDiagramOptions? options = null)
     {
-        var diagram = new Diagram(Schema);
+        var diagram = new Diagram(Schema) { Options = options };
         diagram.Add(new DiagramNode { Id = "old", Type = "legacy", Bounds = new DiagramRect(0, 0, 40, 40) });
         return diagram;
     }

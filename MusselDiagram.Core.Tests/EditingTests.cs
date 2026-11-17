@@ -92,6 +92,19 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void LinksToACopiedOverlayGroupAreCopied()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(new DiagramGroup { Id = "o", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["a"] });
+        diagram.Connect(Link("ao", "a", "o"));
+
+        var content = Clipboard.Copy(diagram.Snapshot, diagram.Index, ["a", "o"])!;
+
+        Assert.Equal(["a", "o", "ao"], content.Elements.Select(static x => x.Id));
+    }
+
+    [Fact]
     public void PasteGivesNewIdsAndDecidesTheParents()
     {
         var diagram = new Diagram(Schema);
@@ -139,6 +152,24 @@ public sealed class EditingTests
 
         Assert.Null(result);
         Assert.Equal(DiagramReasonKind.Count, reason!.Kind);
+    }
+
+    [Fact]
+    public void TryingAPasteDoesNotRouteTheLinks()
+    {
+        var router = new CountingRouter();
+        var diagram = new Diagram(Schema with { Router = router });
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 200, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        var content = Clipboard.Copy(diagram.Snapshot, diagram.Index, ["a", "b"])!;
+        var asked = router.Count;
+
+        var (result, reason) = Clipboard.Paste(diagram.Snapshot, diagram.Index, content, new DiagramPoint(20, 20));
+
+        Assert.Null(reason);
+        Assert.Equal(3, result!.Elements.Length);
+        Assert.Equal(asked, router.Count);
     }
 
     [Fact]
@@ -230,4 +261,15 @@ public sealed class EditingTests
     private static string[] Ids<T>(IEnumerable<T> elements)
         where T : DiagramElement =>
         [.. elements.Select(static x => x.Id)];
+
+    private sealed class CountingRouter : IDiagramRouter
+    {
+        public int Count { get; private set; }
+
+        public ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken)
+        {
+            Count++;
+            return ValueTask.FromResult(new DiagramRouteResult { Points = [request.Source.Position, request.Target.Position] });
+        }
+    }
 }

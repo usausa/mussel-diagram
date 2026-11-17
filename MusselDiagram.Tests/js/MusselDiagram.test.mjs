@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
-    keyName, nextZoom, stackOffsets,
+    keyName, nextZoom, stackOffsets, restore,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -135,8 +135,12 @@ test('the table knows descendants, moving sets and links', () => {
     });
     assert.deepEqual(table.descendants('vpc').sort(), ['a', 'subnet']);
     assert.deepEqual(table.ancestors('a'), ['subnet', 'vpc']);
+    assert.equal(table.depth('a', new Map()), 2);
+    assert.deepEqual(table.outermost(['a', 'subnet', 'b'], new Set(['subnet'])), ['subnet', 'b']);
+    assert.deepEqual([...table.ancestorsOf(['a', 'subnet'])].sort(), ['subnet', 'vpc']);
     assert.deepEqual([...table.movingSet(['subnet'])].sort(), ['a', 'subnet']);
-    assert.deepEqual([...table.movingSet(['asg'])], ['b']);
+    assert.deepEqual([...table.movingSet(['asg'])], ['b', 'asg']);
+    assert.deepEqual([...table.movingSet(['a'])], ['a']);
     assert.deepEqual([...table.linksOf(['a'])].map((l) => l.id), ['ab']);
     table.apply({ version: 4, boxes: [box('c', 0, 0)], links: [], removed: ['ab'] });
     assert.equal(table.version, 4);
@@ -144,13 +148,25 @@ test('the table knows descendants, moving sets and links', () => {
     assert.ok(table.boxes.has('c'));
 });
 
+test('deep trees are walked once per call', { timeout: 10000 }, () => {
+    const count = 50000;
+    const boxes = Array.from({ length: count }, (_, i) => ({ ...box(`g${i}`, 0, 0), kind: 'group', ...(i > 0 ? { parent: `g${i - 1}` } : {}) }));
+    const table = new DiagramTable({ version: 1, boxes, links: [] });
+    const ids = boxes.map((b) => b.id).reverse();
+    const depths = new Map();
+    assert.equal(ids.reduce((max, id) => Math.max(max, table.depth(id, depths)), 0), count - 1);
+    assert.deepEqual(table.outermost(ids, new Set(ids)), ['g0']);
+    assert.equal(table.ancestorsOf(ids).size, count - 1);
+});
+
 test('links are framed by their ends and overlay groups by their members', () => {
     const table = new DiagramTable({
         version: 1,
         boxes: [box('a', 0, 0), box('b', 500, 100), { ...box('asg', 0, 0), kind: 'overlay', members: ['b'] }],
-        links: [{ id: 'ab', source: 'a', target: 'b' }],
+        links: [{ id: 'ab', source: 'a', target: 'b' }, { id: 'ag', source: 'a', target: 'asg' }],
     });
     assert.deepEqual(elementBounds(table, ['ab']), { x: 0, y: 0, width: 600, height: 150 });
+    assert.deepEqual(elementBounds(table, ['ag']), { x: 0, y: 0, width: 600, height: 150 });
     assert.deepEqual(elementBounds(table, ['asg']), { x: 500, y: 100, width: 100, height: 50 });
     assert.equal(elementBounds(table, ['missing']), null);
 });
@@ -277,4 +293,22 @@ test('quick add places the element beside the connection point', () => {
     const origin = { x: 100, y: 100, w: 100, h: 50 };
     assert.deepEqual(placeBeside(origin, 'right', { w: 40, h: 20 }, 80), { x: 280, y: 115, w: 40, h: 20 });
     assert.deepEqual(placeBeside(origin, 'top', { w: 40, h: 20 }, 80, 130), { x: 110, y: 0, w: 40, h: 20 });
+});
+
+test('reverting keeps the values that changed after the commit', () => {
+    const element = (transform) => ({
+        attributes: new Map([['transform', transform]]),
+        getAttribute(name) { return this.attributes.get(name) ?? null; },
+        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    });
+    const moved = element('translate(50,0)');
+    const rendered = element('translate(80,0)');
+    const saved = new Map([[moved, new Map([['transform', 'translate(0,0)']])], [rendered, new Map([['transform', 'translate(0,0)']])]]);
+    const written = new Map([[moved, new Map([['transform', 'translate(50,0)']])], [rendered, new Map([['transform', 'translate(50,0)']])]]);
+
+    restore(saved, written);
+
+    assert.equal(moved.getAttribute('transform'), 'translate(0,0)');
+    assert.equal(rendered.getAttribute('transform'), 'translate(80,0)');
 });

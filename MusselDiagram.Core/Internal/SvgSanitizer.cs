@@ -1,5 +1,6 @@
 namespace MusselDiagram.Internal;
 
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -14,6 +15,8 @@ internal sealed record IconContent(string Body, double Width, double Height);
 internal static partial class SvgSanitizer
 {
     public const int MaxFileLength = 4 * 1024 * 1024;
+
+    private const int MaxDepth = 256;
 
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
 
@@ -44,6 +47,8 @@ internal static partial class SvgSanitizer
     };
 
     private static readonly string[] ForbiddenStyle = ["expression", "javascript:", "@import", "behavior", "-moz-binding"];
+
+    private static readonly SearchValues<string> HiddenUrls = SearchValues.Create(["\\", "image-set(", "image(", "src("], StringComparison.OrdinalIgnoreCase);
 
     public static SanitizedSvg? FromFile(string text, string idPrefix)
     {
@@ -117,7 +122,8 @@ internal static partial class SvgSanitizer
         try
         {
             using var reader = XmlReader.Create(new StringReader(text), settings);
-            var root = XElement.Load(reader);
+            using var shallow = new ShallowReader(reader, MaxDepth);
+            var root = XElement.Load(shallow);
             return string.Equals(root.Name.LocalName, "svg", StringComparison.Ordinal) ? root : null;
         }
         catch (XmlException)
@@ -177,16 +183,16 @@ internal static partial class SvgSanitizer
         var builder = new StringBuilder();
         foreach (var child in root.Elements())
         {
-            Write(child, builder, ids, removed, rejected);
+            Write(child, 1, builder, ids, removed, rejected);
         }
 
         return new SanitizedSvg(builder.ToString(), 0, 0, removed, rejected);
     }
 
-    private static void Write(XElement element, StringBuilder builder, Dictionary<string, string> ids, List<string> removed, List<string> rejected)
+    private static void Write(XElement element, int depth, StringBuilder builder, Dictionary<string, string> ids, List<string> removed, List<string> rejected)
     {
         var name = element.Name.LocalName;
-        if ((element.Name.Namespace != XNamespace.None) && (element.Name.Namespace != (XNamespace)"http://www.w3.org/2000/svg"))
+        if ((depth > MaxDepth) || ((element.Name.Namespace != XNamespace.None) && (element.Name.Namespace != (XNamespace)"http://www.w3.org/2000/svg")))
         {
             removed.Add(name);
             return;
@@ -240,7 +246,7 @@ internal static partial class SvgSanitizer
             switch (node)
             {
                 case XElement child:
-                    Write(child, builder, ids, removed, rejected);
+                    Write(child, depth + 1, builder, ids, removed, rejected);
                     break;
                 case XText text when name is "text" or "tspan":
                     builder.Append(Escape(text.Value));
@@ -273,6 +279,12 @@ internal static partial class SvgSanitizer
                 return CleanStyle(value, ids, rejected);
         }
 
+        if (value.AsSpan().ContainsAny(HiddenUrls))
+        {
+            rejected.Add(value);
+            return null;
+        }
+
         var cleaned = CleanUrls(value, ids, rejected, out var ok);
         return ok ? cleaned : null;
     }
@@ -282,7 +294,7 @@ internal static partial class SvgSanitizer
         var kept = new List<string>();
         foreach (var declaration in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            if (ForbiddenStyle.Any(x => declaration.Contains(x, StringComparison.OrdinalIgnoreCase)))
+            if (ForbiddenStyle.Any(x => declaration.Contains(x, StringComparison.OrdinalIgnoreCase)) || declaration.AsSpan().ContainsAny(HiddenUrls))
             {
                 rejected.Add(declaration);
                 continue;
@@ -326,4 +338,72 @@ internal static partial class SvgSanitizer
 
     [GeneratedRegex(@"url\(([^)]*)\)", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
+
+    private sealed class ShallowReader(XmlReader inner, int maxDepth) : XmlReader
+    {
+        private bool skipping;
+
+        public override int AttributeCount => inner.AttributeCount;
+
+        public override string BaseURI => inner.BaseURI;
+
+        public override int Depth => inner.Depth;
+
+        public override bool EOF => inner.EOF;
+
+        public override bool IsEmptyElement => skipping || inner.IsEmptyElement;
+
+        public override string LocalName => inner.LocalName;
+
+        public override string NamespaceURI => inner.NamespaceURI;
+
+        public override XmlNameTable NameTable => inner.NameTable;
+
+        public override XmlNodeType NodeType => inner.NodeType;
+
+        public override string Prefix => inner.Prefix;
+
+        public override ReadState ReadState => inner.ReadState;
+
+        public override string Value => inner.Value;
+
+        public override string GetAttribute(int i) => inner.GetAttribute(i);
+
+        public override string? GetAttribute(string name) => inner.GetAttribute(name);
+
+        // ReSharper disable once InconsistentNaming
+        public override string? GetAttribute(string name, string? namespaceURI) => inner.GetAttribute(name, namespaceURI);
+
+        public override string? LookupNamespace(string prefix) => inner.LookupNamespace(prefix);
+
+        public override bool MoveToAttribute(string name) => inner.MoveToAttribute(name);
+
+        public override bool MoveToAttribute(string name, string? ns) => inner.MoveToAttribute(name, ns);
+
+        public override bool MoveToElement() => inner.MoveToElement();
+
+        public override bool MoveToFirstAttribute() => inner.MoveToFirstAttribute();
+
+        public override bool MoveToNextAttribute() => inner.MoveToNextAttribute();
+
+        public override bool ReadAttributeValue() => inner.ReadAttributeValue();
+
+        public override void ResolveEntity() => inner.ResolveEntity();
+
+        public override bool Read()
+        {
+            if (skipping)
+            {
+                skipping = false;
+                inner.Skip();
+            }
+            else if (!inner.Read())
+            {
+                return false;
+            }
+
+            skipping = (inner.NodeType == XmlNodeType.Element) && (inner.Depth > maxDepth) && !inner.IsEmptyElement;
+            return !inner.EOF;
+        }
+    }
 }

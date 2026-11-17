@@ -6,7 +6,7 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private DiagramPage? opened;
+    private SamplePage? opened;
 
     public static TheoryData<string> ModeNames => ["server", "wasm"];
 
@@ -55,6 +55,28 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(opened.View.Locator(".mussel-diagram-reason")).ToBeVisibleAsync();
         await Expect(opened.View).Not.ToHaveClassAsync(new Regex("mussel-diagram-not-allowed"));
         await Expect(links).ToHaveCountAsync(7);
+    }
+
+    [Theory]
+    [MemberData(nameof(ModeNames))]
+    public async Task ACoverHoldsTheCursorOnlyDuringAnOperation(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var cover = opened.View.Locator(".mussel-diagram-cursor");
+        await Expect(opened.View.Locator("g.mussel-diagram-link")).ToHaveCountAsync(7);
+        await Expect(cover).ToBeHiddenAsync();
+
+        await DragAsync(430, 190, -100, 0, async () =>
+        {
+            await Expect(cover).ToBeVisibleAsync().ConfigureAwait(true);
+            await Expect(cover).ToHaveCSSAsync("cursor", "not-allowed").ConfigureAwait(true);
+        });
+
+        await Expect(cover).ToBeHiddenAsync();
+
+        await DragAsync(250, 170, 60, 40, async () => await Expect(cover).ToHaveCSSAsync("cursor", "move").ConfigureAwait(true));
+
+        await Expect(cover).ToBeHiddenAsync();
     }
 
     [Theory]
