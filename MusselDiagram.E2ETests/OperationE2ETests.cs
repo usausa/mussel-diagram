@@ -8,7 +8,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 {
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -19,7 +19,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task SnappingAlignsEdgesAndShowsGuides(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -33,7 +33,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBasicPageTurnsTheAlignmentWithOtherShapesOff(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -54,7 +54,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheGridTakesTheCenterOfANode(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -66,7 +66,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheGridTakesTheFirstMovingNodeWhenThePressedOneStays(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -88,7 +88,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ResizingANodeChangesItsBounds(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -104,7 +104,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ConnectingFromAPortAddsALink(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -119,7 +119,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ReleasingALinkOnEmptySpaceOpensTheTypePicker(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -143,7 +143,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ReconnectingALinkEndMovesIt(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -158,7 +158,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task BoxSelectionSelectsTheElementsInside(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -171,7 +171,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task MovingANodeIntoAGroupChangesItsParent(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -190,7 +190,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task WaitModeCommitsTheMove(string mode)
     {
         opened = await app.OpenAsync("?wait=true", mode);
@@ -203,7 +203,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task HoldingSpaceKeepsThePageInPlace(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -228,7 +228,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePanToolPansFromNodesAndPorts(string mode)
     {
         opened = await app.OpenAsync("?pan=true", mode);
@@ -244,7 +244,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBackgroundPanModeStillMovesNodes(string mode)
     {
         opened = await app.OpenAsync("?backgroundPan=true", mode);
@@ -260,7 +260,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePanToolLeavesClicksToTheApp(string mode)
     {
         opened = await app.OpenAsync("?pan=true", mode);
@@ -280,6 +280,68 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'][data-selected]")).ToHaveCountAsync(1);
         await Expect(opened.View.Locator(".mussel-diagram-overlay rect.mussel-diagram-selection").First).ToBeAttachedAsync();
         await Expect(opened.View.Locator(".mussel-diagram-overlay .mussel-diagram-handle")).ToHaveCountAsync(0);
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task ALockedGroupInTheSelectionStaysWhileTheRestMoves(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var frame = opened.View.Locator("g.mussel-diagram-group[data-id='frame']");
+        var star = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await ClickAsync(20, 300);
+        await Expect(frame).ToHaveAttributeAsync("data-selected", string.Empty);
+        await opened.Page.Keyboard.PressAsync("Control+L");
+        await Expect(frame).ToHaveClassAsync(new Regex("mussel-diagram-locked"));
+        var (left, top) = await OriginAsync();
+        await opened.Page.Keyboard.DownAsync("Shift");
+        await opened.Page.Mouse.ClickAsync((float)left + 250, (float)top + 170);
+        await opened.Page.Keyboard.UpAsync("Shift");
+        await Expect(opened.View.Locator("[data-selected]")).ToHaveCountAsync(2);
+        var version = await opened.View.GetAttributeAsync("data-version");
+
+        await DragAsync(250, 170, 60, 40, false, null);
+
+        await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version!);
+        await Expect(star).ToHaveAttributeAsync("transform", "translate(282,190)");
+        await Expect(frame).ToHaveAttributeAsync("transform", "translate(20,20)");
+    }
+
+    [Fact]
+    public async Task MovingAWholeLargeDiagramSendsLittle()
+    {
+        opened = await app.OpenAsync("large", "server");
+        var page = opened.Page;
+        var node = opened.View.Locator("g.mussel-diagram-node[data-id='n000']");
+        var moved = await node.GetAttributeAsync("transform");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const send = WebSocket.prototype.send;
+                window.sentSizes = [];
+                WebSocket.prototype.send = function (data) {
+                    window.sentSizes.push(typeof data === 'string' ? data.length : (data.byteLength ?? data.size ?? 0));
+                    return send.call(this, data);
+                };
+            }
+            """);
+        var box = await node.Locator(".mussel-diagram-shape").First.BoundingBoxAsync() ?? throw new InvalidOperationException("The node is not shown.");
+        var (x, y) = (box.X + (box.Width / 2), box.Y + (box.Height / 2));
+        await page.Mouse.ClickAsync(x, y);
+        await page.Keyboard.PressAsync("Control+A");
+        await Expect(opened.View.Locator("g.mussel-diagram-group[data-id='network'][data-selected]")).ToHaveCountAsync(1);
+        await page.WaitForFunctionAsync("() => window.sentSizes.some((size) => size > 4096)");
+        await page.EvaluateAsync("() => { window.sentSizes = []; }");
+        var version = await opened.View.GetAttributeAsync("data-version");
+
+        await page.Mouse.MoveAsync(x, y);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(x + 40, y + 30, new() { Steps = 10 });
+        await page.Mouse.UpAsync();
+
+        await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version!);
+        await Expect(node).Not.ToHaveAttributeAsync("transform", moved!);
+        Assert.InRange(await page.EvaluateAsync<int>("() => Math.max(0, ...window.sentSizes)"), 0, 4096);
     }
 
     private async Task<(double X, double Y)> OriginAsync()

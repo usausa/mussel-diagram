@@ -287,6 +287,40 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void RoutesThatArriveLaterDoNotMarkAnUnchangedDiagramModified()
+    {
+        RunWith(static context =>
+        {
+            ImmutableArray<DiagramPoint> points = [new(100, 25), new(250, 100), new(400, 25)];
+            var router = new ManualRouter();
+            var first = new Diagram(Schema with { Router = router });
+            first.Add(Node("a", 0, 0));
+            first.Add(Node("b", 400, 0));
+            first.Connect(Link("ab", "a", "b"));
+            var json = first.ToJson();
+
+            var copy = new Diagram(first.Schema, first.Snapshot);
+            router.Complete(1, points);
+            context.RunOne();
+            var loaded = new Diagram(first.Schema);
+            loaded.LoadJson(json);
+            router.Complete(2, points);
+            context.RunOne();
+            first.MarkSaved();
+            router.Complete(0, points);
+            context.RunOne();
+            var unchanged = (copy.IsModified, loaded.IsModified, first.IsModified);
+            first.Move(["b"], new DiagramPoint(0, 50));
+            router.Complete(router.Count - 1, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 75)]);
+            context.RunOne();
+
+            Assert.Equal((false, false, false), unchanged);
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(loaded).RouteState);
+            Assert.True(first.IsModified);
+        });
+    }
+
+    [Fact]
     public void LateRoutesAreThrownAwayWhenTheEndsMoved()
     {
         RunWith(static context =>
@@ -658,41 +692,6 @@ public sealed class RoutingTests
     private sealed class AnsweringRouter(Func<ValueTask<DiagramRouteResult>> answer) : IDiagramRouter
     {
         public ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken) => answer();
-    }
-
-    private sealed class QueueContext : SynchronizationContext
-    {
-        private readonly Queue<(SendOrPostCallback Callback, object? State)> queue = new();
-
-        private readonly object gate = new();
-
-        public override void Post(SendOrPostCallback d, object? state)
-        {
-            lock (gate)
-            {
-                queue.Enqueue((d, state));
-                Monitor.PulseAll(gate);
-            }
-        }
-
-        public void RunOne()
-        {
-            (SendOrPostCallback Callback, object? State) item;
-            lock (gate)
-            {
-                while (queue.Count == 0)
-                {
-                    if (!Monitor.Wait(gate, TimeSpan.FromSeconds(10)))
-                    {
-                        throw new TimeoutException();
-                    }
-                }
-
-                item = queue.Dequeue();
-            }
-
-            item.Callback(item.State);
-        }
     }
 
     private sealed class ManualRouter : IDiagramRouter

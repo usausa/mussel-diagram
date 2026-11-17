@@ -45,6 +45,44 @@ public sealed class LanguageViewTests : BunitContext
     }
 
     [Fact]
+    public async Task AnotherDiagramBringsItsTextsAndClearsTheSelection()
+    {
+        var own = new MusselDiagramOptions
+        {
+            Cultures =
+            {
+                [string.Empty] = new DiagramTexts
+                {
+                    Commands = new Dictionary<string, string> { [DiagramCommands.BringToFront] = "Up" },
+                    Reasons = new Dictionary<DiagramReasonKind, string> { [DiagramReasonKind.NoConnectionPoint] = "Nowhere" }
+                }
+            }
+        };
+        var first = new Diagram(Schema);
+        first.Add(new DiagramNode { Id = "a", Type = "server", Bounds = new DiagramRect(0, 0, 100, 50) });
+        var second = new Diagram(Schema) { Options = own };
+        second.Add(new DiagramNode { Id = "a", Type = "server", Bounds = new DiagramRect(0, 0, 100, 50) });
+        var controller = module.SetupModule("attach", static _ => true);
+        var selections = new List<IReadOnlyList<string>>();
+        var cut = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, first)
+            .Add(p => p.SelectionChanged, selections.Add));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+        var before = cut.Instance.Commands[DiagramCommands.BringToFront].DisplayName;
+
+        cut.Render(parameters => parameters.Add(static p => p.Diagram, second));
+
+        await cut.WaitForAssertionAsync(() => Assert.NotEmpty(controller.Invocations["setSchema"]));
+        var schema = (JsonElement)controller.Invocations["setSchema"][^1].Arguments[0]!;
+        Assert.Equal("Nowhere", schema.GetProperty("reasons").GetProperty("noConnectionPoint").GetString());
+        Assert.Equal(("Bring to front", "Up"), (before, cut.Instance.Commands[DiagramCommands.BringToFront].DisplayName));
+        Assert.Empty(cut.Instance.SelectedIds);
+        Assert.Equal(2, selections.Count);
+        Assert.Empty(selections[1]);
+        Assert.Empty((string[])controller.Invocations["select"][^1].Arguments[0]!);
+    }
+
+    [Fact]
     public void RegisteredOptionsGiveTheTextsAndADiagramCanHaveItsOwn()
     {
         Services.AddMusselDiagram(static options => options.Cultures[string.Empty] = new DiagramTexts

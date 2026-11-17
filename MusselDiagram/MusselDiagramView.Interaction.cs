@@ -13,9 +13,15 @@ public sealed partial class MusselDiagramView
 
     private static readonly AsyncLocal<GateTurn?> CurrentTurn = new();
 
-    private readonly List<ScriptChanges> pendingChanges = [];
+    private readonly ScriptChangeQueue pendingChanges = new();
+
+    private readonly ScriptStamps stamps = new();
 
     private int rejections;
+
+    private bool writing;
+
+    private IReadOnlyList<string>? scriptSelection;
 
     [Parameter]
     public bool ReadOnly { get; set; }
@@ -46,6 +52,8 @@ public sealed partial class MusselDiagramView
 
     public IReadOnlyList<string> SelectedIds { get; private set; } = [];
 
+    internal long ScriptVersion { get; private set; }
+
     private SemaphoreSlim Gate => Gates.GetValue(Diagram, static _ => new SemaphoreSlim(1, 1));
 
     public async ValueTask SelectAsync(IEnumerable<string> ids)
@@ -68,7 +76,12 @@ public sealed partial class MusselDiagramView
 
     public ValueTask ClearSelectionAsync() => SelectAsync([]);
 
-    internal Task OnSelectionChangedAsync(IEnumerable<string> ids) => SetSelectionAsync([.. ids.Where(IsSelectable)]);
+    internal Task OnSelectionChangedAsync(IEnumerable<string> ids)
+    {
+        string[] list = [.. ids];
+        scriptSelection = list;
+        return SetSelectionAsync([.. list.Where(IsSelectable)]);
+    }
 
     internal async Task ReportAsync(Task task)
     {
@@ -194,6 +207,11 @@ public sealed partial class MusselDiagramView
 
     private void OnDiagramChanged(object? sender, DiagramChangedEventArgs e)
     {
+        if (!writing || (e.Origin != DiagramChangeOrigin.User))
+        {
+            stamps.Record(e, ScriptVersion + 1);
+        }
+
         if (e.IsReset || !ScriptTables.KeepsOrder(e))
         {
             pendingChanges.Clear();
@@ -201,7 +219,7 @@ public sealed partial class MusselDiagramView
         }
         else
         {
-            pendingChanges.Add(ScriptTables.Changes(e, Diagram.Index, templates));
+            pendingChanges.Add(e);
         }
 
         if (SelectedIds.Any(x => !e.After.Contains(x)))
@@ -224,25 +242,16 @@ public sealed partial class MusselDiagramView
             if (resend)
             {
                 pendingChanges.Clear();
-                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
+                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates) with { Version = ++ScriptVersion })).ConfigureAwait(true);
                 return;
             }
 
-            if (pendingChanges.Count == 0)
+            if (pendingChanges.IsEmpty)
             {
                 return;
             }
 
-            ScriptChanges[] changes = [.. pendingChanges];
-            pendingChanges.Clear();
-            foreach (var change in changes)
-            {
-                await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(change)).ConfigureAwait(true);
-                if (IsDisposed)
-                {
-                    return;
-                }
-            }
+            await current.InvokeVoidAsync("applyChanges", ScriptJson.ToElement(pendingChanges.Take(++ScriptVersion, Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {

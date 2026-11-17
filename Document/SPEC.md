@@ -162,7 +162,7 @@ Changing parents:
   - The parent tree has no cycle
   - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group, an overlay group without members), and the kind of a group does not change
   - The data is the data type registered for the type, or `JsonElement`
-  - Positions and sizes are finite, and sizes are greater than 0
+  - Positions, sizes and the right and bottom edges are finite, and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
@@ -448,7 +448,7 @@ C# and JS compute the port positions with the same formula from the type and the
 | A place where the dragged item cannot be placed or connected | `not-allowed` |
 | The text editor | `text` |
 
-CSS can change the cursors. While panning, moving, resizing and connecting (and while Space is held), the cursor is on `.mussel-diagram-cursor`, an element that covers the view, under a state class of the view such as `.mussel-diagram-dragging`.
+CSS can change the cursors. While panning, moving, resizing, connecting and selecting with a box (and while Space is held, and where the operation is not allowed), the cursor is on `.mussel-diagram-cursor`, an element that covers the view, under a state class of the view such as `.mussel-diagram-dragging`, `.mussel-diagram-selecting` or `.mussel-diagram-not-allowed`.
 
 ## 🖱️ Selection and moving
 
@@ -464,9 +464,9 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - Box selection, a left drag on the background, selects the elements entirely inside the rectangle. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is added later, when needed
 - `BackgroundDragMode` decides what a left drag on the background does with a mouse or a pen: `BoxSelect` (the default), `Pan` or `None`. A click on the background clears the selection in every mode. Touch keeps its gestures (a one-finger drag pans, and a drag after a long press selects)
 - With `Tool` `Pan` (the default is `Select`), a left drag with a mouse or a pen and a one-finger drag pan from anywhere, nodes, links and ports included, and `BackgroundDragMode` is not used. Clicks, double-clicks and long presses neither change the selection or the text nor open the type picker, but the click events are still raised. The selection stays without handles, and the keys and dropping from the palette work as usual
-- A click on the background, and Esc outside an operation, clear the selection. Elements that no longer exist leave the selection
+- A click on the background, Esc outside an operation, and passing another diagram to the view clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
-- Commands and commits that JS sends to C# carry the selection of that moment. Even when the selection known to C# is behind, they act on the selection the user saw
+- Commands and commits that JS sends to C# carry the selection of that moment, unless it is the selection JS sent last; then C# uses the selection it received last. Even when the selection known to C# is behind, they act on the selection the user saw
 
 ### Moving
 
@@ -670,7 +670,7 @@ The link type declares the form, and the `Look` of a link can change it for that
 
 ### Replacing the router and reading routes
 
-- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type, the line form and the grid size, and returns a list of points or the reason it could not route
+- The app can replace the router by registering one in the schema, also per link type. It receives the positions and directions of both ends, the rectangles of the nodes to avoid, the link type, the line form and the grid size, and returns a list of points from the position of the source end to that of the target end, or the reason it could not route. Loading and undo or redo compute again the routes that do not start and end there
 - With an asynchronous router, where routes can be computed afterwards, the commit stores a simple route, and only the route is replaced when the router finishes. The replacement joins the undo step of the operation. When the diagram has changed in the meantime, the result is thrown away and the route is computed again (Commit and validation)
 - The cancellation token of a request is canceled when its result is no longer needed: the route is asked for again, the link is deleted (by undo too), or the diagram is loaded. Links that are provisional without a request after undo and redo, and in a diagram made from a snapshot, are asked for again
 - A link knows whether its route is provisional or a result of the router, or why it could not be made
@@ -807,11 +807,11 @@ A user operation is shown by the browser first, then checked by C# and written t
 
 ### Commit flow
 
-On release (for a command, when it runs), JS sends the operation, the values it started from (what the operation writes) and the selection of that moment to C#, once. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
+On release (for a command, when it runs), JS sends the operation, the version of the element table it started from and the selection of that moment to C#, once. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
 
 | Order | Step | Reason for rejecting |
 |---|---|---|
-| 1 | What the operation writes (the positions and sizes of the moved elements, parents, ends, text) has not changed since the operation started | The diagram changed |
+| 1 | Nothing but earlier commits of the same view has changed what the operation writes (the positions and sizes of the moved elements and of the contents of moved overlays, parents, ends, text) since that version | The diagram changed |
 | 2 | The declared rules (Types and rules) are checked again on the current snapshot | The reason of the rule |
 | 3 | The app rules | The reason of the app |
 | 4 | The before event (`…ing`). `Cancel` stops the operation, and a reason can be returned | The reason of the app, otherwise "Canceled" |
@@ -1078,7 +1078,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 | A parent that does not exist or is not a tree group, and parent cycles | The element goes to the top level |
 | Members referring to elements that do not exist, or that are not nodes or tree groups | Those members are removed. An overlay group with no members left is dropped |
 | A group whose kind does not match its type | Treated like an unregistered type |
-| A size of 0 or less | The default size of the type |
+| A size of 0 or less, or one that puts the right or bottom edge past the finite numbers | The default size of the type |
 | Data the data type cannot read | Kept as `JsonElement` (a warning) |
 | Values of a look that cannot be used (color syntax, widths, names of markers and so on) | Those values are removed (a warning) |
 
@@ -1098,7 +1098,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 
 ### Modified flag
 
-- `IsModified` tells whether the contents of the diagram have changed since `MarkSaved` was last called. `Load` and `MarkSaved` clear it
+- `IsModified` tells whether the contents of the diagram have changed since `MarkSaved` was last called. `Load` and `MarkSaved` clear it, and routes that the router gives afterwards do not set it while nothing else has changed
 - Undoing back to the contents at the time of saving clears it. `Skip` changes set it too
 - It can be read again on each `Diagram.Changed` (to enable a save button, for example)
 
@@ -1118,7 +1118,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 - The area is the bounds of all the elements plus a margin (default 10). Choosing an area is planned for the next version
 - The background is transparent by default, and can be filled with the background color. Colors follow the current light or dark mode
 - The colors, strokes and text formats that CSS variables and classes decide are written to the attributes of the elements as computed values, so the SVG looks the same without CSS
-- Export waits for the icons in use that are still being read. Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
+- Export waits for the icons in use that are still being read, and up to 5 seconds for the routes still being computed (links still waiting after that keep their simple routes). Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
 - Fonts are written by name only by default. When chosen, the fonts used among those the page loaded with `@font-face` are embedded as data URLs
 - Tooltips, classes, styles and the hit areas of links are left out. `data-id` and `data-type` are kept
 - PDF, and images with the diagram data embedded, are planned for the next version
@@ -1239,9 +1239,9 @@ A group type declares the form of its header.
 
 ## 🌐 Languages
 
-The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `MusselDiagramOptions.Cultures` of the core, in the same form as MusselSheet. English and Japanese are built in and need no registration.
+The code of the core, the components and JS knows no language. Texts are in language data (`DiagramTexts`), registered in `MusselDiagramOptions.Cultures` of the core. English and Japanese are built in and need no registration.
 
-- Texts follow `CurrentUICulture`, looked up from the culture to its parents (`ja-JP`, `ja`, the empty name). Items not set and empty items do not count, and items found nowhere are English
+- Texts follow `CurrentUICulture`, looked up from the culture to its parents (`ja-JP`, `ja`, the empty name). Items not set and empty items do not count, and items found nowhere are English. Each text is looked up on its own, so a culture can hold only the texts it changes
 - The built-in languages are English under the empty name and Japanese under `ja`. Japanese uses only the public API and is a model for other languages. The app adds languages in the same form, and can replace the built-in texts
 - A diagram follows its own `Diagram.Options`, set when it is made, then the options registered with `AddMusselDiagram` once a view shows it, then the built-in languages. The APIs that take no diagram (reading JSON, importing icons, `DiagramSnapshot.Validate`) use the built-in languages
 - Issues and rejection reasons have a kind and arguments. Their texts are format strings filled with the arguments (display names of types, counts and so on). Reasons returned by app rules use the text of the app as it is

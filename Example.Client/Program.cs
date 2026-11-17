@@ -1,5 +1,3 @@
-using Example.Client.Models;
-
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
 using MudBlazor.Services;

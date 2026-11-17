@@ -142,6 +142,7 @@ internal static partial class SvgSanitizer
                 double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var minY) &&
                 double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) &&
                 double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var height) &&
+                double.IsFinite(minX) && double.IsFinite(minY) && double.IsFinite(width) && double.IsFinite(height) &&
                 (width > 0) && (height > 0))
             {
                 return (width, height, minX, minY);
@@ -164,7 +165,7 @@ internal static partial class SvgSanitizer
             trimmed = trimmed[..^2];
         }
 
-        return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) && (result > 0) ? result : null;
+        return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) && double.IsFinite(result) && (result > 0) ? result : null;
     }
 
     private static SanitizedSvg Sanitize(XElement root, string idPrefix)
@@ -292,8 +293,14 @@ internal static partial class SvgSanitizer
     private static string? CleanStyle(string value, Dictionary<string, string> ids, List<string> rejected)
     {
         var kept = new List<string>();
-        foreach (var declaration in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var part in Declarations(value))
         {
+            var declaration = part.Trim();
+            if (declaration.Length == 0)
+            {
+                continue;
+            }
+
             if (ForbiddenStyle.Any(x => declaration.Contains(x, StringComparison.OrdinalIgnoreCase)) || declaration.AsSpan().ContainsAny(HiddenUrls))
             {
                 rejected.Add(declaration);
@@ -310,11 +317,45 @@ internal static partial class SvgSanitizer
         return kept.Count == 0 ? null : string.Join(';', kept);
     }
 
+    private static IEnumerable<string> Declarations(string value)
+    {
+        var (start, depth, quote) = (0, 0, '\0');
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (quote != '\0')
+            {
+                quote = c == quote ? '\0' : quote;
+            }
+            else if (c is '\'' or '"')
+            {
+                quote = c;
+            }
+            else if (c == '(')
+            {
+                depth++;
+            }
+            else if ((c == ')') && (depth > 0))
+            {
+                depth--;
+            }
+            else if ((c == ';') && (depth == 0))
+            {
+                yield return value[start..i];
+                start = i + 1;
+            }
+        }
+
+        yield return value[start..];
+    }
+
     private static string CleanUrls(string value, Dictionary<string, string> ids, List<string> rejected, out bool ok)
     {
         var valid = true;
+        var matched = 0;
         var result = UrlPattern().Replace(value, match =>
         {
+            matched++;
             var target = match.Groups[1].Value.Trim().Trim('\'', '"');
 #if NET11_0_OR_GREATER
             if (target.StartsWith('#', StringComparison.Ordinal) && ids.TryGetValue(target[1..], out var id))
@@ -329,6 +370,12 @@ internal static partial class SvgSanitizer
             valid = false;
             return match.Value;
         });
+        if (valid && (UrlStart().Count(value) != matched))
+        {
+            rejected.Add(value);
+            valid = false;
+        }
+
         ok = valid;
         return result;
     }
@@ -338,6 +385,9 @@ internal static partial class SvgSanitizer
 
     [GeneratedRegex(@"url\(([^)]*)\)", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
+
+    [GeneratedRegex(@"url\(", RegexOptions.IgnoreCase)]
+    private static partial Regex UrlStart();
 
     private sealed class ShallowReader(XmlReader inner, int maxDepth) : XmlReader
     {

@@ -43,6 +43,23 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void SkippedOrderChangesStayAfterUndo()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 200, 0));
+        diagram.Add(Node("c", 400, 0));
+        diagram.ClearHistory();
+        diagram.Move(["c"], new DiagramPoint(10, 0));
+        diagram.BringToFront(["a"], Skip);
+
+        diagram.Undo();
+
+        Assert.Equal(["b", "c", "a"], diagram.Snapshot.Nodes.Select(static x => x.Id));
+        Assert.Equal(400, X(diagram, "c"));
+    }
+
+    [Fact]
     public void RecordingClearsRedoButSkipDoesNot()
     {
         var diagram = new Diagram(Schema);

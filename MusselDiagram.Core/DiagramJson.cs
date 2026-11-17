@@ -18,8 +18,8 @@ public static class DiagramJson
         DiagramJsonFormat.WriteAsync(stream, snapshot, SchemaIndex.For(schema), cancellationToken);
 
     public static DiagramLoadResult Read(Stream stream, DiagramSchema schema) =>
-        DiagramJsonFormat.Read(DiagramJsonFormat.Parse(stream), SchemaIndex.For(schema), 0);
+        DiagramJsonFormat.Read(DiagramJsonFormat.Parse(stream), SchemaIndex.For(schema), 0, waitForRoutes: true);
 
     public static async Task<DiagramLoadResult> ReadAsync(Stream stream, DiagramSchema schema, CancellationToken cancellationToken = default) =>
-        DiagramJsonFormat.Read(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(false), SchemaIndex.For(schema), 0);
+        DiagramJsonFormat.Read(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(false), SchemaIndex.For(schema), 0, waitForRoutes: true);
 }

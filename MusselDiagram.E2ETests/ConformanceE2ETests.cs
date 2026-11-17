@@ -8,7 +8,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
 {
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -19,7 +19,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePickerFollowsThePaletteAndClosesFromOutside(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -38,7 +38,27 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
+    public async Task ThePickerScrollsOnlyItsOwnList(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var picker = opened.View.Locator(".mussel-diagram-picker");
+        await opened.Page.SetViewportSizeAsync(1280, 360);
+        await opened.View.FocusAsync();
+        await opened.Page.Keyboard.PressAsync("Control+Enter");
+        await Expect(picker).ToBeVisibleAsync();
+
+        for (var i = 0; i < 9; i++)
+        {
+            await opened.Page.Keyboard.PressAsync("ArrowDown");
+        }
+
+        await Expect(picker.Locator(".mussel-diagram-picker-item").Nth(9)).ToHaveAttributeAsync("aria-selected", "true");
+        Assert.Equal(0, await opened.View.EvaluateAsync<double>("view => view.scrollTop"));
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task RejectedPortsShowTheReasonWhileAndAfterDragging(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -58,7 +78,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ACoverHoldsTheCursorOnlyDuringAnOperation(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -70,17 +90,22 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         {
             await Expect(cover).ToBeVisibleAsync().ConfigureAwait(true);
             await Expect(cover).ToHaveCSSAsync("cursor", "not-allowed").ConfigureAwait(true);
+            Assert.True(await cover.EvaluateAsync<bool>("cover => cover.hasPointerCapture(1)").ConfigureAwait(true));
         });
 
         await Expect(cover).ToBeHiddenAsync();
 
-        await DragAsync(250, 170, 60, 40, async () => await Expect(cover).ToHaveCSSAsync("cursor", "move").ConfigureAwait(true));
+        await DragAsync(250, 170, 60, 40, async () =>
+        {
+            await Expect(cover).ToHaveCSSAsync("cursor", "move").ConfigureAwait(true);
+            Assert.True(await cover.EvaluateAsync<bool>("cover => cover.hasPointerCapture(1)").ConfigureAwait(true));
+        });
 
         await Expect(cover).ToBeHiddenAsync();
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task CommandKeysWaitUntilTheDragEnds(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -95,7 +120,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task KeysOutsideTypingWorkWhileEditingText(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -117,7 +142,7 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheTextEditorKeepsItsOwnKeys(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -148,6 +173,42 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(editor).ToHaveCountAsync(0);
         await Expect(opened.View.Locator(".mussel-diagram-picker")).ToHaveCountAsync(0);
         await Expect(star1.Locator("text.mussel-diagram-label[data-label='星 1x']")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task ARenderOfAnEarlierMoveKeepsTheLaterMoveShown()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name !== 'CommitMoveAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => resolve(invoke.call(this, name, ...args))));
+                };
+            }
+            """);
+
+        await DragAsync(250, 170, 60, 0, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await DragAsync(310, 170, 0, 40, null);
+        var shown = await star1.GetAttributeAsync("transform");
+        var version = await opened.View.GetAttributeAsync("data-version");
+        await page.EvaluateAsync("() => window.heldMoves[0]()");
+        await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version!);
+        var afterEarlier = await star1.GetAttributeAsync("transform");
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 2");
+        await page.EvaluateAsync("() => window.heldMoves[1]()");
+
+        Assert.Equal(shown, afterEarlier);
+        await Expect(star1).ToHaveAttributeAsync("transform", shown!);
     }
 
     private async Task<(double X, double Y)> OriginAsync()

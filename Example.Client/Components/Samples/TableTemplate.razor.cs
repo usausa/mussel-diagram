@@ -1,6 +1,4 @@
-namespace Example.Client.Components.Diagrams;
-
-using Example.Client.Models;
+namespace Example.Client.Components.Samples;
 
 public sealed partial class TableTemplate
 {

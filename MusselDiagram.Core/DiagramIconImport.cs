@@ -35,8 +35,8 @@ public static class DiagramIconImport
                 throw new DiagramException("The stream is not an Iconify icon set.");
             }
 
-            var width = Number(root, "width") ?? 16;
-            var height = Number(root, "height") ?? 16;
+            var width = Size(root, "width") ?? 16;
+            var height = Size(root, "height") ?? 16;
             var categories = new Dictionary<string, string>(StringComparer.Ordinal);
             if (root.TryGetProperty("categories", out var categoryValues) && (categoryValues.ValueKind == JsonValueKind.Object))
             {
@@ -59,17 +59,29 @@ public static class DiagramIconImport
             var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
             foreach (var icon in iconValues.EnumerateObject())
             {
-                Add(icon.Name, icon.Value, default);
+                Add(icon.Name, icon.Value, []);
             }
 
             if (root.TryGetProperty("aliases", out var aliases) && (aliases.ValueKind == JsonValueKind.Object))
             {
+                var count = aliases.GetPropertyCount();
                 foreach (var alias in aliases.EnumerateObject())
                 {
-                    if ((alias.Value.ValueKind == JsonValueKind.Object) && alias.Value.TryGetProperty("parent", out var parent) && (parent.ValueKind == JsonValueKind.String) &&
-                        iconValues.TryGetProperty(parent.GetString()!, out var parentValue))
+                    var chain = new List<JsonElement>();
+                    var current = alias.Value;
+                    JsonElement found = default;
+                    while ((chain.Count < count) && (current.ValueKind == JsonValueKind.Object) && current.TryGetProperty("parent", out var parent) && (parent.ValueKind == JsonValueKind.String))
                     {
-                        Add(alias.Name, parentValue, alias.Value);
+                        chain.Add(current);
+                        if (iconValues.TryGetProperty(parent.GetString()!, out found) || !aliases.TryGetProperty(parent.GetString()!, out current))
+                        {
+                            break;
+                        }
+                    }
+
+                    if (found.ValueKind != JsonValueKind.Undefined)
+                    {
+                        Add(alias.Name, found, chain);
                     }
                     else
                     {
@@ -80,7 +92,7 @@ public static class DiagramIconImport
 
             return new DiagramIconImportResult(new DiagramIconSet { Prefix = prefix, Icons = icons.ToImmutable() }, issues.ToImmutable());
 
-            void Add(string id, JsonElement value, JsonElement alias)
+            void Add(string id, JsonElement value, List<JsonElement> chain)
             {
                 if ((value.ValueKind != JsonValueKind.Object) || !value.TryGetProperty("body", out var bodyValue) || (bodyValue.ValueKind != JsonValueKind.String))
                 {
@@ -90,14 +102,21 @@ public static class DiagramIconImport
 
                 var body = bodyValue.GetString()!;
 
-                var hasAlias = alias.ValueKind == JsonValueKind.Object;
-                var iconWidth = (hasAlias ? Number(alias, "width") : null) ?? Number(value, "width") ?? width;
-                var iconHeight = (hasAlias ? Number(alias, "height") : null) ?? Number(value, "height") ?? height;
-                var left = (hasAlias ? Number(alias, "left") : null) ?? Number(value, "left") ?? 0;
-                var top = (hasAlias ? Number(alias, "top") : null) ?? Number(value, "top") ?? 0;
-                var rotate = (int)((Number(value, "rotate") ?? 0) + (hasAlias ? Number(alias, "rotate") ?? 0 : 0)) % 4;
-                var horizontalFlip = Flag(value, "hFlip") ^ (hasAlias && Flag(alias, "hFlip"));
-                var verticalFlip = Flag(value, "vFlip") ^ (hasAlias && Flag(alias, "vFlip"));
+                var iconWidth = First(chain, value, Size, "width") ?? width;
+                var iconHeight = First(chain, value, Size, "height") ?? height;
+                var left = First(chain, value, Number, "left") ?? 0;
+                var top = First(chain, value, Number, "top") ?? 0;
+                var turns = Number(value, "rotate") ?? 0;
+                var horizontalFlip = Flag(value, "hFlip");
+                var verticalFlip = Flag(value, "vFlip");
+                foreach (var alias in chain)
+                {
+                    turns += Number(alias, "rotate") ?? 0;
+                    horizontalFlip ^= Flag(alias, "hFlip");
+                    verticalFlip ^= Flag(alias, "vFlip");
+                }
+
+                var rotate = (int)(turns % 4);
                 var transforms = new List<string>();
                 if (rotate != 0)
                 {
@@ -150,12 +169,19 @@ public static class DiagramIconImport
 
         using (archive)
         {
-            return ReadFiles(
-                archive.Entries
-                    .Where(static x => x.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-                    .Select(static x => (x.FullName.Replace('\\', '/'), (Func<string?>)(() => Read(x)))),
-                prefix,
-                map);
+            try
+            {
+                return ReadFiles(
+                    archive.Entries
+                        .Where(static x => x.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                        .Select(static x => (x.FullName.Replace('\\', '/'), (Func<string?>)(() => Read(x)))),
+                    prefix,
+                    map);
+            }
+            catch (InvalidDataException e)
+            {
+                throw new DiagramException("The stream is not a zip file.", e);
+            }
         }
     }
 
@@ -269,7 +295,7 @@ public static class DiagramIconImport
 
             return text.ToString();
         }
-        catch (InvalidDataException)
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
         {
             return null;
         }
@@ -292,7 +318,22 @@ public static class DiagramIconImport
         MusselDiagramOptions.Default.Localize(DiagramValidator.Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.UnreadableIcon, [], [id]));
 
     private static double? Number(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && (value.ValueKind == JsonValueKind.Number) && value.TryGetDouble(out var number) ? number : null;
+        element.TryGetProperty(name, out var value) && (value.ValueKind == JsonValueKind.Number) && value.TryGetDouble(out var number) && double.IsFinite(number) ? number : null;
+
+    private static double? Size(JsonElement element, string name) => (Number(element, name) is { } size) && (size > 0) ? size : null;
+
+    private static double? First(List<JsonElement> chain, JsonElement value, Func<JsonElement, string, double?> read, string name)
+    {
+        foreach (var alias in chain)
+        {
+            if (read(alias, name) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return read(value, name);
+    }
 
     private static bool Flag(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && (value.ValueKind == JsonValueKind.True);

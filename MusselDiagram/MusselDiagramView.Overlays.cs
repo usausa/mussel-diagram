@@ -44,7 +44,7 @@ public sealed partial class MusselDiagramView
 
         foreach (var link in Snapshot.Links)
         {
-            if (IsShown(link.Id, RouteBounds(link)))
+            if (IsShown(link))
             {
                 AddBadges(builder, link);
             }

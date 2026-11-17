@@ -81,6 +81,41 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void SizesBeyondDoubleAreNotUsed()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1e400 24"><rect width="1" height="1"/></svg>""";
+
+        var icon = Assert.Single(DiagramIconImport.FromZip(Zip(("wide.svg", svg)), "demo").IconSet.Icons);
+
+        Assert.Equal((24d, 24d), (icon.Width, icon.Height));
+    }
+
+    [Fact]
+    public void AliasesOfAliasesFollowTheChain()
+    {
+        const string json = """
+            {
+              "prefix": "demo",
+              "icons": { "home": { "body": "<path d='M0 0'/>" } },
+              "aliases": {
+                "a2": { "parent": "a1", "hFlip": true },
+                "a1": { "parent": "home", "rotate": 1 },
+                "loop1": { "parent": "loop2" },
+                "loop2": { "parent": "loop1" }
+              }
+            }
+            """;
+
+        var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+        Assert.Equal(["home", "a2", "a1"], result.IconSet.Icons.Select(static x => x.Id));
+        var chained = result.IconSet.Icons[1].Body;
+        Assert.Contains("rotate(90", chained, StringComparison.Ordinal);
+        Assert.Contains("scale(-1 1)", chained, StringComparison.Ordinal);
+        Assert.Equal(2, result.Issues.Length);
+    }
+
+    [Fact]
     public void UnreadableFilesAreReported()
     {
         var result = DiagramIconImport.FromZip(Zip(("broken.svg", "<svg><g></svg>"), ("entity.svg", "<!DOCTYPE svg [<!ENTITY x \"y\">]><svg>&x;</svg>")), "demo");
@@ -111,6 +146,7 @@ public sealed class IconImportTests
         var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
 
         Assert.Equal(["box"], result.IconSet.Icons.Select(static x => x.Id));
+        Assert.Equal(16, result.IconSet.Icons[0].Width);
         Assert.Equal("Shapes", result.IconSet.Icons[0].Category);
         Assert.Equal(5, result.Issues.Length);
         Assert.Throws<DiagramException>(() => DiagramIconImport.FromIconify(new MemoryStream("""{ "prefix": 1, "icons": {} }"""u8.ToArray())));
@@ -153,6 +189,35 @@ public sealed class IconImportTests
         Assert.Equal(DiagramIssueKind.RejectedUrl, issue.Kind);
         Assert.Contains("u\\rl(https://example.com/a.svg#p)", issue.Arguments[1], StringComparison.Ordinal);
         Assert.Contains("-WEBKIT-IMAGE-SET('https://example.com/d.png' 1x)", issue.Arguments[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AZipWithABrokenDirectoryIsReported()
+    {
+        var bytes = Zip(("a.svg", "<svg xmlns='http://www.w3.org/2000/svg'/>")).ToArray();
+        var at = bytes.AsSpan().IndexOf([(byte)0x50, (byte)0x4B, (byte)0x01, (byte)0x02]);
+        bytes[at + 3] = 0x03;
+
+        Assert.Throws<DiagramException>(() => DiagramIconImport.FromZip(new MemoryStream(bytes), "demo"));
+    }
+
+    [Fact]
+    public void UrlsInQuotesOrLeftOpenAreRemoved()
+    {
+        const string svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <rect width="1" height="1" style="mask-image:url('https://example.com/m;.png');stroke:#fff"/>
+              <rect width="1" height="1" style="mask-image:url(https://example.com/n.png"/>
+              <path d="M0 0" filter="url(https://example.com/f.svg#f"/>
+            </svg>
+            """;
+
+        var result = DiagramIconImport.FromZip(Zip(("open.svg", svg)), "demo");
+
+        var icon = Assert.Single(result.IconSet.Icons);
+        Assert.DoesNotContain("example.com", icon.Body, StringComparison.Ordinal);
+        Assert.Contains("style=\"stroke:#fff\"", icon.Body, StringComparison.Ordinal);
+        Assert.Equal(DiagramIssueKind.RejectedUrl, Assert.Single(result.Issues).Kind);
     }
 
     [Fact]

@@ -1,6 +1,8 @@
 namespace MusselDiagram;
 
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using MusselDiagram.Internal;
 
@@ -116,6 +118,35 @@ public sealed class JsonTests
         Assert.Equal(["l1"], snapshot.Links.Select(static x => x.Id));
         Assert.Equal(["n1"], ((DiagramGroup)snapshot.Find("asg")!).MemberIds);
         Assert.Contains(diagram.Validate(), static x => (x.Kind == DiagramIssueKind.UnregisteredType) && (x.ElementIds[0] == "kind"));
+    }
+
+    [Fact]
+    public void SizesThatRunPastTheLargestNumberBecomeTheSizeOfTheType()
+    {
+        var diagram = new Diagram(JsonSchema);
+
+        var issues = diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "groups": [
+                { "id": "g", "type": "vpc", "kind": "tree", "x": 0, "y": 0, "width": 400, "height": 300 }
+              ],
+              "nodes": [
+                { "id": "wide", "type": "server", "x": 1.7e308, "y": 0, "width": 1e308, "height": 50, "parent": "g" },
+                { "id": "tall", "type": "server", "x": 0, "y": 1.7e308, "width": 100, "height": 1e308 }
+              ],
+              "links": [
+                { "id": "l", "type": "arrow", "source": { "element": "wide" }, "target": { "element": "tall" } }
+              ]
+            }
+            """);
+
+        Assert.Equal([(DiagramIssueKind.InvalidSize, "wide"), (DiagramIssueKind.InvalidSize, "tall")], issues.Select(static x => (x.Kind, x.ElementIds[0])));
+        Assert.Equal(new DiagramRect(1.7e308, 0, 120, 60), ((DiagramBox)diagram.Find("wide")!).Bounds);
+        Assert.Equal(new DiagramRect(0, 1.7e308, 120, 60), ((DiagramBox)diagram.Find("tall")!).Bounds);
+        Assert.NotNull(diagram.ToJson());
     }
 
     [Fact]
@@ -237,6 +268,56 @@ public sealed class JsonTests
         Assert.True(SnapshotContent.Same(source.Snapshot, target.Snapshot));
     }
 
+    [Fact]
+    public async Task LoadingFromAStreamThatAnswersLaterWritesOnTheContextOfTheCaller()
+    {
+        var json = Encoding.UTF8.GetBytes(CreateDiagram().ToJson());
+        var target = new Diagram(JsonSchema);
+        var contexts = new List<SynchronizationContext?>();
+        target.Changed += (_, _) => contexts.Add(SynchronizationContext.Current);
+        var previous = SynchronizationContext.Current;
+        var context = new QueueContext();
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            var load = LoadLateAsync(target, json);
+            context.RunUntil(load);
+
+            Assert.Empty(await load.ConfigureAwait(true));
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        Assert.Same(context, Assert.Single(contexts));
+    }
+
+    [Fact]
+    public void ReadingWithoutADiagramWaitsForTheRouterOfTheApp()
+    {
+        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
+        foreach (var link in node["links"]!.AsArray())
+        {
+            link!.AsObject().Remove("route");
+        }
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
+        var result = DiagramJson.Read(stream, JsonSchema with { Router = new LateRouter() });
+
+        Assert.NotEmpty(result.Snapshot.Links);
+        Assert.All(result.Snapshot.Links, static x => Assert.Equal((DiagramRouteState.Routed, 3), (x.RouteState, x.Route.Length)));
+    }
+
+    private static async Task<ImmutableArray<DiagramIssue>> LoadLateAsync(Diagram target, byte[] json)
+    {
+        var stream = new LateStream(json);
+        await using (stream.ConfigureAwait(true))
+        {
+            return await target.LoadAsync(stream, cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(true);
+        }
+    }
+
     private static Diagram CreateDiagram()
     {
         var diagram = new Diagram(JsonSchema);
@@ -253,5 +334,63 @@ public sealed class JsonTests
         diagram.Connect(Link("l1", "web", "db", targetPort: "in"));
         diagram.Add(new DiagramSharedItem { Id = "cfg", Type = "config", Label = "Config", Data = new ServerData("cfg") });
         return diagram;
+    }
+
+    private sealed class LateRouter : IDiagramRouter
+    {
+        public async ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            var start = request.Source.Position;
+            var end = request.Target.Position;
+            return new DiagramRouteResult { Points = [start, new DiagramPoint(end.X, start.Y), end] };
+        }
+    }
+
+    private sealed class LateStream(byte[] data) : Stream
+    {
+        private readonly MemoryStream inner = new(data);
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+            return inner.Read(buffer.Span);
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

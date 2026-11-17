@@ -20,7 +20,7 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
         page.FrameNavigated += (_, f) => events.Enqueue($"{DateTime.Now:HH:mm:ss.fff} navigated: {f.Url}");
     }
 
-    public Task WaitForViewAsync() =>
+    public Task WaitForDiagramAsync() =>
         page.Locator(".mussel-diagram[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 30_000 });
 
     public async ValueTask DisposeAsync()

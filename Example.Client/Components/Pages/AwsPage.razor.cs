@@ -1,7 +1,5 @@
 namespace Example.Client.Components.Pages;
 
-using Example.Client.Models;
-
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 
@@ -43,6 +41,11 @@ public sealed partial class AwsPage
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
+        if (e.FileCount == 0)
+        {
+            return;
+        }
+
         message = null;
         if (e.File.Size > MaxPackageSize)
         {
@@ -60,7 +63,18 @@ public sealed partial class AwsPage
             }
 
             buffer.Position = 0;
-            Apply(DiagramIconImport.FromZip(buffer, AwsDiagrams.Prefix, AwsDiagrams.Map).IconSet);
+            var result = DiagramIconImport.FromZip(buffer, AwsDiagrams.Prefix, AwsDiagrams.Map);
+            if (result.IconSet.Icons.IsEmpty)
+            {
+                message = "この zip には使えるアイコンがありません。";
+                return;
+            }
+
+            Apply(result.IconSet);
+            if (!result.Issues.IsEmpty)
+            {
+                message = string.Create(CultureInfo.InvariantCulture, $"アイコンの取り込みで {result.Issues.Length} 件の問題がありました。");
+            }
         }
         catch (DiagramException)
         {

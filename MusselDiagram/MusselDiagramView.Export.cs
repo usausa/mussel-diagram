@@ -1,6 +1,7 @@
 namespace MusselDiagram;
 
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Text.Json;
 
 using Microsoft.JSInterop;
@@ -10,6 +11,10 @@ using MusselDiagram.Internal;
 public sealed partial class MusselDiagramView
 {
     private const long MaxExportSize = 1L << 30;
+
+    private static readonly TimeSpan RouteWait = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan RoutePoll = TimeSpan.FromMilliseconds(50);
 
     private readonly List<TaskCompletionSource> exportRenders = [];
 
@@ -55,6 +60,12 @@ public sealed partial class MusselDiagramView
         var current = controller ?? throw new InvalidOperationException("The view is not shown yet.");
         WantIcons(null);
         await Symbols.WhenLoadedAsync().WaitAsync(cancellationToken).ConfigureAwait(true);
+        var started = Stopwatch.GetTimestamp();
+        while (!IsDisposed && HasProvisionalRoutes() && (Stopwatch.GetElapsedTime(started) < RouteWait))
+        {
+            await Task.Delay(RoutePoll, cancellationToken).ConfigureAwait(true);
+        }
+
         if (IsDisposed)
         {
             return new DiagramExportResult(null, null, []);
@@ -129,6 +140,19 @@ public sealed partial class MusselDiagramView
         }
     }
 
+    private bool HasProvisionalRoutes()
+    {
+        foreach (var link in Snapshot.Links)
+        {
+            if (link.RouteState == DiagramRouteState.Provisional)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void CompleteExportRender()
     {
         if (exportRendered)
@@ -146,14 +170,14 @@ public sealed partial class MusselDiagramView
         }
     }
 
-    private static ImmutableArray<DiagramIssue> MissingImages(JsonElement missing)
+    private ImmutableArray<DiagramIssue> MissingImages(JsonElement missing)
     {
         var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
         foreach (var item in missing.EnumerateArray())
         {
             var url = item.GetProperty("url").GetString() ?? string.Empty;
             string[] ids = [.. item.GetProperty("ids").EnumerateArray().Select(static x => x.GetString()).OfType<string>()];
-            issues.Add(DiagramValidator.Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.ImageNotEmbedded, [.. ids], [url]));
+            issues.Add(Options.Localize(DiagramValidator.Issue(DiagramIssueSeverity.Warning, DiagramIssueKind.ImageNotEmbedded, [.. ids], [url])));
         }
 
         return issues.ToImmutable();

@@ -9,3 +9,5 @@ global using System.Threading;
 global using System.Threading.Tasks;
 
 global using MusselDiagram;
+
+global using Example.Client.Models;

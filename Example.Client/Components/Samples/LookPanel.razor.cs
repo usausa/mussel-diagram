@@ -1,4 +1,4 @@
-namespace Example.Client.Components.Diagrams;
+namespace Example.Client.Components.Samples;
 
 using Microsoft.AspNetCore.Components;
 

@@ -27,9 +27,18 @@ public sealed partial class MusselDiagramView
 
     public ValueTask FocusAsync() => RunViewAsync("focus");
 
-    internal async Task ExecuteFromScriptAsync(string name, IEnumerable<string> selection)
+    internal async Task ExecuteFromScriptAsync(string name, IEnumerable<string>? selection)
     {
-        await SetSelectionAsync([.. selection.Where(Snapshot.Contains)]).ConfigureAwait(true);
+        if (selection is not null)
+        {
+            scriptSelection = [.. selection];
+        }
+
+        if (scriptSelection is not null)
+        {
+            await SetSelectionAsync([.. scriptSelection.Where(Snapshot.Contains)]).ConfigureAwait(true);
+        }
+
         await Commands.ExecuteAsync(name).ConfigureAwait(true);
         await RefreshCommandsAsync().ConfigureAwait(true);
     }
@@ -39,9 +48,9 @@ public sealed partial class MusselDiagramView
         commands = new DiagramCommandRegistry(argument => new DiagramCommandContext(this, SelectedIds, argument));
         Register(DiagramCommands.Undo, ["Ctrl+Z"], _ => Editable && Diagram.CanUndo, _ => RestoreAsync(true));
         Register(DiagramCommands.Redo, ["Ctrl+Y", "Ctrl+Shift+Z"], _ => Editable && Diagram.CanRedo, _ => RestoreAsync(false));
-        Register(DiagramCommands.Delete, ["Delete", "Backspace"], c => Editable && (Deletion.Deletable(Snapshot, Diagram.Index, c.SelectedIds).Count > 0), c => DeleteAsync(c.SelectedIds, false));
-        Register(DiagramCommands.Cut, ["Ctrl+X"], c => Editable && (Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null) && (Deletion.Deletable(Snapshot, Diagram.Index, c.SelectedIds).Count > 0), CutAsync);
-        Register(DiagramCommands.Copy, ["Ctrl+C"], c => Clipboard.Copy(Snapshot, Diagram.Index, c.SelectedIds) is not null, CopyAsync);
+        Register(DiagramCommands.Delete, ["Delete", "Backspace"], c => Editable && Deletion.Any(Snapshot, Diagram.Index, c.SelectedIds), c => DeleteAsync(c.SelectedIds, false));
+        Register(DiagramCommands.Cut, ["Ctrl+X"], c => Editable && Clipboard.CanCopy(Snapshot, c.SelectedIds) && Deletion.Any(Snapshot, Diagram.Index, c.SelectedIds), CutAsync);
+        Register(DiagramCommands.Copy, ["Ctrl+C"], c => Clipboard.CanCopy(Snapshot, c.SelectedIds), CopyAsync);
         Register(DiagramCommands.Paste, ["Ctrl+V"], _ => Editable && (clipboard is not null), _ => PasteAsync());
         Register(DiagramCommands.SelectAll, ["Ctrl+A"], _ => SelectionEnabled, _ => RunViewAsync("selectAll").AsTask(), true);
         Register(DiagramCommands.ClearSelection, ["Ctrl+Shift+A"], c => c.SelectedIds.Count > 0, _ => ClearSelectionAsync().AsTask(), true);
@@ -67,7 +76,7 @@ public sealed partial class MusselDiagramView
         commands.Register(new DiagramCommand
         {
             Name = DiagramCommands.ToggleLock,
-            DisplayName = Options.Command(DiagramCommands.ToggleLock),
+            DefaultName = CommandName,
             Keys = ["Ctrl+L"],
             CanExecute = c => (subscribed is not null) && Editable && (Lockable(c.SelectedIds).Count > 0),
             GetIsChecked = c => (Lockable(c.SelectedIds) is { Count: > 0 } items) && items.All(IsLocked),
@@ -85,7 +94,9 @@ public sealed partial class MusselDiagramView
     }
 
     private void Register(string name, string[] keys, Func<DiagramCommandContext, bool> canExecute, Func<DiagramCommandContext, Task> execute, bool local = false) =>
-        commands!.Register(new DiagramCommand { Name = name, DisplayName = Options.Command(name), Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
+        commands!.Register(new DiagramCommand { Name = name, DefaultName = CommandName, Keys = keys, CanExecute = c => (subscribed is not null) && canExecute(c), Execute = execute, Local = local });
+
+    private string CommandName(string name) => Options.Command(name);
 
     private void RegisterAlign(string name, AlignEdge edge) =>
         Register(name, [], c => CanArrange(c.SelectedIds, 2), c => ArrangeAsync(() => Arrangement.Align(Snapshot, Diagram.Index, c.SelectedIds, edge)));

@@ -126,6 +126,11 @@ internal sealed class DiagramHistory
             }
         }
 
+        foreach (var (ids, move) in changes.Reorders)
+        {
+            editor.Reorder(ids.Where(x => editor.Find(x) is not null), move);
+        }
+
         editor.Complete();
         return editor.Changes.HasChanges ? editor.Build(target.Version) : target;
 

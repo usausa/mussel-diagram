@@ -15,7 +15,7 @@
     --mussel-diagram-candidate-color: #1a73e8;
     --mussel-diagram-drop-target-color: #1f883d;
     --mussel-diagram-not-allowed-color: var(--mussel-critical, #cf222e);
-    --mussel-diagram-grid-color: var(--mussel-grid-line, #d8dee4);
+    --mussel-diagram-grid-color: var(--mussel-grid-line, #d0d7de);
     --mussel-diagram-grid-major-color: #afb8c1;
     --mussel-diagram-pending-opacity: 0.6;
     --mussel-diagram-error-color: var(--mussel-critical, #cf222e);

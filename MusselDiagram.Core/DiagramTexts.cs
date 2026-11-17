@@ -39,7 +39,7 @@ public sealed record DiagramTexts
             [DiagramIssueKind.InvalidMember] = "The member '{0}' does not exist or is not a node or a tree group.",
             [DiagramIssueKind.NoMembers] = "The overlay group has no members.",
             [DiagramIssueKind.KindMismatch] = "The kind of the group differs from the kind of the type '{0}'.",
-            [DiagramIssueKind.InvalidSize] = "The size is not positive.",
+            [DiagramIssueKind.InvalidSize] = "The size is not positive or is too large.",
             [DiagramIssueKind.UnreadableData] = "The data cannot be read as the data type of '{0}'.",
             [DiagramIssueKind.RemovedSvgContent] = "Removed from the icon '{0}': {1}",
             [DiagramIssueKind.RejectedUrl] = "The icon '{0}' refers to URLs that were not used: {1}",

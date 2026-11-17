@@ -112,7 +112,7 @@ public sealed partial class AppFixture : IAsyncLifetime
         page.Watch();
         var response = await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
         page.InitialHtml = response is null ? string.Empty : await response.TextAsync().ConfigureAwait(false);
-        await page.WaitForViewAsync().ConfigureAwait(false);
+        await page.WaitForDiagramAsync().ConfigureAwait(false);
         return page;
     }
 

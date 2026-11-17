@@ -101,7 +101,7 @@ public sealed class DiagramCommand
 
     public required string Name { get; init; }
 
-    public string? DisplayName { get; init; }
+    public string? DisplayName { get => field ?? DefaultName?.Invoke(Name); init; }
 
     public IReadOnlyList<string> Keys { get => keys; init => keys = value; }
 
@@ -116,6 +116,8 @@ public sealed class DiagramCommand
     public required Func<DiagramCommandContext, Task> Execute { get; init; }
 
     internal bool Local { get; init; }
+
+    internal Func<string, string>? DefaultName { get; init; }
 
     internal Func<DiagramCommandContext, Task>? Replacement { get; set; }
 
@@ -228,6 +230,8 @@ public sealed class DiagramCommandRegistry
         }
     }
 
+    internal void NotifyChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
     internal void Register(DiagramCommand command)
     {
         commands.Add(command);
@@ -266,26 +270,28 @@ public sealed class DiagramCommandRegistry
             return key;
         }
 
-        var name = parts[^1];
-        var modifiers = parts[..^1];
-        var builder = new List<string>(4);
-        if (modifiers.Contains("Ctrl", StringComparer.OrdinalIgnoreCase))
+        var (ctrl, alt, shift) = (false, false, false);
+        var others = new List<string>();
+        foreach (var modifier in parts[..^1])
         {
-            builder.Add("Ctrl");
+            switch (modifier.ToUpperInvariant())
+            {
+                case "CTRL" or "CONTROL" or "META" or "CMD":
+                    ctrl = true;
+                    break;
+                case "ALT":
+                    alt = true;
+                    break;
+                case "SHIFT":
+                    shift = true;
+                    break;
+                default:
+                    others.Add(modifier + "+");
+                    break;
+            }
         }
 
-        if (modifiers.Contains("Alt", StringComparer.OrdinalIgnoreCase))
-        {
-            builder.Add("Alt");
-        }
-
-        if (modifiers.Contains("Shift", StringComparer.OrdinalIgnoreCase))
-        {
-            builder.Add("Shift");
-        }
-
-        builder.Add(NameOf(name));
-        return string.Join('+', builder);
+        return string.Concat(others) + (ctrl ? "Ctrl+" : string.Empty) + (alt ? "Alt+" : string.Empty) + (shift ? "Shift+" : string.Empty) + NameOf(parts[^1]);
     }
 
     private static string NameOf(string name)

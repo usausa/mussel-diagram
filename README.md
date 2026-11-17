@@ -7,7 +7,8 @@
 ## 🐚 What is this?
 
 A diagram editor for Blazor, made to be built into applications.  
-Types and rules decide what can be placed where and what can be connected, and the model without UI (`MusselDiagram.Core`) checks and saves the diagram on servers too.  
+Types and rules decide what can be placed where and what can be connected.  
+The diagram itself is in `MusselDiagram.Core`, without UI, so a server can check and save diagrams too.  
 
 | 🧩 Editing | 🏷️ States and issues | 🌙 Dark theme |
 |:-:|:-:|:-:|

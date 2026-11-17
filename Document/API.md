@@ -6,7 +6,7 @@ The behaviour is in the [specification](SPEC.md). Coordinates and sizes are in w
 
 ## 📋 MusselDiagramView
 
-The view component. `Diagram` is required, and other attributes such as `class` and `id` go to the root element. Templates go in the child content.
+The view component. `Diagram` is required, and other attributes such as `class` and `id` go to the root element. Templates go in the child content. The root gets `data-attached` once its script is attached and the calls made before are applied, and loses it when the script is disposed. The roots of `MusselDiagramPalette` and `MusselDiagramDragSource` get it once their scripts are attached.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -85,6 +85,8 @@ Templates are for node types. The view still draws the ports and the tooltip. A 
 
 ## 🧰 MusselDiagramPalette
 
+Other attributes such as `class` and `id` go to the root element.  
+
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `View` | `MusselDiagramView` | required | The view to place into |
@@ -92,7 +94,7 @@ Templates are for node types. The view still draws the ports and the tooltip. A 
 
 ## 🖐️ MusselDiagramDragSource
 
-Wraps HTML of the app so that a drag into the view starts from it.  
+Wraps HTML of the app so that a drag into the view starts from it. Other attributes such as `class` and `id` go to the root element.  
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -117,8 +119,8 @@ Wraps HTML of the app so that a drag into the view starts from it.
 
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
-Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. On Mac, `Ctrl` matches ⌘.  
-The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp` or `F2`, in any case. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`.  
+Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘.  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
 
@@ -141,12 +143,12 @@ The model. It works without a view. Writing is not thread-safe.
 | `Validate()` | The issues (`DiagramIssue`) of the current snapshot |
 | `Save(stream)`, `SaveAsync(stream)`, `ToJson()` | Writes the current snapshot as JSON |
 | `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed. Throws `DiagramException` when the text is not a diagram or its version is newer |
-| `IsModified`, `MarkSaved()` | Whether the contents changed since `MarkSaved` |
+| `IsModified`, `MarkSaved()` | Whether the contents changed since `MarkSaved`; routes the router gives later do not set it while nothing else changed |
 | `GetPorts(id)` | The ports of an element (`DiagramPort`) with their positions |
 | `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, `SourceAngle` and `TargetAngle` (the direction each end marker points, in degrees: 0 right, 90 down), and `Path` (shortened at ends with markers) |
 
 Every writing method takes an optional `DiagramWriteOptions`: `Tag` (any object, given back in `Changed`) and `History` (`DiagramHistoryMode`: `Record`, `Skip` or `Merge`). `BeginUpdate` takes it too, and the outermost scope decides.  
-A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, sizes that are not finite and positive) throws `DiagramException` and leaves the snapshot as it was.  
+A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, positions, sizes or right and bottom edges that are not finite, sizes that are not positive) throws `DiagramException` and leaves the snapshot as it was.  
 
 `DiagramChangedEventArgs`:  
 
@@ -253,7 +255,7 @@ An immutable record.
 ### Routing
 
 `IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
-`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason. When the router throws or is canceled, or the result is `null` or has fewer than two finite points, the link keeps the simple route as `Failed`.  
+`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason. The points start at the position of `Source` and end at that of `Target`; loading and undo or redo compute other routes again. When the router throws or is canceled, or the result is `null`, has fewer than two points or has a point that is not finite, the link keeps the simple route as `Failed`.  
 
 ## 🖼️ Icons
 
@@ -322,7 +324,8 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 ## 🖼️ Export
 
 `ExportSvgAsync` and `ExportImageAsync` return a `DiagramExportResult`: `Content` (a `Stream` at its start that the app disposes, or `null` when nothing was exported), `Error` (a `DiagramReason` of the kind `TooLarge`) and `Issues` (`ImageNotEmbedded` for images that could not be embedded).  
-Before JS is attached to the view (`data-attached`), both throw `InvalidOperationException`.  
+Until JS is attached to the view, and after the view is disposed, both throw `InvalidOperationException`. Once the view has `data-attached`, they work.  
+Both wait up to 5 seconds for links whose routes are still being computed; links still waiting after that are drawn with their simple routes.  
 Tooltips, classes and styles are not exported; `data-id` and `data-type` are kept.  
 
 | `DiagramSvgExportOptions` | Default | Description |
@@ -336,12 +339,12 @@ Tooltips, classes and styles are not exported; `data-id` and `data-type` are kep
 
 ## 🌐 Languages
 
-`MusselDiagramOptions.Cultures` maps culture names (case-insensitive) to `DiagramTexts`. The empty name (`DiagramTexts.English`) and `ja` (`JapaneseLanguage.Texts`) are built in.  
+`MusselDiagramOptions.Cultures` maps culture names (case-insensitive) to `DiagramTexts`. The empty name (`DiagramTexts.English`) and `ja` (`JapaneseTexts.Default`) are built in.  
 `services.AddMusselDiagram(options => …)` sets what applies to every diagram a view shows and registers the `MusselDiagramOptions`. A diagram with its own `Diagram.Options` follows those instead. It is optional; without it the built-in languages apply. The APIs that take no diagram (`DiagramJson.Read`, `DiagramIconImport`, `DiagramSnapshot.Validate`) use the built-in languages.  
 Each item is looked up from the culture to its parents; a missing or empty item falls back, and English is the last resort. So a language can set only some items, and the built-in texts change with `with`.  
 
 ```csharp
-builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseLanguage.Texts with { NoMatches = "該当なし" });
+builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTexts.Default with { NoMatches = "該当なし" });
 ```
 
 | `DiagramTexts` | Description |
@@ -351,13 +354,13 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseLa
 | `Commands` | The display name of each built-in command, by name |
 | `SearchPlaceholder`, `NoMatches` | The palette and the type picker |
 
-`JapaneseLanguage` is in `MusselDiagram.Languages.Japanese` of `MusselDiagram.Core`. A language of your own is written the same way.  
+`JapaneseTexts` is in `MusselDiagram.Languages.Japanese` of `MusselDiagram.Core`. A language of your own is written the same way.  
 
 ## 🎨 Theme
 
 Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables; an app changes them from any selector. `.mussel-dark` on an ancestor switches to the dark values, including those of the shared variables (the same class as MusselChart and MusselCalendar).  
 
-These are shared with the other Mussel libraries.  
+These are shared with the other Mussel libraries. Their light defaults follow the look of each library, so set them on a container to give several libraries the same colors.  
 
 | Variable | Use |
 |---|---|
@@ -386,8 +389,8 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 
 | Class or attribute | Use |
 |---|---|
-| `mussel-diagram`, `mussel-diagram-palette` | The roots of the view and the palette |
-| `data-attached` | Set on the root of the view when JS is attached and the first view calls are applied. The content is hidden until then |
+| `mussel-diagram`, `mussel-diagram-palette`, `mussel-diagram-drag-source` | The roots of the view, the palette and the drag source |
+| `data-attached` | Set on the root of the view when JS is attached and the first view calls are applied, and on the roots of the palette and the drag source. The content of the view is hidden until then |
 | `mussel-diagram-node`, `mussel-diagram-group`, `mussel-diagram-link`, `mussel-diagram-port`, and `data-type` | Elements and their type names |
 | `data-template` | Nodes drawn by a template |
 | `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending` | Built-in states that the view sets while editing; hover is `:hover` |
@@ -405,6 +408,7 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 |---|---|
 | Render mode | Needs an interactive render mode (Server, WebAssembly or Auto). Prerendering and static SSR show nothing in the first version |
 | Size | The target is a diagram of 500 nodes, 50 groups and 600 links with a frame time under 16 ms (95th percentile) while dragging, panning and zooming |
+| Messages | In Interactive Server, one message from the browser is at most 32 KB by default (`HubOptions.MaximumReceiveMessageSize`). A selection change sends every selected ID, so selecting more than about 1,500 elements with the default IDs, or fewer with longer IDs, needs a larger limit |
 | Export | Only in a browser, through the view. The image size is limited by the canvas of the browser |
 | Icons | None are bundled. AWS icons are read from the package the user downloads |
 | Text | Labels are plain text; HTML in labels is shown as text |

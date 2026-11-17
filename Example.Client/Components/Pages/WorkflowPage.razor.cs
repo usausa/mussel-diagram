@@ -1,7 +1,5 @@
 namespace Example.Client.Components.Pages;
 
-using Example.Client.Models;
-
 using Microsoft.AspNetCore.Components;
 
 public sealed partial class WorkflowPage : IDisposable

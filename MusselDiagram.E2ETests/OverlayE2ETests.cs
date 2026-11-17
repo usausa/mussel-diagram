@@ -11,7 +11,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 {
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -22,7 +22,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task IssuesAreShownAndVisitedWithF8(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -67,7 +67,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task BadgesShowStatesReportClicksAndFollowDrags(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -111,7 +111,7 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ExportsSvgPngAndJpeg(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);

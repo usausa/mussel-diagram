@@ -44,8 +44,8 @@ public sealed class LanguageTests
         };
 
         Assert.Equal("循環はできません", InCulture(Japanese, () => options.Reason(DiagramReasonKind.Cycle)));
-        Assert.Equal(JapaneseLanguage.Texts.Reasons[DiagramReasonKind.Limit], InCulture(Japanese, () => options.Reason(DiagramReasonKind.Limit)));
-        Assert.Equal(JapaneseLanguage.Texts.NoMatches, InCulture(Japanese, () => options.NoMatches));
+        Assert.Equal(JapaneseTexts.Default.Reasons[DiagramReasonKind.Limit], InCulture(Japanese, () => options.Reason(DiagramReasonKind.Limit)));
+        Assert.Equal(JapaneseTexts.Default.NoMatches, InCulture(Japanese, () => options.NoMatches));
         Assert.Equal(DiagramTexts.English.Reasons[DiagramReasonKind.Cycle], options.Reason(DiagramReasonKind.Cycle));
     }
 
@@ -85,21 +85,35 @@ public sealed class LanguageTests
     }
 
     [Fact]
+    public void BrokenTextsFallBackToEnglish()
+    {
+        var options = new MusselDiagramOptions
+        {
+            Cultures =
+            {
+                [string.Empty] = new DiagramTexts { Issues = new Dictionary<DiagramIssueKind, string> { [DiagramIssueKind.UnregisteredType] = "No type {0} {1" } }
+            }
+        };
+
+        Assert.Equal("The type 'legacy' is not registered.", CreateDiagram(options).Validate().Single().Message);
+    }
+
+    [Fact]
     public void EveryKindHasEnglishAndJapaneseTexts()
     {
         foreach (var kind in Enum.GetValues<DiagramReasonKind>().Where(static x => x != DiagramReasonKind.App))
         {
             Assert.True(DiagramTexts.English.Reasons.ContainsKey(kind), kind.ToString());
-            Assert.True(JapaneseLanguage.Texts.Reasons.ContainsKey(kind), kind.ToString());
+            Assert.True(JapaneseTexts.Default.Reasons.ContainsKey(kind), kind.ToString());
         }
 
         foreach (var kind in Enum.GetValues<DiagramIssueKind>().Where(static x => x != DiagramIssueKind.App))
         {
             Assert.True(DiagramTexts.English.Issues.ContainsKey(kind), kind.ToString());
-            Assert.True(JapaneseLanguage.Texts.Issues.ContainsKey(kind), kind.ToString());
+            Assert.True(JapaneseTexts.Default.Issues.ContainsKey(kind), kind.ToString());
         }
 
-        Assert.Equal(DiagramTexts.English.Commands.Keys.Order(StringComparer.Ordinal), JapaneseLanguage.Texts.Commands.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(DiagramTexts.English.Commands.Keys.Order(StringComparer.Ordinal), JapaneseTexts.Default.Commands.Keys.Order(StringComparer.Ordinal));
     }
 
     private static Diagram CreateDiagram(MusselDiagramOptions? options = null)

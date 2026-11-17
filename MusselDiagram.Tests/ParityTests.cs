@@ -145,7 +145,7 @@ public sealed class ParityTests
             var (exitCode, log) = await RunNodeAsync(file).ConfigureAwait(true);
             if (exitCode is null)
             {
-                Assert.Skip("node が見つからないため、一致のテストを省略しました");
+                Assert.Skip("node was not found, so the parity tests are skipped.");
                 return;
             }
 

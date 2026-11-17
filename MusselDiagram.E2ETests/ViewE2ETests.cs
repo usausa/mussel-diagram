@@ -8,13 +8,13 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
 {
     private SamplePage? opened;
 
-    public static TheoryData<string, string> Modes => new()
+    public static TheoryData<string, string> ModeMarkers => new()
     {
         { "server", "server" },
         { "wasm", "webassembly" }
     };
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -25,7 +25,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(Modes))]
+    [MemberData(nameof(ModeMarkers))]
     public async Task ViewStartsInEveryRenderMode(string mode, string markerType)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -36,7 +36,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheContentShowsOnlyAfterTheFirstViewIsApplied(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -60,7 +60,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task WheelPansAndControlWheelZooms(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -79,7 +79,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ResettingTheZoomRightAfterAWheelZoomEndsAtOneHundredPercent(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -98,26 +98,42 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task APressRightAfterAWheelZoomStartsFromTheNewZoom(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
-        var stage = opened.View.Locator(".mussel-diagram-stage");
+        var page = opened.Page;
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+        await page.EvaluateAsync(
+            """
+            () => {
+                let wheeled = 0;
+                window.addEventListener('wheel', () => { wheeled = performance.now(); }, { capture: true });
+                window.addEventListener('pointerdown', () => {
+                    window.pressedStyle = document.querySelector('.mussel-diagram-stage').getAttribute('style') ?? '';
+                    window.pressedAfter = performance.now() - wheeled;
+                });
+            }
+            """);
 
-        await opened.Page.Mouse.MoveAsync(600, 400);
-        await opened.Page.Keyboard.DownAsync("Control");
-        await opened.Page.Mouse.WheelAsync(0, -100);
-        await opened.Page.Keyboard.UpAsync("Control");
-        await opened.Page.Mouse.DownAsync();
-        var style = await stage.GetAttributeAsync("style");
-        await opened.Page.Mouse.UpAsync();
+        var after = double.PositiveInfinity;
+        for (var attempt = 0; (attempt < 3) && (after >= 150); attempt++)
+        {
+            await page.Mouse.MoveAsync(600, 400);
+            await page.Keyboard.DownAsync("Control");
+            await page.Mouse.WheelAsync(0, -100);
+            await page.Keyboard.UpAsync("Control");
+            await page.Mouse.DownAsync();
+            await page.Mouse.UpAsync();
+            after = await page.EvaluateAsync<double>("() => window.pressedAfter");
+        }
 
-        Assert.Equal(string.Empty, style);
+        Assert.InRange(after, 0, 150);
+        Assert.Equal(string.Empty, await page.EvaluateAsync<string>("() => window.pressedStyle"));
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task DraggingANodeMovesItWithItsLinks(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -138,7 +154,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task RejectedMoveGoesBackAndShowsTheReason(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

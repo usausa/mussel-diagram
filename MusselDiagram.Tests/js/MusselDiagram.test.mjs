@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
-    keyName, nextZoom, stackOffsets, restore,
+    keyName, nextZoom, stackOffsets, restore, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, commandKey,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -281,6 +281,18 @@ test('keys are named with the modifiers in a fixed order', () => {
     assert.equal(keyName({ key: 'c', code: 'KeyC', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, true), 'Ctrl+C');
 });
 
+test('with Alt, a letter or a digit is the key pressed and Shift is written', () => {
+    const key = (k, extra = {}) => keyName({ key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra }, false);
+    assert.equal(key('1', { altKey: true, code: 'Digit1' }), 'Alt+1');
+    assert.equal(key('!', { altKey: true, shiftKey: true, code: 'Digit1' }), 'Alt+Shift+1');
+    assert.equal(key('å', { altKey: true, code: 'KeyA' }), 'Alt+A');
+});
+
+test('key names of commands match in any case', () => {
+    const pressed = keyName({ key: 'Pause', code: 'Pause', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, false);
+    assert.equal(commandKey('Ctrl+pause'), commandKey(pressed));
+});
+
 test('command zoom moves in steps on a 5% grid and passes 100%', () => {
     assert.equal(nextZoom(1, 1, 0.05, 8), 1.2);
     assert.equal(nextZoom(1.2, -1, 0.05, 8), 1);
@@ -311,4 +323,92 @@ test('reverting keeps the values that changed after the commit', () => {
 
     assert.equal(moved.getAttribute('transform'), 'translate(0,0)');
     assert.equal(rendered.getAttribute('transform'), 'translate(80,0)');
+});
+
+test('a commit writes over the entry as it is when the pointer is released', () => {
+    const table = new Map([['a', { id: 'a', x: 50, y: 0, w: 10, h: 10, locked: true }]]);
+
+    const previous = applyEntry(table, 'a', { w: 20, h: 30 });
+
+    assert.deepEqual(table.get('a'), { id: 'a', x: 50, y: 0, w: 20, h: 30, locked: true });
+    assert.deepEqual(previous.get('a'), { id: 'a', x: 50, y: 0, w: 10, h: 10, locked: true });
+    assert.equal(applyEntry(table, 'gone', { w: 1 }), null);
+    assert.equal(table.has('gone'), false);
+});
+
+test('an element that a render changed is not restored in part', () => {
+    const label = {
+        attributes: new Map([['data-label', 'Bar']]),
+        getAttribute(name) { return this.attributes.get(name) ?? null; },
+        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    };
+    const saved = new Map([[label, new Map([['data-label', 'Untitled'], ['data-default', '']])]]);
+    const written = new Map([[label, new Map([['data-label', 'Foo'], ['data-default', null]])]]);
+
+    restore(saved, written);
+
+    assert.equal(label.getAttribute('data-label'), 'Bar');
+    assert.equal(label.getAttribute('data-default'), null);
+});
+
+test('a commit still waiting keeps what it wrote over an older render, and goes back to that render', () => {
+    const element = (attributes) => ({
+        attributes: new Map(attributes),
+        getAttribute(name) { return this.attributes.get(name) ?? null; },
+        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    });
+    const label = element([['data-label', 'Bar']]);
+    const moved = element([['transform', 'translate(50,0)']]);
+    const node = { nodeValue: 'Rendered' };
+    const entry = {
+        saved: new Map([[label, new Map([['data-label', 'Untitled'], ['data-default', '']])], [moved, new Map([['transform', 'translate(0,0)']])]]),
+        written: new Map([[label, new Map([['data-label', 'Foo'], ['data-default', null]])], [moved, new Map([['transform', 'translate(50,0)']])]]),
+        texts: [[node, 'Old']],
+        writtenTexts: new Map([[node, 'New']]),
+    };
+
+    keepWritten(entry);
+    const kept = [label.getAttribute('data-label'), label.getAttribute('data-default'), moved.getAttribute('transform'), node.nodeValue];
+    restore(entry.saved, entry.written);
+
+    assert.deepEqual(kept, ['Foo', null, 'translate(50,0)', 'New']);
+    assert.deepEqual([label.getAttribute('data-label'), label.getAttribute('data-default'), moved.getAttribute('transform')], ['Bar', null, 'translate(0,0)']);
+    assert.equal(entry.texts[0][1], 'Rendered');
+});
+
+test('a drag remembers what it wrote so that a cancel keeps a newer render', () => {
+    const element = (value) => ({
+        attributes: new Map([['d', value]]),
+        getAttribute(name) { return this.attributes.get(name) ?? null; },
+        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    });
+    const drawn = element('M0 0');
+    const rendered = element('M0 0');
+    const saved = new Map([[drawn, new Map([['d', 'M0 0']])], [rendered, new Map([['d', 'M0 0']])]]);
+    const written = new Map();
+    writeAttribute(written, drawn, 'd', 'M5 5');
+    writeAttribute(written, rendered, 'd', 'M5 5');
+    rendered.setAttribute('d', 'M9 9');
+
+    restore(saved, written);
+
+    assert.equal(drawn.getAttribute('d'), 'M0 0');
+    assert.equal(rendered.getAttribute('d'), 'M9 9');
+});
+
+test('a selection that the view already has is not sent again', () => {
+    const sent = new Set(['a', 'b']);
+    assert.equal(changedSelection(new Set(['b', 'a']), sent), null);
+    assert.deepEqual(changedSelection(['a'], sent), ['a']);
+    assert.deepEqual(changedSelection(['a', 'b', 'c'], sent), ['a', 'b', 'c']);
+    assert.deepEqual(changedSelection(new Set(['a', 'b']), null), ['a', 'b']);
+});
+
+test('a list scrolls just enough to show the active row', () => {
+    assert.equal(scrollToShow(0, 100, 40, 20), 0);
+    assert.equal(scrollToShow(0, 100, 120, 20), 40);
+    assert.equal(scrollToShow(80, 100, 40, 20), 40);
 });

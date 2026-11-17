@@ -329,6 +329,7 @@ const controllers = new WeakMap();
 
 export function keyName(event, mac) {
     let key = event.key;
+    let pressed = false;
     if (!key || ['Control', 'Shift', 'Alt', 'Meta', 'Unidentified', 'Process', 'Dead'].includes(key)) {
         return null;
     }
@@ -344,6 +345,7 @@ export function keyName(event, mac) {
             key = event.code.slice(3);
         } else if (event.altKey && /^Digit[0-9]$/.test(event.code ?? '')) {
             key = event.code.slice(5);
+            pressed = true;
         } else {
             key = key.toUpperCase();
         }
@@ -355,11 +357,15 @@ export function keyName(event, mac) {
     if (event.altKey) {
         parts.push('Alt');
     }
-    if (event.shiftKey && (/^[A-Z]$/.test(key) || ((key.length > 1) && (key !== 'Plus') && (key !== 'Minus')))) {
+    if (event.shiftKey && (pressed || /^[A-Z]$/.test(key) || ((key.length > 1) && (key !== 'Plus') && (key !== 'Minus')))) {
         parts.push('Shift');
     }
     parts.push(key);
     return parts.join('+');
+}
+
+export function commandKey(name) {
+    return name.toLowerCase();
 }
 
 export function nextZoom(zoom, direction, minZoom, maxZoom) {
@@ -1091,13 +1097,48 @@ function routeMidpoint(points) {
     return points[points.length - 1];
 }
 
+export function applyEntry(table, id, change) {
+    const current = table.get(id);
+    if (current === undefined) {
+        return null;
+    }
+
+    table.set(id, { ...current, ...change });
+    return new Map([[id, current]]);
+}
+
+export function scrollToShow(scrollTop, viewHeight, top, height) {
+    if (top < scrollTop) {
+        return top;
+    }
+
+    return top + height > scrollTop + viewHeight ? top + height - viewHeight : scrollTop;
+}
+
+export function changedSelection(ids, sent) {
+    const list = [...ids];
+    return sent && (list.length === sent.size) && list.every((id) => sent.has(id)) ? null : list;
+}
+
+export function writeAttribute(written, element, attribute, value) {
+    element.setAttribute(attribute, value);
+    if (written) {
+        let entry = written.get(element);
+        if (!entry) {
+            entry = new Map();
+            written.set(element, entry);
+        }
+        entry.set(attribute, value);
+    }
+}
+
 export function restore(saved, written = null) {
     for (const [element, value] of saved) {
         const current = written?.get(element);
+        if (current && changedSince(element, value, current)) {
+            continue;
+        }
         for (const [attribute, old] of value) {
-            if (current && (element.getAttribute(attribute) !== current.get(attribute))) {
-                continue;
-            }
             if (old === null) {
                 element.removeAttribute(attribute);
             } else {
@@ -1105,6 +1146,43 @@ export function restore(saved, written = null) {
             }
         }
     }
+}
+
+export function keepWritten(entry) {
+    for (const [element, attributes] of entry.written) {
+        let rendered = false;
+        for (const [attribute, value] of attributes) {
+            rendered ||= element.getAttribute(attribute) !== value;
+        }
+        if (!rendered) {
+            continue;
+        }
+        const saved = entry.saved.get(element);
+        for (const [attribute, value] of attributes) {
+            saved?.set(attribute, element.getAttribute(attribute));
+            if (value === null) {
+                element.removeAttribute(attribute);
+            } else {
+                element.setAttribute(attribute, value);
+            }
+        }
+    }
+    for (const pair of entry.texts ?? []) {
+        const written = entry.writtenTexts.get(pair[0]);
+        if (pair[0].nodeValue !== written) {
+            pair[1] = pair[0].nodeValue;
+            pair[0].nodeValue = written;
+        }
+    }
+}
+
+function changedSince(element, value, current) {
+    for (const attribute of value.keys()) {
+        if (current.has(attribute) && (element.getAttribute(attribute) !== current.get(attribute))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const EXPORT_PROPERTIES = [
@@ -1459,6 +1537,7 @@ class DiagramController {
         this.commits = Promise.resolve();
         this.pending = [];
         this.rejections = 0;
+        this.sentSelection = null;
         this.waiting = false;
         this.reason = null;
         this.spaceDown = false;
@@ -1491,7 +1570,11 @@ class DiagramController {
         this.listen(root, 'pointermove', (e) => this.onPointerMove(e));
         this.listen(root, 'pointerup', (e) => this.onPointerUp(e));
         this.listen(root, 'pointercancel', (e) => this.onPointerCancel(e));
-        this.listen(root, 'lostpointercapture', (e) => this.onPointerCancel(e));
+        this.listen(root, 'lostpointercapture', (e) => {
+            if (!this.cover.hasPointerCapture(e.pointerId)) {
+                this.onPointerCancel(e);
+            }
+        });
         this.listen(root, 'pointerleave', (e) => {
             if (e.pointerType !== 'touch') {
                 this.lastPointer = null;
@@ -1584,7 +1667,7 @@ class DiagramController {
         for (const id of fresh) {
             this.wantedIcons.add(id);
         }
-        this.dotnet.invokeMethodAsync('WantIcons', fresh).catch(() => {});
+        this.dotnet.invokeMethodAsync('WantIcons', fresh).catch(() => { });
     }
 
     setTable(table) {
@@ -1696,7 +1779,7 @@ class DiagramController {
 
     notifyViewport() {
         const { x, y, zoom } = this.view;
-        this.dotnet?.invokeMethodAsync('OnViewportChanged', zoom, x, y, this.size.width, this.size.height).catch(() => {});
+        this.dotnet?.invokeMethodAsync('OnViewportChanged', zoom, x, y, this.size.width, this.size.height).catch(() => { });
     }
 
     setView(zoom, centerX, centerY) {
@@ -1748,6 +1831,9 @@ class DiagramController {
         const delta = wheelDelta(event, this.size.height);
         if (action === 'zoom') {
             this.zoomBy(Math.exp(-delta.y * WHEEL_ZOOM_RATE), this.point(event));
+            if (this.drag) {
+                this.foldGesture();
+            }
         } else {
             this.foldGesture();
             const dx = event.shiftKey && (delta.x === 0) ? delta.y : delta.x;
@@ -1880,6 +1966,7 @@ class DiagramController {
                 this.root.setPointerCapture(event.pointerId);
                 this.pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
                 this.root.classList.add('mussel-diagram-panning');
+                this.captureCover(event.pointerId);
             }
             return;
         }
@@ -2036,7 +2123,14 @@ class DiagramController {
         this.foldGesture();
         this.pan = { pointerId: event.pointerId, x: from?.x ?? event.clientX, y: from?.y ?? event.clientY };
         this.root.classList.add('mussel-diagram-panning');
+        this.captureCover(event.pointerId);
         return true;
+    }
+
+    captureCover(pointerId) {
+        if (this.root.hasPointerCapture(pointerId)) {
+            this.cover.setPointerCapture(pointerId);
+        }
     }
 
     endPan() {
@@ -2141,7 +2235,7 @@ class DiagramController {
         }
         if (hit.kind === 'badge') {
             if (this.dotnet) {
-                this.track(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index).catch(() => {}));
+                this.track(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index).catch(() => { }));
             }
             return;
         }
@@ -2208,7 +2302,8 @@ class DiagramController {
         this.selection = next;
         this.drawSelection();
         if (this.dotnet) {
-            this.track(this.dotnet.invokeMethodAsync('OnSelectionChanged', [...next]).catch(() => {}));
+            this.sentSelection = new Set(next);
+            this.track(this.dotnet.invokeMethodAsync('OnSelectionChanged', [...next]).catch(() => { }));
         }
     }
 
@@ -2479,6 +2574,7 @@ class DiagramController {
             if (this.drag.cursor) {
                 this.root.classList.add(this.drag.cursor);
             }
+            this.captureCover(press.pointerId);
         }
         return started;
     }
@@ -2569,7 +2665,7 @@ class DiagramController {
         }
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
-        restore(drag.saved ?? new Map());
+        restore(drag.saved ?? new Map(), drag.written ?? null);
         this.drag = null;
         this.endDragState(drag);
         this.clearMarks();
@@ -2684,7 +2780,8 @@ class DiagramController {
             }
             ids = [press.hit.id];
         }
-        const roots = this.table.outermost(ids.filter((id) => this.table.boxes.get(id)?.movable), this.selection);
+        const movable = ids.filter((id) => this.table.boxes.get(id)?.movable);
+        const roots = this.table.outermost(movable, new Set(movable));
         if (roots.length === 0) {
             return false;
         }
@@ -2727,7 +2824,8 @@ class DiagramController {
             dx: 0,
             dy: 0,
             saved: new Map(),
-            origin: this.boxOrigin(roots.flatMap((id) => [id, ...this.table.descendants(id)])),
+            written: new Map(),
+            startVersion: this.table.version,
             elements: new Map(),
             badgeSets: new Map(),
             paths: new Map(),
@@ -2809,7 +2907,7 @@ class DiagramController {
             return;
         }
         state.split?.element?.removeAttribute('data-split-target');
-        state.split = split ? { ...split, origin: this.linkOrigin(split.linkId) } : null;
+        state.split = split;
         split?.element?.setAttribute('data-split-target', '');
     }
 
@@ -2848,40 +2946,46 @@ class DiagramController {
         for (const [id, element] of drag.elements) {
             const box = this.table.boxes.get(id);
             if (box) {
-                element.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
+                writeAttribute(drag.written, element, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
             }
         }
         for (const [id, set] of drag.badgeSets) {
             const box = this.table.boxes.get(id);
             if (box) {
-                set.setAttribute('transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
+                writeAttribute(drag.written, set, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
             }
         }
         for (const link of drag.links) {
-            this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id));
+            this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id), drag.written);
         }
     }
 
-    drawLink(link, source, target, paths) {
+    drawLink(link, source, target, paths, written = null) {
         if (!source || !target || !paths) {
             return;
         }
         const points = routeLink(link, source, target, this.options.gridSize);
-        paths.hit?.setAttribute('d', toPath(points, link.form));
-        paths.line?.setAttribute('d', toPath(points, link.form, link.sourceCut, link.targetCut));
+        if (paths.hit) {
+            writeAttribute(written, paths.hit, 'd', toPath(points, link.form));
+        }
+        if (paths.line) {
+            writeAttribute(written, paths.line, 'd', toPath(points, link.form, link.sourceCut, link.targetCut));
+        }
         if (paths.badges) {
             const middle = routeMidpoint(points);
-            paths.badges.setAttribute('transform', `translate(${formatNumber(middle.x)},${formatNumber(middle.y)})`);
+            writeAttribute(written, paths.badges, 'transform', `translate(${formatNumber(middle.x)},${formatNumber(middle.y)})`);
         }
     }
 
     finishMove(drag) {
+        const splitLinkId = drag.split?.linkId ?? null;
+        this.markSplit(drag, null);
         if ((drag.dx === 0) && (drag.dy === 0)) {
-            restore(drag.saved);
+            restore(drag.saved, drag.written);
             return;
         }
         if (drag.nestBlocked) {
-            restore(drag.saved);
+            restore(drag.saved, drag.written);
             this.showReason(this.reasonText('nesting'), drag.point);
             return;
         }
@@ -2900,10 +3004,7 @@ class DiagramController {
         if (reparent) {
             this.table.index();
         }
-        const splitLinkId = drag.split?.linkId ?? null;
-        const origin = { boxes: drag.origin, links: drag.split?.origin ?? [] };
-        this.markSplit(drag, null);
-        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, origin, this.rejections, [...this.selection]));
+        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, drag.startVersion, this.rejections, this.selectionArgument()));
     }
 
     startResize(press) {
@@ -2928,9 +3029,10 @@ class DiagramController {
             links,
             paths: new Map(),
             saved: new Map(),
+            written: new Map(),
             startWorld: press.world,
             rect: { x: box.x, y: box.y, w: box.w, h: box.h },
-            origin: this.boxOrigin([box.id]),
+            startVersion: this.table.version,
         };
         for (const link of links) {
             drag.paths.set(link.id, this.linkPaths(link.id, drag.saved));
@@ -2962,7 +3064,7 @@ class DiagramController {
         for (const link of drag.links) {
             const source = link.source === drag.id ? resized : this.table.boxes.get(link.source);
             const target = link.target === drag.id ? resized : this.table.boxes.get(link.target);
-            this.drawLink(link, source, target, drag.paths.get(link.id));
+            this.drawLink(link, source, target, drag.paths.get(link.id), drag.written);
         }
         this.drawGuides(drag, drag.rect);
         this.layers.preview.replaceChildren(svg('rect', { class: 'mussel-diagram-resize-frame', x: drag.rect.x, y: drag.rect.y, width: drag.rect.w, height: drag.rect.h }));
@@ -2972,14 +3074,17 @@ class DiagramController {
         const { rect, box } = drag;
         this.layers.preview.replaceChildren();
         if ((rect.x === box.x) && (rect.y === box.y) && (rect.w === box.w) && (rect.h === box.h)) {
+            restore(drag.saved, drag.written);
+            return;
+        }
+        const previous = applyEntry(this.table.boxes, box.id, rect);
+        if (previous === null) {
             restore(drag.saved);
             return;
         }
         const frame = svg('rect', { class: 'mussel-diagram-resize-frame', x: rect.x, y: rect.y, width: rect.w, height: rect.h });
         this.layers.pending.append(frame);
-        const previous = new Map([[box.id, box]]);
-        this.table.boxes.set(box.id, { ...box, ...rect });
-        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, { boxes: drag.origin }, this.rejections, [...this.selection]));
+        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, drag.startVersion, this.rejections, this.selectionArgument()));
     }
 
     connectionTargets(check) {
@@ -3117,7 +3222,7 @@ class DiagramController {
             target: null,
             element,
             saved: new Map(),
-            origin: this.linkOrigin(link.id),
+            startVersion: this.table.version,
         };
         this.mark(element, 'data-reconnecting');
         this.root.classList.add('mussel-diagram-connecting');
@@ -3238,18 +3343,23 @@ class DiagramController {
         }
         if (drag.kind === 'connect') {
             this.commit(drag, { saved: new Map(), previous: new Map(), overlays }, () => this.dotnet.invokeMethodAsync(
-                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.rejections, [...this.selection]));
+                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.rejections, this.selectionArgument()));
             return;
         }
         const link = drag.link;
+        const previousLinks = applyEntry(this.table.links, link.id, drag.side === 'source' ? { source: end.element, sourcePort: end.port } : { target: end.element, targetPort: end.port });
+        if (previousLinks === null) {
+            for (const overlay of overlays) {
+                overlay.remove();
+            }
+            return;
+        }
         const saved = new Map();
         this.save(saved, drag.element, 'data-reconnecting');
         drag.element?.setAttribute('data-reconnecting', '');
-        const previousLinks = new Map([[link.id, link]]);
-        this.table.links.set(link.id, drag.side === 'source' ? { ...link, source: end.element, sourcePort: end.port } : { ...link, target: end.element, targetPort: end.port });
         this.table.index();
         this.commit(drag, { saved, previous: new Map(), previousLinks, overlays, reconnecting: drag.element }, () => this.dotnet.invokeMethodAsync(
-            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, { links: drag.origin }, this.rejections, [...this.selection]));
+            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, drag.startVersion, this.rejections, this.selectionArgument()));
     }
 
     startBoxSelection(press) {
@@ -3425,7 +3535,7 @@ class DiagramController {
                 picker.shown = names.map((name) => picker.items.find((x) => x.type.name === name)).filter((x) => x);
                 picker.active = 0;
                 this.renderPicker();
-            }).catch(() => {});
+            }).catch(() => { });
             return;
         }
         const types = searchTypes(picker.items.map((x) => x.type), picker.search.value);
@@ -3522,7 +3632,11 @@ class DiagramController {
         picker.active = index;
         const option = picker.list.children[index];
         option?.setAttribute('aria-selected', 'true');
-        option?.scrollIntoView({ block: 'nearest' });
+        if (option) {
+            const list = picker.list;
+            const top = option.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+            list.scrollTop = scrollToShow(list.scrollTop, list.clientHeight, top, option.offsetHeight);
+        }
         this.drawPickerPreview();
     }
 
@@ -3540,13 +3654,13 @@ class DiagramController {
         const operation = { point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
         if (!from) {
             this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, {}, this.rejections, [...this.selection]));
+                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, this.table.version, this.rejections, this.selectionArgument()));
             this.root.focus({ preventScroll: true });
             return;
         }
         const linkType = this.linkTypeFor(from);
         this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.rejections, [...this.selection]));
+            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.rejections, this.selectionArgument()));
         this.root.focus({ preventScroll: true });
     }
 
@@ -3561,20 +3675,12 @@ class DiagramController {
         this.layers.preview.replaceChildren();
     }
 
-    boxOrigin(ids) {
-        const boxes = [];
-        for (const id of ids) {
-            const box = this.table.boxes.get(id);
-            if (box) {
-                boxes.push([id, box.x, box.y, box.w, box.h, box.parent ?? null]);
-            }
+    selectionArgument(ids = this.selection) {
+        const changed = changedSelection(ids, this.sentSelection);
+        if (changed) {
+            this.sentSelection = new Set(changed);
         }
-        return boxes;
-    }
-
-    linkOrigin(id) {
-        const link = id ? this.table.links.get(id) : null;
-        return link ? [[id, link.source, link.sourcePort ?? null, link.target, link.targetPort ?? null]] : [];
+        return changed;
     }
 
     commit(operation, entry, call) {
@@ -3683,6 +3789,9 @@ class DiagramController {
             entry.reconnecting?.removeAttribute('data-reconnecting');
         }
         this.pending = kept;
+        for (const entry of kept) {
+            keepWritten(entry);
+        }
     }
 
     showReason(text, point, sticky) {
@@ -3717,7 +3826,7 @@ class DiagramController {
         }
         if (!event.isComposing && (event.keyCode !== 229) && (event.key !== 'Escape')) {
             const key = keyName(event, this.mac);
-            const command = key ? this.commandMap.get(key) : undefined;
+            const command = key ? this.commandMap.get(commandKey(key)) : undefined;
             if (command && !this.isTyping(event, key)) {
                 if (this.drag || this.pan || this.pinch || this.external || (this.waiting && !command.local)) {
                     event.preventDefault();
@@ -3790,7 +3899,7 @@ class DiagramController {
         this.commandMap = new Map();
         for (const command of commands) {
             for (const key of command.keys) {
-                this.commandMap.set(key, command);
+                this.commandMap.set(commandKey(key), command);
             }
         }
     }
@@ -3847,9 +3956,9 @@ class DiagramController {
         const run = this.commandChain.then(async () => {
             await this.whenIdle();
             if (this.commandFor(command.name)?.enabled) {
-                await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, selection);
+                await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
             }
-        }).catch(() => {});
+        }).catch(() => { });
         this.commandChain = run;
         this.track(run, true);
     }
@@ -3961,6 +4070,7 @@ class DiagramController {
         if (!this.options.dropEnabled || this.waiting) {
             return;
         }
+        this.foldGesture();
         let screen;
         if ((x === undefined) || (x === null)) {
             const pointer = this.lastPointer;
@@ -3977,7 +4087,7 @@ class DiagramController {
             return;
         }
         const keys = press.keys ?? {};
-        this.dotnet?.invokeMethodAsync('OnClickedAsync', kind === 'element' ? press.hit.id : null, press.world.x, press.world.y, !!keys.shift, !!keys.ctrl, !!keys.alt, !!keys.meta, twice).catch(() => {});
+        this.dotnet?.invokeMethodAsync('OnClickedAsync', kind === 'element' ? press.hit.id : null, press.world.x, press.world.y, !!keys.shift, !!keys.ctrl, !!keys.alt, !!keys.meta, twice).catch(() => { });
     }
 
     onDoubleClick(event) {
@@ -4073,7 +4183,7 @@ class DiagramController {
         input.spellcheck = false;
         input.setAttribute('aria-label', slot);
         this.root.append(input);
-        this.editor = { id, slot, label, input, text, maxLines: definition.maxLines, pending: false, template: !!texts };
+        this.editor = { id, slot, label, input, text, startVersion: this.table.version, maxLines: definition.maxLines, pending: false, template: !!texts };
         label.setAttribute('data-editing', '');
         input.addEventListener('keydown', (e) => this.onEditorKey(e));
         input.addEventListener('input', () => this.placeEditor());
@@ -4151,7 +4261,7 @@ class DiagramController {
             return;
         }
         const key = (event.key === 'Escape') || (event.key === 'Enter') ? null : keyName(event, this.mac);
-        if (key && this.commandMap.has(key) && !this.isTyping(event, key)) {
+        if (key && this.commandMap.has(commandKey(key)) && !this.isTyping(event, key)) {
             return;
         }
         event.stopPropagation();
@@ -4196,8 +4306,7 @@ class DiagramController {
         const box = this.table.boxes.get(editor.id);
         const point = box ? { x: ((box.x + box.w / 2) * this.view.zoom) + this.view.x, y: ((box.y + box.h / 2) * this.view.zoom) + this.view.y } : null;
         const operation = { point };
-        const origin = { text: editor.text };
-        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, origin, this.rejections, [...this.selection]);
+        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, editor.startVersion, this.rejections, this.selectionArgument());
         if (!this.options.optimistic) {
             editor.pending = true;
             editor.input.readOnly = true;
@@ -4216,6 +4325,7 @@ class DiagramController {
                         editor.input.readOnly = false;
                         editor.input.removeAttribute('data-pending');
                         editor.text = this.currentText(editor.id, editor.slot, editor.label);
+                        editor.startVersion = this.table.version;
                         editor.input.focus({ preventScroll: true });
                     }
                 },
@@ -4224,8 +4334,9 @@ class DiagramController {
         }
         if (editor.template) {
             const texts = this.provisionalText(label, value);
+            const previous = applyEntry(this.table.boxes, editor.id, { texts: { ...this.table.boxes.get(editor.id)?.texts, [editor.slot]: value } }) ?? new Map();
             this.closeEditor();
-            this.commit(operation, { saved: new Map(), previous: new Map(), texts }, call);
+            this.commit(operation, { saved: new Map(), previous, texts }, call);
             this.root.focus({ preventScroll: true });
             return;
         }
@@ -4304,7 +4415,7 @@ class DiagramController {
             ghost.append(icon);
         }
         document.body.append(ghost);
-        this.external = { type, value: value ?? null, ghost, lines: this.snapLines(new Set()), inside: false, point: null, client: null, alt: false, bounds: null, parent: undefined, allowed: false, split: null, snappedX: false, snappedY: false, panReady: false };
+        this.external = { type, value: value ?? null, ghost, startVersion: this.table.version, lines: this.snapLines(new Set()), inside: false, point: null, client: null, alt: false, bounds: null, parent: undefined, allowed: false, split: null, snappedX: false, snappedY: false, panReady: false };
         this.root.classList.add('mussel-diagram-dropping');
         return this.external;
     }
@@ -4427,7 +4538,6 @@ class DiagramController {
         this.moveExternal(event);
         const { inside, allowed, bounds, parent, type, value } = external;
         const splitLinkId = external.split?.linkId ?? null;
-        const origin = { links: external.split?.origin ?? [] };
         this.cancelExternal();
         if (!inside || !allowed || !bounds) {
             return;
@@ -4436,7 +4546,7 @@ class DiagramController {
         this.layers.pending.append(frame);
         const operation = { point: external.point };
         this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, origin, this.rejections, [...this.selection]));
+            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, external.startVersion, this.rejections, this.selectionArgument()));
         this.root.focus({ preventScroll: true });
     }
 

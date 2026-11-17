@@ -66,7 +66,7 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramReconnectedEventArgs> Reconnected { get; set; }
 
-    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, string? splitLinkId, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal Task<ScriptCommitResult> CommitMoveAsync(string[] ids, DiagramPoint offset, bool reparent, string? parentId, string? splitLinkId, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         Splice? split = null;
         return CommitAsync(
@@ -75,10 +75,16 @@ public sealed partial class MusselDiagramView
             selection,
             () =>
             {
-                var reason = CheckMove(ids, origin) ?? (reparent ? CheckParent(ids, parentId) : null) ??
+                var reason = CheckMove(ids, startVersion) ?? (reparent ? CheckParent(ids, parentId) : null) ??
                     (StayRules.Allows(Snapshot, Diagram.Index, ids, offset) ? null : Reason(DiagramReasonKind.Nesting));
-                split = (reason is null) && (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0)
-                    ? SpliceOf(ids[0], splitLinkId, origin, editor =>
+                var splits = (reason is null) && (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0);
+                if (splits)
+                {
+                    reason = CheckSplit(splitLinkId, startVersion);
+                }
+
+                split = splits && (reason is null)
+                    ? SpliceOf(ids[0], splitLinkId, editor =>
                     {
                         editor.Move(ids, offset);
                         if (reparent)
@@ -114,12 +120,12 @@ public sealed partial class MusselDiagramView
             snapshot => Moved.InvokeAsync(new DiagramMovedEventArgs(ids, offset, reparent, reparent ? parentId : null, snapshot)));
     }
 
-    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null) =>
+    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null) =>
         CommitAsync(
             DiagramOperation.Resize,
             rejectionsSeen,
             selection,
-            () => CheckResize(id, bounds, origin),
+            () => CheckResize(id, bounds, startVersion),
             async () =>
             {
                 var args = new DiagramResizingEventArgs(id, bounds);
@@ -147,14 +153,14 @@ public sealed partial class MusselDiagramView
             snapshot => Connected.InvokeAsync(new DiagramConnectedEventArgs(linkId, source, target, linkType, null, snapshot)));
     }
 
-    internal Task<ScriptCommitResult> CommitReconnectAsync(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal Task<ScriptCommitResult> CommitReconnectAsync(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         DiagramLink? link = null;
         return CommitAsync(
             DiagramOperation.Reconnect,
             rejectionsSeen,
             selection,
-            () => CheckReconnect(linkId, side, end, origin, out link),
+            () => CheckReconnect(linkId, side, end, startVersion, out link),
             async () =>
             {
                 var args = new DiagramReconnectingEventArgs(linkId, side, end, EndOf(link!, side, end, DiagramLinkEndSide.Source), EndOf(link!, side, end, DiagramLinkEndSide.Target), link!.Type);
@@ -213,7 +219,12 @@ public sealed partial class MusselDiagramView
     {
         if (selection is not null)
         {
-            await SetSelectionAsync([.. selection.Where(IsSelectable)]).ConfigureAwait(true);
+            scriptSelection = selection;
+        }
+
+        if (scriptSelection is not null)
+        {
+            await SetSelectionAsync([.. scriptSelection.Where(IsSelectable)]).ConfigureAwait(true);
         }
 
         var turn = await EnterGateAsync().ConfigureAwait(true);
@@ -244,7 +255,16 @@ public sealed partial class MusselDiagramView
                 return new ScriptCommitResult(false, Snapshot.Version, localized.Message, rejections);
             }
 
-            write();
+            writing = true;
+            try
+            {
+                write();
+            }
+            finally
+            {
+                writing = false;
+            }
+
             var result = Snapshot;
             await HandleAsync(turn, () => after(result)).ConfigureAwait(true);
             await RefreshCommandsAsync().ConfigureAwait(true);
@@ -274,7 +294,7 @@ public sealed partial class MusselDiagramView
             : new DiagramGroup { Type = boxType.Name, Bounds = bounds, ParentId = parentId, Label = content?.Label, Texts = content?.Texts ?? [], Data = data };
     }
 
-    private DiagramReason? CheckMove(IEnumerable<string> ids, ScriptOrigin origin)
+    private DiagramReason? CheckMove(IEnumerable<string> ids, long startVersion)
     {
         if (ReadOnly || !MoveEnabled)
         {
@@ -284,7 +304,7 @@ public sealed partial class MusselDiagramView
         var current = Snapshot;
         foreach (var id in ids)
         {
-            if ((current.Find(id) is not DiagramBox box) || !origin.TryGetBox(id, out _, out _))
+            if (current.Find(id) is not DiagramBox box)
             {
                 return Reason(DiagramReasonKind.Changed);
             }
@@ -294,15 +314,14 @@ public sealed partial class MusselDiagramView
                 return Reason(DiagramReasonKind.Permission);
             }
 
-            var descendants = current.GetDescendants(id);
-            if (descendants.Length != origin.CountDescendants(id))
+            if (stamps.BoxChanged(id, startVersion))
             {
                 return Reason(DiagramReasonKind.Changed);
             }
 
-            foreach (var moved in descendants.Prepend(box))
+            foreach (var start in box is DiagramGroup { Kind: DiagramGroupKind.Overlay } overlay ? overlay.MemberIds : [id])
             {
-                if (!origin.TryGetBox(moved.Id, out var bounds, out var parent) || (bounds != moved.Bounds) || !string.Equals(parent, moved.ParentId, StringComparison.Ordinal))
+                if (stamps.BoxChanged(start, startVersion) || current.GetDescendants(start).Any(x => stamps.BoxChanged(x.Id, startVersion)))
                 {
                     return Reason(DiagramReasonKind.Changed);
                 }
@@ -349,14 +368,14 @@ public sealed partial class MusselDiagramView
         return null;
     }
 
-    private DiagramReason? CheckResize(string id, DiagramRect bounds, ScriptOrigin origin)
+    private DiagramReason? CheckResize(string id, DiagramRect bounds, long startVersion)
     {
         if (ReadOnly || !ResizeEnabled)
         {
             return Reason(DiagramReasonKind.Permission);
         }
 
-        if ((Snapshot.Find(id) is not DiagramBox box) || !origin.TryGetBox(id, out var old, out _) || (old != box.Bounds))
+        if ((Snapshot.Find(id) is not DiagramBox box) || stamps.BoundsChanged(id, startVersion))
         {
             return Reason(DiagramReasonKind.Changed);
         }
@@ -386,7 +405,7 @@ public sealed partial class MusselDiagramView
     private bool CanBeParent(string? parentId) =>
         (parentId is null) || ((Snapshot.Find(parentId) is DiagramGroup { Kind: DiagramGroupKind.Tree, Locked: false } parent) && (Diagram.Index.FindBoxType(parent) is not null));
 
-    private DiagramReason? CheckReconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, ScriptOrigin origin, out DiagramLink? current)
+    private DiagramReason? CheckReconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, long startVersion, out DiagramLink? current)
     {
         current = null;
         if (ReadOnly || !ConnectEnabled)
@@ -394,10 +413,7 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Permission);
         }
 
-        if ((Snapshot.Find(linkId) is not DiagramLink link) ||
-            !origin.TryGetLink(linkId, out var oldSource, out var oldTarget) ||
-            (oldSource != link.Source) || (oldTarget != link.Target) ||
-            !Snapshot.Contains(end.ElementId))
+        if ((Snapshot.Find(linkId) is not DiagramLink link) || stamps.EndsChanged(linkId, startVersion) || !Snapshot.Contains(end.ElementId))
         {
             return Reason(DiagramReasonKind.Changed);
         }

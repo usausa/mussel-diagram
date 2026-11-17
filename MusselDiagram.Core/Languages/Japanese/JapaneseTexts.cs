@@ -1,8 +1,8 @@
 namespace MusselDiagram.Languages.Japanese;
 
-public static class JapaneseLanguage
+public static class JapaneseTexts
 {
-    public static DiagramTexts Texts { get; } = new()
+    public static DiagramTexts Default { get; } = new()
     {
         Reasons = new Dictionary<DiagramReasonKind, string>
         {
@@ -37,7 +37,7 @@ public static class JapaneseLanguage
             [DiagramIssueKind.InvalidMember] = "中身「{0}」がないか、ノードでも木の群でもありません",
             [DiagramIssueKind.NoMembers] = "重ね合わせの群に中身がありません",
             [DiagramIssueKind.KindMismatch] = "群の種類が、型「{0}」の種類と違います",
-            [DiagramIssueKind.InvalidSize] = "大きさが正の数ではありません",
+            [DiagramIssueKind.InvalidSize] = "大きさが正の数でないか、大きすぎます",
             [DiagramIssueKind.UnreadableData] = "データを型「{0}」のデータとして読めません",
             [DiagramIssueKind.RemovedSvgContent] = "アイコン「{0}」から消したもの: {1}",
             [DiagramIssueKind.RejectedUrl] = "アイコン「{0}」の使わなかった URL: {1}",

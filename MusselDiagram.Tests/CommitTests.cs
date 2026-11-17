@@ -1,9 +1,5 @@
 namespace MusselDiagram;
 
-using System.Text.Json;
-
-using MusselDiagram.Internal;
-
 public sealed class CommitTests : BunitContext
 {
     private static readonly DiagramSchema Schema = new()
@@ -13,7 +9,7 @@ public sealed class CommitTests : BunitContext
             new DiagramNodeType { Name = "server" },
             new DiagramNodeType { Name = "fixed", Permissions = DiagramPermissions.Select }
         ],
-        GroupTypes = [new DiagramGroupType { Name = "vpc" }],
+        GroupTypes = [new DiagramGroupType { Name = "vpc" }, new DiagramGroupType { Name = "team", Kind = DiagramGroupKind.Overlay }],
         LinkTypes = [new DiagramLinkType { Name = "arrow" }]
     };
 
@@ -34,7 +30,7 @@ public sealed class CommitTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moved, moved.Add));
         var version = diagram.Snapshot.Version;
-        var origin = TestOrigin.Of(diagram.Snapshot);
+        var origin = cut.Instance.ScriptVersion;
 
         var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 20), false, null, null, origin, 0));
 
@@ -64,7 +60,7 @@ public sealed class CommitTests : BunitContext
             .Add(p => p.CommitRejected, rejected.Add));
         var before = diagram.Snapshot;
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, TestOrigin.Of(before), 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, cut.Instance.ScriptVersion, 0));
 
         Assert.False(result.Accepted);
         Assert.Equal("Not now", result.Reason);
@@ -80,7 +76,7 @@ public sealed class CommitTests : BunitContext
     {
         var diagram = CreateDiagram();
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
-        var seen = TestOrigin.Of(diagram.Snapshot);
+        var seen = cut.Instance.ScriptVersion;
         await cut.InvokeAsync(() => diagram.Move(["a"], new DiagramPoint(0, 5)));
         await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("b")! with { Label = "B" }));
 
@@ -104,7 +100,7 @@ public sealed class CommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.CommitRejected, rejected.Add));
-        var seen = TestOrigin.Of(diagram.Snapshot);
+        var seen = cut.Instance.ScriptVersion;
         await cut.InvokeAsync(() => diagram.Move(["a"], new DiagramPoint(0, 5)));
 
         var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, seen, 0));
@@ -118,7 +114,7 @@ public sealed class CommitTests : BunitContext
     {
         var diagram = CreateDiagram();
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
-        var seen = TestOrigin.Of(diagram.Snapshot);
+        var seen = cut.Instance.ScriptVersion;
         for (var i = 0; i < 70; i++)
         {
             await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("b")! with { Label = $"B{i}" }, new DiagramWriteOptions { History = DiagramHistoryMode.Skip }));
@@ -130,37 +126,13 @@ public sealed class CommitTests : BunitContext
     }
 
     [Fact]
-    public void OriginsWhoseParentsLoopStillEnd()
-    {
-        using var document = JsonDocument.Parse("""{"boxes":[["a",0,0,1,1,"b"],["b",0,0,1,1,"a"]]}""");
-
-        Assert.Equal(1, ScriptOrigin.Read(document.RootElement).CountDescendants("a"));
-    }
-
-    [Fact(Timeout = 30_000)]
-    public async Task OriginsOfManyBoxesCountDescendantsQuickly()
-    {
-        await Task.Run(
-            static () =>
-            {
-                const int count = 50_000;
-                var origin = ScriptOrigin.Read(JsonSerializer.SerializeToElement(new { boxes = Enumerable.Range(0, count).Select(static i => new object?[] { $"b{i}", 0, 0, 1, 1, i == 0 ? null : "b0" }) }));
-
-                var total = Enumerable.Range(0, count).Sum(i => origin.CountDescendants($"b{i}"));
-
-                Assert.Equal(count - 1, total);
-            },
-            Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
-    }
-
-    [Fact]
     public async Task LockedElementsAndReadOnlyViewsAreNotMoved()
     {
         var diagram = CreateDiagram();
         diagram.Replace((DiagramNode)diagram.Find("c")! with { Locked = true });
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
         var version = diagram.Snapshot.Version;
-        var origin = TestOrigin.Of(diagram.Snapshot);
+        var origin = cut.Instance.ScriptVersion;
 
         var locked = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, origin, 0));
         var typed = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["d"], new DiagramPoint(10, 0), false, null, null, origin, locked.Rejections));
@@ -181,7 +153,7 @@ public sealed class CommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moving, e => e.Cancel = decisions.Dequeue()));
-        var origin = TestOrigin.Of(diagram.Snapshot);
+        var origin = cut.Instance.ScriptVersion;
 
         var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, origin, 0));
         var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, origin, 0));
@@ -211,6 +183,135 @@ public sealed class CommitTests : BunitContext
         await cut.InvokeAsync(() => cut.Instance.ClearSelectionAsync().AsTask());
         Assert.Empty(cut.Instance.SelectedIds);
         Assert.Equal(3, reported.Count);
+    }
+
+    [Fact]
+    public async Task WhatTheLastCommitChangedDoesNotRejectTheNextOne()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+
+        var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(350, 0), false, null, null, start, 0));
+        var grown = ((DiagramBox)diagram.Find("vpc")!).Bounds;
+        var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 0), false, null, null, start, first.Rejections));
+
+        Assert.True(first.Accepted);
+        Assert.True(grown.Width > 400);
+        Assert.True(second.Accepted);
+        Assert.Equal(grown with { X = grown.X + 10 }, ((DiagramBox)diagram.Find("vpc")!).Bounds);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MovingAnOverlayIsRejectedWhenItsMembersChanged(bool addMember)
+    {
+        var diagram = CreateDiagram();
+        diagram.Add(new DiagramNode { Id = "e", Type = "server", Bounds = new DiagramRect(620, 150, 40, 40) });
+        diagram.Add(new DiagramNode { Id = "f", Type = "server", Bounds = new DiagramRect(640, 220, 40, 40) });
+        diagram.Add(new DiagramGroup { Id = "team", Type = "team", Kind = DiagramGroupKind.Overlay, MemberIds = ["b", "c", "e"] });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        var frame = ((DiagramBox)diagram.Find("team")!).Bounds;
+        await cut.InvokeAsync(() =>
+        {
+            if (addMember)
+            {
+                diagram.Replace((DiagramGroup)diagram.Find("team")! with { MemberIds = ["b", "c", "e", "f"] });
+            }
+            else
+            {
+                diagram.Move(["e"], new DiagramPoint(5, 5));
+            }
+        });
+        Assert.Equal(frame, ((DiagramBox)diagram.Find("team")!).Bounds);
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["team"], new DiagramPoint(10, 0), false, null, null, start, 0));
+
+        Assert.False(result.Accepted);
+        Assert.Equal(MusselDiagramOptions.Default.Reason(DiagramReasonKind.Changed), result.Reason);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ASplitIsRejectedWhenTheLinkChanged(bool drop)
+    {
+        var diagram = CreateDiagram();
+        diagram.Add(new DiagramNode { Id = "e", Type = "server", Bounds = new DiagramRect(300, 400, 100, 50) });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        await cut.InvokeAsync(() =>
+        {
+            if (drop)
+            {
+                diagram.Reconnect("ab", DiagramLinkEndSide.Target, new DiagramLinkEnd("c"));
+            }
+            else
+            {
+                diagram.Delete(["ab"]);
+            }
+        });
+        var version = diagram.Snapshot.Version;
+
+        var result = drop
+            ? await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(300, 0, 100, 50), null, null, "ab", start, 0))
+            : await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["e"], new DiagramPoint(0, -300), false, null, "ab", start, 0));
+
+        Assert.False(result.Accepted);
+        Assert.Equal(MusselDiagramOptions.Default.Reason(DiagramReasonKind.Changed), result.Reason);
+        Assert.Equal(version, diagram.Snapshot.Version);
+    }
+
+    [Fact]
+    public async Task AReconnectIsRejectedWhenTheEndsOfTheLinkChanged()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        await cut.InvokeAsync(() => diagram.Reconnect("ab", DiagramLinkEndSide.Target, new DiagramLinkEnd("c")));
+        var version = diagram.Snapshot.Version;
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitReconnectAsync("ab", DiagramLinkEndSide.Source, new DiagramLinkEnd("b"), start, 0));
+
+        Assert.False(result.Accepted);
+        Assert.Equal(MusselDiagramOptions.Default.Reason(DiagramReasonKind.Changed), result.Reason);
+        Assert.Equal(version, diagram.Snapshot.Version);
+    }
+
+    [Fact]
+    public async Task ChangesBesideWhatAMoveWritesDoNotRejectIt()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("a")! with { Label = "A", Look = new DiagramBoxLook { Fill = "#ff0000" } }));
+        await cut.InvokeAsync(() => diagram.Move(["b"], new DiagramPoint(0, 5)));
+        await cut.InvokeAsync(() => diagram.LoadJson(diagram.ToJson()));
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 0), false, null, null, start, 0));
+
+        Assert.True(result.Accepted);
+    }
+
+    [Fact]
+    public async Task CommitsAndCommandsWithoutASelectionUseTheLastOneFromTheScript()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => cut.Instance.OnSelectionChangedAsync(["b"]));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["c"]).AsTask());
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, cut.Instance.ScriptVersion, 0));
+        var selected = cut.Instance.SelectedIds;
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["c"]).AsTask());
+        await cut.InvokeAsync(() => cut.Instance.ExecuteFromScriptAsync(DiagramCommands.Delete, null));
+
+        Assert.True(result.Accepted);
+        Assert.Equal(["b"], selected);
+        Assert.False(diagram.Snapshot.Contains("b"));
+        Assert.True(diagram.Snapshot.Contains("c"));
     }
 
     private static Diagram CreateDiagram(MusselDiagramOptions? options = null)

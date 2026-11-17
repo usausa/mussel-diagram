@@ -152,7 +152,7 @@ public sealed class Diagram
         Reset(DiagramJsonFormat.Parse(stream), options);
 
     public async Task<ImmutableArray<DiagramIssue>> LoadAsync(Stream stream, DiagramWriteOptions? options = null, CancellationToken cancellationToken = default) =>
-        Reset(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(false), options);
+        Reset(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(true), options);
 
     public ImmutableArray<DiagramIssue> LoadJson(string json, DiagramWriteOptions? options = null) =>
         Reset(DiagramJsonFormat.Parse(json), options);
@@ -219,7 +219,7 @@ public sealed class Diagram
     internal void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit) =>
         Write(options, origin, edit, updateDepth > 0 ? updateBudget : NewBudget(RouteLimit));
 
-    private void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, RouteBudget? budget)
+    private void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, RouteBudget? budget, bool fromRouter = false)
     {
         var before = Snapshot;
         var editor = new SnapshotEditor(before, Index) { Budget = budget, WaitForRoutes = !CanDefer };
@@ -241,7 +241,7 @@ public sealed class Diagram
             return;
         }
 
-        Commit(before, editor.Build(before.Version + 1), editor.Changes, origin, options);
+        Commit(before, editor.Build(before.Version + 1), editor.Changes, origin, options, fromRouter);
         Track(editor.PendingRoutes);
         Defer(editor.DeferredLinks);
     }
@@ -341,12 +341,17 @@ public sealed class Diagram
             return;
         }
 
-        Write(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }, DiagramChangeOrigin.Api, editor => editor.CompleteRoute(route, task));
+        Write(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }, DiagramChangeOrigin.Api, editor => editor.CompleteRoute(route, task), updateDepth > 0 ? updateBudget : NewBudget(RouteLimit), true);
     }
 
-    private void Commit(DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, DiagramChangeOrigin origin, DiagramWriteOptions? options)
+    private void Commit(DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, DiagramChangeOrigin origin, DiagramWriteOptions? options, bool fromRouter = false)
     {
         Snapshot = after;
+        if (fromRouter && ReferenceEquals(saved, before))
+        {
+            saved = after;
+        }
+
         history.Add(before, after, changes, options?.History ?? DiagramHistoryMode.Record, Index);
         CancelRemovedRoutes();
         Changed?.Invoke(this, changes.ToArgs(before, after, origin, options?.Tag));
@@ -493,7 +498,7 @@ public sealed class Diagram
 
         (DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)[] results = [.. routedLinks.Values];
         routedLinks.Clear();
-        Write(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }, DiagramChangeOrigin.Api, editor => editor.ApplyRoutes(results), null);
+        Write(new DiagramWriteOptions { History = DiagramHistoryMode.Skip }, DiagramChangeOrigin.Api, editor => editor.ApplyRoutes(results), null, true);
     }
 
     private ImmutableArray<DiagramIssue> Reset(DiagramJsonDocument document, DiagramWriteOptions? options)

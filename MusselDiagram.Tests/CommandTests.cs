@@ -47,6 +47,17 @@ public sealed class CommandTests : BunitContext
     }
 
     [Fact]
+    public void ControlMetaAndCmdAreCtrlAndOtherModifiersNeverMatch()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var commands = cut.Instance.Commands;
+
+        commands.Add(new DiagramCommand { Name = "Mine", Keys = ["control+s", "Cmd+Shift+y", "meta+k", "Hyper+b"], Execute = static _ => Task.CompletedTask });
+
+        Assert.Equal(["Ctrl+S", "Ctrl+Shift+Y", "Ctrl+K", "Hyper+B"], commands["Mine"].Keys);
+    }
+
+    [Fact]
     public void NamedKeysTakeTheNamesOfTheBrowser()
     {
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
@@ -151,12 +162,11 @@ public sealed class CommandTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.TextCommitted, committed.Add));
         var version = diagram.Snapshot.Version;
-        var origin = TestOrigin.Of(diagram.Snapshot);
+        var origin = cut.Instance.ScriptVersion;
 
         var label = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", origin, 0));
-        var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", TestOrigin.Of(diagram.Snapshot, "Hello"), 0));
-        var fixedSlot = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "body", "No", TestOrigin.Of(diagram.Snapshot), 0));
-        var stale = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Old", origin, fixedSlot.Rejections));
+        var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", cut.Instance.ScriptVersion, 0));
+        var fixedSlot = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "body", "No", cut.Instance.ScriptVersion, 0));
 
         Assert.True(label.Accepted);
         Assert.True(same.Accepted);
@@ -165,7 +175,40 @@ public sealed class CommandTests : BunitContext
         Assert.Equal((null, "Hello"), (committed[0].OldText, committed[0].NewText));
         Assert.Single(committed);
         Assert.False(fixedSlot.Accepted);
-        Assert.False(stale.Accepted);
+    }
+
+    [Fact]
+    public async Task TextCommitsLookOnlyAtTheirOwnSlot()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("n")! with { Texts = ((DiagramNode)diagram.Find("n")!).Texts.SetItem("body", "Changed") }));
+
+        var other = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", start, 0));
+        await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("n")! with { Label = "Moved on" }));
+        var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Again", start, other.Rejections));
+
+        Assert.True(other.Accepted);
+        Assert.False(same.Accepted);
+        Assert.Equal("Moved on", ((DiagramBox)diagram.Find("n")!).Label);
+    }
+
+    [Fact]
+    public async Task ATextWhoseSlotIsGoneIsRejectedAsChanged()
+    {
+        var diagram = CreateDiagram();
+        var rejected = new List<DiagramCommitRejectedEventArgs>();
+        var cut = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, diagram)
+            .Add(p => p.CommitRejected, rejected.Add));
+        var start = cut.Instance.ScriptVersion;
+        await cut.InvokeAsync(() => diagram.Replace((DiagramNode)diagram.Find("n")! with { Type = "server" }));
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", start, 0));
+
+        Assert.False(result.Accepted);
+        Assert.Equal(DiagramReasonKind.Changed, Assert.Single(rejected).Reason.Kind);
     }
 
     [Fact]
@@ -177,7 +220,7 @@ public sealed class CommandTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Dropped, dropped.Add));
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(180, 0, 100, 50), null, "From list", "ab", TestOrigin.Of(diagram.Snapshot), 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(180, 0, 100, 50), null, "From list", "ab", cut.Instance.ScriptVersion, 0));
 
         Assert.True(result.Accepted);
         var node = (DiagramNode)diagram.Find(result.ElementId!)!;

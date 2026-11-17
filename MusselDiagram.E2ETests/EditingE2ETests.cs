@@ -6,7 +6,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 {
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -17,7 +17,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PaletteItemsArePlacedByDragging(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -31,7 +31,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task DragSourcesGiveTheirValue(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -42,7 +42,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task DroppingANodeOnALinkSplicesIt(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -56,7 +56,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PaletteDragsScrollOnlyFromInsideTheView(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -80,7 +80,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task MovingALonelyNodeOntoALinkSplicesIt(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -101,7 +101,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TryingASpliceKeepsTheOrderOfOverlappingNodes(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -130,7 +130,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task WaitModeKeepsTheEditorUntilTheAnswer(string mode)
     {
         opened = await app.OpenAsync("?wait=true", mode);
@@ -148,7 +148,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task KeysDoNotRunWhileThePointerPans(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -173,7 +173,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task KeysDoNotRunWhileAPaletteItemIsDragged(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -199,7 +199,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task KeysCopyPasteDeleteAndUndo(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -222,7 +222,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TextIsEditedInPlace(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -249,7 +249,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ClickingInTheEditorKeepsItOpen(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -269,7 +269,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PanningWithTheMiddleButtonKeepsTheEditorOpen(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -293,7 +293,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task EditingKeysAndPaletteDragsKeepTheTypedText(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -316,7 +316,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PanningTheBackgroundKeepsTheEditorOpen(string mode)
     {
         opened = await app.OpenAsync("?backgroundpan=true", mode);
@@ -341,7 +341,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TemplateTextIsEditedInPlace(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -372,7 +372,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task GroupAndUngroupWithKeys(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -394,7 +394,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task QuickAddPlacesTheChosenType(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -412,7 +412,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePressThatChoosesInTheQuickAddListEndsThere(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -435,7 +435,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ArrowKeysInTheQuickAddListKeepTheChoiceInView(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -463,7 +463,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TooltipsAndZoomKeysWork(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

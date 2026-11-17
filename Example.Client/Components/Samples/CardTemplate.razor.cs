@@ -1,4 +1,4 @@
-namespace Example.Client.Components.Diagrams;
+namespace Example.Client.Components.Samples;
 
 public sealed partial class CardTemplate
 {

@@ -39,6 +39,8 @@ public sealed class DiagramWriteTests
         Assert.Throws<DiagramException>(() => diagram.Add(Node(string.Empty, 0, 0)));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(0, 0, 0, 50) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(double.NaN, 0, 10, 10) }));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(1.7e308, 0, 1e308, 50) }));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(0, 1.7e308, 50, 1e308) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "missing")));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "a")));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "asg")));
@@ -61,9 +63,11 @@ public sealed class DiagramWriteTests
     {
         var diagram = new Diagram(Schema);
         diagram.Add(Node("far", 1e308, 0));
+        diagram.Add(Node("wide", 0, 0) with { Bounds = new DiagramRect(1.7e308, 0, 5e306, 10) });
         var before = diagram.Snapshot;
 
         Assert.Throws<DiagramException>(() => diagram.Move(["far"], new DiagramPoint(1e308, 0)));
+        Assert.Throws<DiagramException>(() => diagram.Move(["wide"], new DiagramPoint(5e306, 0)));
 
         Assert.Same(before, diagram.Snapshot);
         Assert.NotNull(diagram.ToJson());

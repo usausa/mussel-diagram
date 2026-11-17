@@ -19,7 +19,11 @@ internal sealed class LateModule : IJSObjectReference
 {
     public List<string> Calls { get; } = [];
 
+    public List<object?[]?> Arguments { get; } = [];
+
     public string? Hold { get; set; }
+
+    public string? Fail { get; set; }
 
     public TaskCompletionSource Resume { get; } = new();
 
@@ -35,9 +39,15 @@ internal sealed class LateModule : IJSObjectReference
     {
         ObjectDisposedException.ThrowIf(Released, this);
         Calls.Add(identifier);
+        Arguments.Add(args);
+        if (identifier == Fail)
+        {
+            return ValueTask.FromException<TValue>(new JSException("The call failed."));
+        }
+
         if (identifier == Hold)
         {
-            return new ValueTask<TValue>(Resume.Task.ContinueWith(static _ => default(TValue)!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+            return new ValueTask<TValue>(Resume.Task.ContinueWith(_ => typeof(TValue) == typeof(IJSObjectReference) ? (TValue)(object)this : default!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         }
 
         return typeof(TValue) == typeof(IJSObjectReference) ? new ValueTask<TValue>((TValue)(object)this) : default;
@@ -47,9 +57,15 @@ internal sealed class LateModule : IJSObjectReference
     {
         ObjectDisposedException.ThrowIf(Released, this);
         Calls.Add(identifier);
+        Arguments.Add(args);
+        if (identifier == Fail)
+        {
+            return ValueTask.FromException<TValue>(new JSException("The call failed."));
+        }
+
         if (identifier == Hold)
         {
-            return new ValueTask<TValue>(Resume.Task.ContinueWith(static _ => default(TValue)!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+            return new ValueTask<TValue>(Resume.Task.ContinueWith(_ => typeof(TValue) == typeof(IJSObjectReference) ? (TValue)(object)this : default!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         }
 
         return typeof(TValue) == typeof(IJSObjectReference) ? new ValueTask<TValue>((TValue)(object)this) : default;

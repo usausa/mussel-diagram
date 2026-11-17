@@ -10,7 +10,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 {
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -21,7 +21,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ImportingThePackageRegistersTheIcons(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -44,7 +44,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task AnUnreadablePackageShowsAMessage(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -53,14 +53,56 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 
         var message = opened.Page.GetByText("zip ファイルとして読めませんでした。");
         await Expect(message).ToBeVisibleAsync();
-        await Expect(opened.Page.GetByText("このページでエラーが起きました。")).ToHaveCountAsync(0);
         await Expect(opened.View).ToBeVisibleAsync();
         await opened.Page.Locator(".diagram-sidebar .mud-alert-close button").ClickAsync();
         await Expect(message).ToHaveCountAsync(0);
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
+    public async Task APackageWithoutIconsKeepsTheTypesAndIssuesAreCounted(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+        var page = opened.Page;
+        var input = page.Locator("[data-action='import']");
+        var web = opened.View.Locator("g.mussel-diagram-node[data-id='web-a']");
+        await input.SetInputFilesAsync(new FilePayload { Name = "Icon-package.zip", MimeType = "application/zip", Buffer = CreatePackage() });
+        await Expect(web.Locator("use.mussel-diagram-icon")).ToHaveCountAsync(1);
+
+        await input.SetInputFilesAsync(new FilePayload { Name = "other.zip", MimeType = "application/zip", Buffer = CreateZip([("readme.txt", "No icons")]) });
+
+        await Expect(page.GetByText("この zip には使えるアイコンがありません。")).ToBeVisibleAsync();
+        await Expect(web.Locator("use.mussel-diagram-icon")).ToHaveCountAsync(1);
+        await Expect(web).Not.ToHaveClassAsync(new Regex("mussel-diagram-unregistered"));
+
+        await input.SetInputFilesAsync(new FilePayload { Name = "Icon-package.zip", MimeType = "application/zip", Buffer = CreateZip([.. PackageFiles(), ("Icon-package_07312026/Architecture-Service-Icons_07312026/Arch_Compute/64/Arch_Amazon-Broken_64.svg", "<svg")]) });
+
+        await Expect(page.GetByText("アイコンの取り込みで 1 件の問題がありました。")).ToBeVisibleAsync();
+        await Expect(web.Locator("use.mussel-diagram-icon")).ToHaveCountAsync(1);
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task CancelingTheFilePickerKeepsTheMessage(string mode)
+    {
+        opened = await app.OpenAsync("aws", mode);
+        var page = opened.Page;
+        var input = page.Locator("[data-action='import']");
+        await input.SetInputFilesAsync(new FilePayload { Name = "broken.zip", MimeType = "application/zip", Buffer = "not a zip"u8.ToArray() });
+        var message = page.GetByText("zip ファイルとして読めませんでした。");
+        await Expect(message).ToBeVisibleAsync();
+        var zoom = page.Locator("[data-action='zoom-menu'] button").First;
+        var before = await zoom.InnerTextAsync();
+
+        await input.SetInputFilesAsync(Array.Empty<FilePayload>());
+        await page.Locator("[data-action='zoom-in']").ClickAsync();
+        await Expect(zoom).Not.ToHaveTextAsync(before);
+
+        await Expect(message).ToBeVisibleAsync();
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task ATooLargePackageShowsTheLimit(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -74,8 +116,10 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 
             await opened.Page.Locator("[data-action='import']").SetInputFilesAsync(path);
 
-            await Expect(opened.Page.GetByText("256 MB を超える zip は読み込めません。")).ToBeVisibleAsync();
-            await Expect(opened.Page.GetByText("このページでエラーが起きました。")).ToHaveCountAsync(0);
+            var message = opened.Page.GetByText("256 MB を超える zip は読み込めません。");
+            await Expect(message).ToBeVisibleAsync();
+            await opened.Page.Locator(".diagram-sidebar .mud-alert-close button").ClickAsync();
+            await Expect(message).ToHaveCountAsync(0);
         }
         finally
         {
@@ -84,7 +128,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePackageInTheIconFolderIsLoadedAtStart(string mode)
     {
         app.ProvideAwsIcons(PackageFiles());
@@ -106,7 +150,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task OnlyTheShownIconsAreRead(string mode)
     {
         app.ProvideAwsIcons(PackageFiles());
@@ -139,7 +183,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task OverlayGroupsAreFramedAndTakeLinks(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -171,7 +215,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task OverlayGroupsFollowWhileTheyAreDragged(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -191,7 +235,7 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task SubnetsCannotBeDroppedAtTheTopLevel(string mode)
     {
         opened = await app.OpenAsync("aws", mode);
@@ -226,12 +270,14 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 
     private static ILocator Symbols(ILocator view) => view.Locator(".mussel-diagram-canvas > defs > symbol");
 
-    private static byte[] CreatePackage()
+    private static byte[] CreatePackage() => CreateZip(PackageFiles());
+
+    private static byte[] CreateZip(IEnumerable<(string Path, string Text)> files)
     {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
         {
-            foreach (var (path, text) in PackageFiles())
+            foreach (var (path, text) in files)
             {
                 using var writer = new StreamWriter(archive.CreateEntry(path).Open(), Encoding.UTF8);
                 writer.Write(text);

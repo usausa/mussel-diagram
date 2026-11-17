@@ -11,7 +11,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
     private SamplePage? opened;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -22,7 +22,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheGridSwitchesBetweenLinesAndNone(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -48,7 +48,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheWorkflowChecksPortsAndReachAndEditsSettings(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -75,7 +75,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheErDiagramRevealsKeysAndEditsColumns(string mode)
     {
         opened = await app.OpenAsync("er", mode);
@@ -105,7 +105,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheMonitorShowsLiveStatesAndDetails(string mode)
     {
         opened = await app.OpenAsync("monitor", mode);
@@ -131,7 +131,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarSwitchesWhatADragDoes(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -174,7 +174,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarZoomsWithButtonsAndTheMenu(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -202,7 +202,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarZoomsToTheSelection(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -223,7 +223,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheSingleLineDiagramChecksCapacityAndShowsDeadParts(string mode)
     {
         opened = await app.OpenAsync("electric", mode);
@@ -252,7 +252,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheSingleLineDiagramConnectsOnlyTheSameVoltage(string mode)
     {
         opened = await app.OpenAsync("electric", mode);
@@ -278,7 +278,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarDeletesUndoesAndPastes(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -313,7 +313,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarChangesTheOrderOfTheSelection(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -332,7 +332,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarGroupsLocksAndAligns(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -371,7 +371,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarDownloadsSvgAndPng(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -384,7 +384,22 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
+    public async Task AFailedDownloadShowsAMessage(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        await page.RouteAsync("**/js/download*.js", static route => route.AbortAsync());
+
+        await page.Locator("[data-action='export-menu'] button").First.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "SVG", Exact = true }).ClickAsync();
+
+        await Expect(page.GetByText("書き出せませんでした。")).ToBeVisibleAsync();
+        await Expect(opened.View).ToBeVisibleAsync();
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarShowsWhyAnImageCannotBeMade(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -401,7 +416,24 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
+    public async Task TheToolbarTellsThatAnEmptyDiagramHasNothingToExport(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        await opened.View.Locator("g.mussel-diagram-node").First.ClickAsync();
+        await page.Keyboard.PressAsync("Control+A");
+        await page.Keyboard.PressAsync("Delete");
+        await Expect(opened.View.Locator("g.mussel-diagram-node, g.mussel-diagram-group")).ToHaveCountAsync(0);
+
+        await page.Locator("[data-action='export-menu'] button").First.ClickAsync();
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "SVG", Exact = true }).ClickAsync();
+
+        await Expect(page.GetByText("書き出すものがありません。")).ToBeVisibleAsync();
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarTellsOfImagesThatWereNotEmbedded(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -414,7 +446,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheEditButtonsAreOffOnAReadOnlyPage(string mode)
     {
         opened = await app.OpenAsync("monitor", mode);
@@ -431,7 +463,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheToolbarWrapsInANarrowWindow(string mode)
     {
         opened = await app.OpenAsync("workflow", mode);
@@ -467,7 +499,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBasicPageShowsEveryElementBesideThePanel(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -483,7 +515,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBasicPageChangesTheLookOfASelectedLink(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -512,7 +544,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheRenderModeSwitchFollowsThePage(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -538,7 +570,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ReconnectingALinkKeepsItsOwnLook(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -561,7 +593,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBasicPageChangesTheLookOfSelectedShapesTogether(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
@@ -592,7 +624,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TheBasicPageMakesTheFillOfSelectedShapesTranslucent(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

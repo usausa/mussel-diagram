@@ -75,6 +75,8 @@ internal static class Grouping
         var removed = groups.Where(static x => x.Kind == DiagramGroupKind.Tree).Select(static x => x.Id).ToHashSet(StringComparer.Ordinal);
         var moves = new List<(string[] Children, string? ParentId)>();
         var after = new List<string>();
+        var landings = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var path = new List<string>();
         foreach (var group in groups)
         {
             if (group.Kind == DiagramGroupKind.Overlay)
@@ -84,9 +86,22 @@ internal static class Grouping
             }
 
             var parentId = group.ParentId;
+            path.Clear();
             while ((parentId is not null) && removed.Contains(parentId))
             {
+                if (landings.TryGetValue(parentId, out var landing))
+                {
+                    parentId = landing;
+                    break;
+                }
+
+                path.Add(parentId);
                 parentId = snapshot.Find(parentId) is DiagramBox parent ? parent.ParentId : null;
+            }
+
+            foreach (var id in path)
+            {
+                landings[id] = parentId;
             }
 
             var children = snapshot.GetChildren(group.Id).Where(x => !removed.Contains(x.Id)).ToArray();

@@ -10,6 +10,14 @@ public static class Styles
         {
             Background = "#1F1F1D",
             Surface = "#262624"
+        },
+
+        Typography = new Typography
+        {
+            Body1 = new Body1Typography { FontSize = ".875rem" },
+            Subtitle1 = new Subtitle1Typography { FontSize = ".875rem" },
+
+            Button = new ButtonTypography { TextTransform = "none" }
         }
     };
 }

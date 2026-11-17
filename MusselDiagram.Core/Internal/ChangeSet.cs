@@ -20,6 +20,8 @@ internal sealed class ChangeSet
 
     public HashSet<string> Targets { get; } = new(StringComparer.Ordinal);
 
+    public List<(string[] Ids, OrderMove Move)> Reorders { get; } = [];
+
     public bool HasChanges => (Added.Count > 0) || (Deleted.Count > 0) || (Updated.Count > 0);
 
     public static ChangeSet Between(DiagramSnapshot from, DiagramSnapshot to, ChangeSet recorded) =>
@@ -51,6 +53,7 @@ internal sealed class ChangeSet
     {
         var result = new ChangeSet();
         result.Targets.UnionWith(recorded.Targets);
+        result.Reorders.AddRange(recorded.Reorders);
         foreach (var id in ids.Distinct(StringComparer.Ordinal))
         {
             var before = from.Find(id);
@@ -143,6 +146,8 @@ internal sealed class ChangeSet
         {
             MarkUpdated(id, parts);
         }
+
+        Reorders.AddRange(next.Reorders);
     }
 
     public DiagramChangedEventArgs ToArgs(DiagramSnapshot before, DiagramSnapshot after, DiagramChangeOrigin origin, object? tag) =>

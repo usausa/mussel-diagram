@@ -4,23 +4,19 @@
 @if (Visible)
 {
     <div class="mode-switch" role="group" aria-label="描画モード">
-        <a class="@ClassOf("server")" href="@Link("server")" data-enhance-nav="false">Server</a>
-        <a class="@ClassOf("wasm")" href="@Link("wasm")" data-enhance-nav="false">WebAssembly</a>
+        <a class="@ClassOf(!IsWebAssembly)" href="@Link("server")" data-enhance-nav="false">Server</a>
+        <a class="@ClassOf(IsWebAssembly)" href="@Link("wasm")" data-enhance-nav="false">WebAssembly</a>
     </div>
 }
 
 @code {
-    private string Mode => AssignedRenderMode switch
-    {
-        InteractiveWebAssemblyRenderMode => "wasm",
-        _ => "server"
-    };
+    private bool IsWebAssembly => AssignedRenderMode is InteractiveWebAssemblyRenderMode;
 
     protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
     public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 
-    private string ClassOf(string mode) => mode == Mode ? "mode active" : "mode";
+    private static string ClassOf(bool active) => active ? "mode active" : "mode";
 
     private string Link(string mode) => $"render-mode/{mode}?redirect={Uri.EscapeDataString($"/{Navigation.ToBaseRelativePath(Navigation.Uri)}")}";
 

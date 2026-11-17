@@ -11,13 +11,13 @@ internal static class ScriptTables
             [.. snapshot.Groups.Select(x => Box(x, index, templates)), .. snapshot.Nodes.Select(x => Box(x, index, templates))],
             [.. snapshot.Links.Select(x => Link(x, index))]);
 
-    public static ScriptChanges Changes(DiagramChangedEventArgs change, SchemaIndex index, DiagramTemplateSet? templates = null)
+    public static ScriptChanges Changes(long version, DiagramSnapshot snapshot, IEnumerable<string> ids, IEnumerable<string> removed, SchemaIndex index, DiagramTemplateSet? templates = null)
     {
         var boxes = new List<ScriptBox>();
         var links = new List<ScriptLink>();
-        foreach (var id in change.Added.Concat(change.Updated))
+        foreach (var id in ids)
         {
-            switch (change.After.Find(id))
+            switch (snapshot.Find(id))
             {
                 case DiagramBox box:
                     boxes.Add(Box(box, index, templates));
@@ -28,7 +28,7 @@ internal static class ScriptTables
             }
         }
 
-        return new ScriptChanges(change.After.Version, boxes, links, change.Deleted);
+        return new ScriptChanges(version, boxes, links, [.. removed]);
     }
 
     public static bool KeepsOrder(DiagramChangedEventArgs change)

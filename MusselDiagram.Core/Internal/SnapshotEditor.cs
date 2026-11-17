@@ -366,8 +366,12 @@ internal sealed class SnapshotEditor
         {
             case DiagramBox box:
                 ValidateBox(box);
-                CheckCycle(box);
                 var before = (DiagramBox)current;
+                if (!string.Equals(before.ParentId, box.ParentId, StringComparison.Ordinal))
+                {
+                    CheckCycle(box);
+                }
+
                 var boxParts = BoxParts(before, box);
                 Put(box);
                 Changes.MarkUpdated(box.Id, boxParts);
@@ -454,7 +458,7 @@ internal sealed class SnapshotEditor
         {
             var box = (DiagramBox)elements[id];
             var moved = box with { Bounds = box.Bounds.Offset(offset) };
-            if (!double.IsFinite(moved.Bounds.X) || !double.IsFinite(moved.Bounds.Y))
+            if (!IsFinite(moved.Bounds))
             {
                 throw new DiagramException($"The bounds of '{id}' are not finite numbers with a positive size.");
             }
@@ -661,6 +665,13 @@ internal sealed class SnapshotEditor
         return new DiagramRect(left, top, right - left, bottom - top);
     }
 
+    private static DiagramRect Union(DiagramRect first, DiagramRect second)
+    {
+        var left = Math.Min(first.X, second.X);
+        var top = Math.Min(first.Y, second.Y);
+        return new DiagramRect(left, top, Math.Max(first.Right, second.Right) - left, Math.Max(first.Bottom, second.Bottom) - top);
+    }
+
     private DiagramRect? ContentOf(List<string> ids)
     {
         if (ids.Count == 0)
@@ -812,11 +823,14 @@ internal sealed class SnapshotEditor
         throw new DiagramException($"The data of '{element.Id}' is neither the registered data type nor a JsonElement.");
     }
 
+    private static bool IsFinite(DiagramRect bounds) =>
+        double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) && double.IsFinite(bounds.Right) && double.IsFinite(bounds.Bottom);
+
     private void ValidateBox(DiagramBox box)
     {
         var overlay = box is DiagramGroup { Kind: DiagramGroupKind.Overlay };
         var bounds = box.Bounds;
-        if (!overlay && (!double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) || !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height) || (bounds.Width <= 0) || (bounds.Height <= 0)))
+        if (!overlay && (!IsFinite(bounds) || (bounds.Width <= 0) || (bounds.Height <= 0)))
         {
             throw new DiagramException($"The bounds of '{box.Id}' are not finite numbers with a positive size.");
         }
@@ -1121,7 +1135,7 @@ internal sealed class SnapshotEditor
         dirtyBounds = null;
         foreach (var rect in dirty)
         {
-            dirtyBounds = dirtyBounds is { } bounds ? Union([bounds, rect]) : rect;
+            dirtyBounds = dirtyBounds is { } bounds ? Union(bounds, rect) : rect;
         }
 
         DiagramRect? reach = null;
@@ -1265,7 +1279,7 @@ internal sealed class SnapshotEditor
                 else
                 {
                     var needed = content is { } inner ? Expand(inner, padding) : group.Bounds;
-                    bounds = Contains(group.Bounds, needed) ? group.Bounds : Union([group.Bounds, needed]);
+                    bounds = Contains(group.Bounds, needed) ? group.Bounds : Union(group.Bounds, needed);
                 }
 
                 if (FitGroup(group, bounds))
@@ -1275,13 +1289,17 @@ internal sealed class SnapshotEditor
             }
         }
 
-        foreach (var group in groups.Items.ToArray())
+        var overlays = new List<DiagramGroup>();
+        foreach (var group in groups.Items)
         {
-            if (group.Kind != DiagramGroupKind.Overlay)
+            if ((group.Kind == DiagramGroupKind.Overlay) && (touched.Contains(group.Id) || group.MemberIds.Any(x => touched.Contains(x) || resized.Contains(x))))
             {
-                continue;
+                overlays.Add(group);
             }
+        }
 
+        foreach (var group in overlays)
+        {
             var members = group.MemberIds.Select(elements.GetValueOrDefault).OfType<DiagramBox>().Select(static x => x.Bounds).ToList();
             var padding = (index.FindBoxType(group) as DiagramGroupType)?.Padding ?? DefaultPadding;
             if ((members.Count > 0) && FitGroup(group, Expand(Union(members), padding)))
@@ -1336,6 +1354,7 @@ internal sealed class SnapshotEditor
     {
         var targets = ids.ToHashSet(StringComparer.Ordinal);
         Changes.Targets.UnionWith(targets);
+        Changes.Reorders.Add(([.. targets], move));
         Shift(nodes, targets, move, static _ => string.Empty);
         Shift(links, targets, move, static _ => string.Empty);
         if (!groups.Items.Any(x => targets.Contains(x.Id)))

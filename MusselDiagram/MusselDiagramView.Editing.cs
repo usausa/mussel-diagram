@@ -60,7 +60,7 @@ public sealed partial class MusselDiagramView
     [Parameter]
     public EventCallback<DiagramPointerEventArgs> BackgroundDoubleClicked { get; set; }
 
-    internal async Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal async Task<ScriptCommitResult> CommitDropAsync(string type, DiagramRect bounds, string? parentId, string? value, string? splitLinkId, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var element = NewBox(type, bounds, parentId, value);
         Splice? split = null;
@@ -70,8 +70,8 @@ public sealed partial class MusselDiagramView
             selection,
             () =>
             {
-                var reason = CheckDrop(element);
-                split = (reason is null) && (element is DiagramNode) ? SpliceOf(element.Id, splitLinkId, origin, editor => editor.Add(element)) : null;
+                var reason = CheckDrop(element) ?? (element is DiagramNode ? CheckSplit(splitLinkId, startVersion) : null);
+                split = (reason is null) && (element is DiagramNode) ? SpliceOf(element.Id, splitLinkId, editor => editor.Add(element)) : null;
                 return reason;
             },
             async () =>
@@ -95,7 +95,7 @@ public sealed partial class MusselDiagramView
             element?.Id).ConfigureAwait(true);
     }
 
-    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, ScriptOrigin origin, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    internal Task<ScriptCommitResult> CommitTextAsync(string elementId, string slot, string text, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {
         var newText = text.Length == 0 ? null : text;
         string? oldText = null;
@@ -105,7 +105,7 @@ public sealed partial class MusselDiagramView
             selection,
             () =>
             {
-                var reason = CheckText(elementId, slot, origin);
+                var reason = CheckText(elementId, slot, startVersion);
                 oldText = reason is null ? TextOf((DiagramBox)Snapshot.Find(elementId)!, slot) : null;
                 return reason;
             },
@@ -162,7 +162,7 @@ public sealed partial class MusselDiagramView
         return box with { Texts = text is null ? box.Texts.Remove(slot) : box.Texts.SetItem(slot, text) };
     }
 
-    private DiagramReason? CheckText(string elementId, string slot, ScriptOrigin origin)
+    private DiagramReason? CheckText(string elementId, string slot, long startVersion)
     {
         if (ReadOnly || !TextEditEnabled)
         {
@@ -186,13 +186,17 @@ public sealed partial class MusselDiagramView
             }
         }
 
-        if ((position < 0) || !slots[position].Editable || ((ScriptTables.PermissionsOf(box, Diagram.Index) & DiagramPermissions.EditText) == 0))
+        if (position < 0)
+        {
+            return Reason(DiagramReasonKind.Changed);
+        }
+
+        if (!slots[position].Editable || ((ScriptTables.PermissionsOf(box, Diagram.Index) & DiagramPermissions.EditText) == 0))
         {
             return Reason(DiagramReasonKind.Permission);
         }
 
-        var now = position == 0 ? box.Label : box.Texts.GetValueOrDefault(slot);
-        return string.Equals(origin.Text ?? string.Empty, now ?? string.Empty, StringComparison.Ordinal) ? null : Reason(DiagramReasonKind.Changed);
+        return stamps.TextChanged(elementId, position == 0 ? null : slot, startVersion) ? Reason(DiagramReasonKind.Changed) : null;
     }
 
     private DiagramReason? CheckDrop(DiagramBox? element)
@@ -218,11 +222,12 @@ public sealed partial class MusselDiagramView
         return DiagramRules.CheckNesting(current, index, null, element.Type, element.ParentId);
     }
 
-    private Splice? SpliceOf(string nodeId, string? splitLinkId, ScriptOrigin origin, Action<SnapshotEditor> change)
+    private DiagramReason? CheckSplit(string? splitLinkId, long startVersion) =>
+        (splitLinkId is not null) && ((Snapshot.Find(splitLinkId) is not DiagramLink) || stamps.EndsChanged(splitLinkId, startVersion)) ? Reason(DiagramReasonKind.Changed) : null;
+
+    private Splice? SpliceOf(string nodeId, string? splitLinkId, Action<SnapshotEditor> change)
     {
-        if ((splitLinkId is null) ||
-            !origin.TryGetLink(splitLinkId, out var source, out var target) ||
-            (Snapshot.Find(splitLinkId) is not DiagramLink link) || (source != link.Source) || (target != link.Target) ||
+        if ((splitLinkId is null) || (Snapshot.Find(splitLinkId) is not DiagramLink link) ||
             string.Equals(link.Source.ElementId, nodeId, StringComparison.Ordinal) || string.Equals(link.Target.ElementId, nodeId, StringComparison.Ordinal))
         {
             return null;

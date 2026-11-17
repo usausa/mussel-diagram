@@ -191,6 +191,56 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
+    public async Task ChangesThatWaitForTheScriptAreSentInOneCall()
+    {
+        var runtime = new LateRuntime { Module = { Hold = "attach" } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await cut.InvokeAsync(() =>
+        {
+            diagram.Move(["b"], new DiagramPoint(10, 0));
+            diagram.Add(new DiagramNode { Id = "c", Type = "service", Bounds = new DiagramRect(300, 200, 80, 40) });
+            diagram.Delete(["c"]);
+            diagram.Add(new DiagramNode { Id = "c", Type = "service", Bounds = new DiagramRect(320, 200, 80, 40) });
+            diagram.Add(new DiagramNode { Id = "d", Type = "service", Bounds = new DiagramRect(300, 300, 80, 40) });
+        });
+
+        await cut.InvokeAsync(runtime.Module.Resume.SetResult);
+        cut.Render();
+
+        var sent = Assert.Single(runtime.Module.Calls.Select(static (name, index) => (name, index)), static x => x.name == "applyChanges");
+        var changes = (JsonElement)runtime.Module.Arguments[sent.index]![0]!;
+        Assert.Equal(cut.Instance.ScriptVersion, changes.GetProperty("version").GetInt64());
+        Assert.Equal(["b", "c", "d"], changes.GetProperty("boxes").EnumerateArray().Select(static x => x.GetProperty("id").GetString()));
+        Assert.Equal(320, changes.GetProperty("boxes")[1].GetProperty("x").GetDouble());
+        Assert.Equal(["c"], changes.GetProperty("removed").EnumerateArray().Select(static x => x.GetString()));
+    }
+
+    [Fact]
+    public async Task ChangesWhileTheScriptIsAttachedAreSentAfterIt()
+    {
+        var runtime = new LateRuntime { Module = { Hold = "attach" } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var diagram = CreateDiagram();
+        var other = new Diagram(Schema);
+        other.Add(new DiagramNode { Id = "c", Type = "service", Bounds = new DiagramRect(0, 0, 80, 40) });
+        var json = other.ToJson();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await cut.InvokeAsync(() => diagram.LoadJson(json));
+        cut.Render(static parameters => parameters.Add(static p => p.ReadOnly, true));
+        await cut.InvokeAsync(runtime.Module.Resume.SetResult);
+
+        var after = runtime.Module.Calls.SkipWhile(static x => x != "ready").ToList();
+        Assert.Contains("setOptions", after);
+        Assert.Contains("setTable", after);
+    }
+
+    [Fact]
     public async Task ChangesOfTheOrderSendTheWholeTableAgain()
     {
         var controller = module.SetupModule("attach", static _ => true);
@@ -235,6 +285,54 @@ public sealed class MusselDiagramViewTests : BunitContext
         await exports[1].WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
 
         Assert.Empty(cut.FindAll("g.mussel-diagram-node"));
+    }
+
+    [Fact]
+    public async Task ImagesThatCouldNotBeEmbeddedComeWithAMessage()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        controller.Setup<string>("exportDiagram", static _ => true).SetResult("""{"missing":[{"url":"https://example.com/a.png","ids":["a"]}],"empty":true}""");
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        Task<DiagramExportResult>? export = null;
+
+        await cut.InvokeAsync(() =>
+        {
+            export = cut.Instance.ExportSvgAsync();
+        });
+        var result = await export!.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal("The image 'https://example.com/a.png' could not be embedded.", issue.Message);
+    }
+
+    [Fact]
+    public async Task AnExportWaitsForTheRoutesStillBeingComputed()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        controller.Setup<string>("exportDiagram", static _ => true).SetResult(EmptyExport);
+        var router = new HeldRouter();
+        var diagram = new Diagram(Schema with { Router = router });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() =>
+        {
+            diagram.Add(new DiagramNode { Id = "a", Type = "service", Bounds = new DiagramRect(0, 0, 80, 40) });
+            diagram.Add(new DiagramNode { Id = "b", Type = "service", Bounds = new DiagramRect(300, 0, 80, 40) });
+            diagram.Connect(new DiagramLink { Id = "ab", Type = "flow", Source = new DiagramLinkEnd("a", "out"), Target = new DiagramLinkEnd("b", "in") });
+        });
+        Task<DiagramExportResult>? export = null;
+
+        await cut.InvokeAsync(() =>
+        {
+            export = cut.Instance.ExportSvgAsync();
+        });
+        await Task.Delay(300, Xunit.TestContext.Current.CancellationToken);
+        var early = controller.Invocations["exportDiagram"].Count;
+        await cut.InvokeAsync(router.Answer);
+        await export!.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.Equal(0, early);
+        Assert.Single(controller.Invocations["exportDiagram"]);
+        Assert.Equal(DiagramRouteState.Routed, ((DiagramLink)diagram.Find("ab")!).RouteState);
     }
 
     [Fact]
@@ -355,6 +453,22 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
+    public async Task AFailedCallBeforeTheScriptIsAttachedDoesNotStopTheRest()
+    {
+        var runtime = new LateRuntime { Module = { Fail = "fit" } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        await cut.InvokeAsync(() => cut.Instance.ZoomToFitAsync().AsTask());
+        await cut.InvokeAsync(() => cut.Instance.CenterOnAsync("b").AsTask());
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+
+        await cut.WaitForAssertionAsync(() => Assert.Contains("ready", runtime.Module.Calls));
+        Assert.Equal(["fit", "centerOn", "ready"], runtime.Module.Calls.Where(static x => x is "fit" or "centerOn" or "ready"));
+        Assert.False(Renderer.UnhandledException.IsCompleted);
+    }
+
+    [Fact]
     public async Task CallsWhileTheScriptIsAttachingKeepTheirOrder()
     {
         var runtime = new LateRuntime { Module = { Hold = "select" } };
@@ -444,6 +558,26 @@ public sealed class MusselDiagramViewTests : BunitContext
         diagram.Add(new DiagramNode { Id = "b", Type = "legacy", Bounds = new DiagramRect(300, 60, 80, 40) });
         diagram.Connect(new DiagramLink { Id = "ab", Type = "flow", Source = new DiagramLinkEnd("a", "out"), Target = new DiagramLinkEnd("b") });
         return diagram;
+    }
+
+    private sealed class HeldRouter : IDiagramRouter
+    {
+        private readonly List<(TaskCompletionSource<DiagramRouteResult> Completion, DiagramRouteRequest Request)> held = [];
+
+        public ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken)
+        {
+            var completion = new TaskCompletionSource<DiagramRouteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            held.Add((completion, request));
+            return new ValueTask<DiagramRouteResult>(completion.Task);
+        }
+
+        public void Answer()
+        {
+            foreach (var (completion, request) in held)
+            {
+                completion.TrySetResult(new DiagramRouteResult { Points = [request.Source.Position, request.Target.Position] });
+            }
+        }
     }
 
     public sealed class ViewportHost : ComponentBase

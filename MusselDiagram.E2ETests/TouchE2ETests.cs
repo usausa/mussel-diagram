@@ -13,7 +13,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
 
     private (double X, double Y) origin;
 
-    public static TheoryData<string> ModeNames => ["server", "wasm"];
+    public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
     {
@@ -24,7 +24,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task OneFingerPansAndTapsSelect(string mode)
     {
         await OpenAsync(mode);
@@ -41,7 +41,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task LongPressesToggleAndThenSelectAnArea(string mode)
     {
         await OpenAsync(mode);
@@ -66,7 +66,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task AShortHoldIsStillATap(string mode)
     {
         await OpenAsync(mode);
@@ -85,7 +85,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ASecondFingerCancelsTheMoveAndPinchZooms(string mode)
     {
         await OpenAsync(mode);
@@ -107,7 +107,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PaletteItemsAreDraggedAfterALongPress(string mode)
     {
         await OpenAsync(mode);
@@ -131,7 +131,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task TappingAnElementShowsTheConnectArrows(string mode)
     {
         await OpenAsync(mode);
@@ -148,7 +148,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task DoubleTapsEditText(string mode)
     {
         await OpenAsync(mode);
@@ -164,7 +164,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task ThePanToolPansFromNodesAndTapsDoNotSelect(string mode)
     {
         await OpenAsync(mode, true);
@@ -192,7 +192,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task SwitchingToThePanToolHidesTheConnectArrows(string mode)
     {
         await OpenAsync(mode);
@@ -209,7 +209,7 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
     }
 
     [Theory]
-    [MemberData(nameof(ModeNames))]
+    [MemberData(nameof(Modes))]
     public async Task PanningAndPinchingKeepTheEditorOpen(string mode)
     {
         await OpenAsync(mode);

@@ -136,7 +136,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     {
         foreach (var link in Snapshot.Links)
         {
-            if (!IsShown(link.Id, RouteBounds(link)))
+            if (!IsShown(link))
             {
                 continue;
             }
@@ -259,11 +259,12 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 }
 
                 self ??= DotNetObjectReference.Create(new DiagramScriptBridge(this));
+                options = ScriptJson.ToElement(CreateOptions());
                 sentOptions = options.GetRawText();
                 tableChanged = false;
                 schemaChanged = false;
                 pendingChanges.Clear();
-                var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates));
+                var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates) with { Version = ++ScriptVersion });
                 var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext, Options, templates));
                 controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
                 await SyncCommandsAsync(controller).ConfigureAwait(true);
@@ -279,15 +280,27 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
                 while (!IsDisposed && pendingViews.TryDequeue(out var view))
                 {
-                    await controller.InvokeVoidAsync(view.Identifier, view.Args).ConfigureAwait(true);
+                    try
+                    {
+                        await controller.InvokeVoidAsync(view.Identifier, view.Args).ConfigureAwait(true);
+                    }
+                    catch (Exception ex) when (ex is JSException or OperationCanceledException)
+                    {
+                    }
                 }
 
-                if (!IsDisposed)
+                if (IsDisposed)
                 {
-                    await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
+                    return;
                 }
 
-                return;
+                await controller.InvokeVoidAsync("ready").ConfigureAwait(true);
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                options = ScriptJson.ToElement(CreateOptions());
             }
 
             if (controller is not { } current)
@@ -349,13 +362,26 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             return default;
         }
 
-        var left = link.Route.Min(static p => p.X);
-        var top = link.Route.Min(static p => p.Y);
-        return new DiagramRect(left, top, link.Route.Max(static p => p.X) - left, link.Route.Max(static p => p.Y) - top);
+        var left = double.PositiveInfinity;
+        var top = double.PositiveInfinity;
+        var right = double.NegativeInfinity;
+        var bottom = double.NegativeInfinity;
+        foreach (var point in link.Route)
+        {
+            left = Math.Min(left, point.X);
+            top = Math.Min(top, point.Y);
+            right = Math.Max(right, point.X);
+            bottom = Math.Max(bottom, point.Y);
+        }
+
+        return new DiagramRect(left, top, right - left, bottom - top);
     }
 
     private bool IsShown(string id, DiagramRect bounds) =>
         (exporting > 0) || (area is not { } visible) || bounds.Intersects(visible) || AlwaysShown().Contains(id);
+
+    private bool IsShown(DiagramLink link) =>
+        (exporting > 0) || (area is not { } visible) || RouteBounds(link).Intersects(visible) || AlwaysShown().Contains(link.Id);
 
     private bool HasCulledShown() =>
         (area is { } visible) && AlwaysShown().Any(id => Snapshot.Find(id) switch
@@ -450,20 +476,41 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             return;
         }
 
-        if (subscribed is not null)
+        var previous = subscribed;
+        if (previous is not null)
         {
-            subscribed.Changed -= OnDiagramChanged;
-            subscribed.SchemaChanged -= OnSchemaChanged;
+            previous.Changed -= OnDiagramChanged;
+            previous.SchemaChanged -= OnSchemaChanged;
         }
 
         subscribed = diagram;
         pendingChanges.Clear();
-        if (diagram is not null)
+        stamps.Reset(ScriptVersion + 1);
+        if (diagram is null)
         {
-            diagram.UseRegisteredOptions(RegisteredOptions);
-            diagram.Changed += OnDiagramChanged;
-            diagram.SchemaChanged += OnSchemaChanged;
-            tableChanged = true;
+            return;
+        }
+
+        diagram.UseRegisteredOptions(RegisteredOptions);
+        diagram.Changed += OnDiagramChanged;
+        diagram.SchemaChanged += OnSchemaChanged;
+        tableChanged = true;
+        if (previous is null)
+        {
+            return;
+        }
+
+        if (SelectedIds.Count > 0)
+        {
+            SelectedIds = [];
+            _ = NotifyAsync(SelectionChanged, SelectedIds);
+            _ = RunViewAsync("select", [Array.Empty<string>()]).AsTask();
+        }
+
+        if (!ReferenceEquals(previous.EffectiveOptions, diagram.EffectiveOptions))
+        {
+            schemaChanged = true;
+            commands?.NotifyChanged();
         }
     }
 

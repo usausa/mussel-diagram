@@ -57,6 +57,65 @@ public sealed class DeepTreeTests
             TestContext.Current.CancellationToken);
     }
 
+    [Fact(Timeout = 30_000)]
+    public Task ReplacingEveryGroupOfADeepChainRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0));
+                var groups = diagram.Snapshot.Groups.ToList();
+
+                diagram.Write(null, DiagramChangeOrigin.User, editor =>
+                {
+                    foreach (var group in groups)
+                    {
+                        editor.Replace(group with { Locked = true });
+                    }
+                });
+
+                Assert.All(diagram.Snapshot.Groups, static x => Assert.True(x.Locked));
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task ASkippedWriteAfterARecordedOneOnADeepChainRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0));
+                var before = ((DiagramBox)diagram.Snapshot.Find("g1")!).Bounds.X;
+
+                diagram.Move(["g1"], new DiagramPoint(10, 0));
+                diagram.Move(["g0"], new DiagramPoint(10, 0), new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+
+                Assert.Equal(before + 20, ((DiagramBox)diagram.Snapshot.Find("g1")!).Bounds.X);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task UngroupingADeepChainRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0));
+
+                var result = Grouping.Ungroup(diagram.Snapshot, diagram.Index, diagram.Snapshot.Groups.Select(static x => x.Id));
+                Assert.Null(result.Reason);
+                diagram.Write(null, DiagramChangeOrigin.User, result.Edit!);
+
+                Assert.Empty(diagram.Snapshot.Groups);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
     private static string Chain(int leaves) =>
         JsonSerializer.Serialize(
             new

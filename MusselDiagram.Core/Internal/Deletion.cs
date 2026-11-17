@@ -4,9 +4,12 @@ using System.Collections.Immutable;
 
 internal static class Deletion
 {
-    public static List<string> Deletable(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection)
+    public static List<string> Deletable(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection) => [.. Find(snapshot, index, selection)];
+
+    public static bool Any(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection) => Find(snapshot, index, selection).Any();
+
+    private static IEnumerable<string> Find(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection)
     {
-        var result = new List<string>();
         var blocked = new Dictionary<string, bool>(StringComparer.Ordinal);
         var stack = new Stack<(string Id, bool Expanded)>();
         foreach (var id in selection.Distinct(StringComparer.Ordinal))
@@ -21,10 +24,8 @@ internal static class Deletion
                 continue;
             }
 
-            result.Add(id);
+            yield return id;
         }
-
-        return result;
 
         bool CanDelete(DiagramElement element) =>
             ElementPermissions.Allows(element, index, DiagramPermissions.Delete) && !((element is DiagramBox box) && (index.FindBoxType(box) is { Undeletable: true }));

@@ -8,6 +8,9 @@ internal sealed record PasteResult(ImmutableArray<DiagramElement> Elements, Immu
 
 internal static class Clipboard
 {
+    public static bool CanCopy(DiagramSnapshot snapshot, IEnumerable<string> selection) =>
+        selection.Any(x => snapshot.Find(x) is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree });
+
     public static ClipboardContent? Copy(DiagramSnapshot snapshot, SchemaIndex index, IEnumerable<string> selection)
     {
         var selected = selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramBox>().ToList();

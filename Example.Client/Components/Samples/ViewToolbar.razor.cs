@@ -1,4 +1,4 @@
-namespace Example.Client.Components.Layout;
+namespace Example.Client.Components.Samples;
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -70,27 +70,41 @@ public sealed partial class ViewToolbar
         }
     }
 
-    private async Task ExportSvgAsync()
+    private Task ExportSvgAsync() =>
+        ExportAsync(static view => view.ExportSvgAsync(new DiagramSvgExportOptions { IncludeOverlays = true, EmbedFonts = true }), "diagram.svg", "image/svg+xml");
+
+    private Task ExportImageAsync(DiagramImageFormat format)
     {
-        if (View is not null)
-        {
-            await DownloadAsync(await View.ExportSvgAsync(new DiagramSvgExportOptions { IncludeOverlays = true, EmbedFonts = true }), "diagram.svg", "image/svg+xml");
-        }
+        var png = format == DiagramImageFormat.Png;
+        return ExportAsync(view => view.ExportImageAsync(new DiagramImageExportOptions { Format = format, Scale = 2, IncludeOverlays = true }), png ? "diagram.png" : "diagram.jpg", png ? "image/png" : "image/jpeg");
     }
 
-    private async Task ExportImageAsync(DiagramImageFormat format)
+    private async Task ExportAsync(Func<MusselDiagramView, Task<DiagramExportResult>> export, string name, string type)
     {
-        if (View is not null)
+        if (View is not { } view)
         {
-            var png = format == DiagramImageFormat.Png;
-            var result = await View.ExportImageAsync(new DiagramImageExportOptions { Format = format, Scale = 2, IncludeOverlays = true });
-            await DownloadAsync(result, png ? "diagram.png" : "diagram.jpg", png ? "image/png" : "image/jpeg");
+            return;
+        }
+
+        try
+        {
+            await DownloadAsync(await export(view), name, type);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JSException)
+        {
+            message = "書き出せませんでした。";
         }
     }
 
     private async Task DownloadAsync(DiagramExportResult result, string name, string type)
     {
-        message = result.Error is { } error ? error.Message ?? "書き出せませんでした。" : result.Issues.IsDefaultOrEmpty ? null : "埋め込めなかった画像があります。";
+        message = result switch
+        {
+            { Error: { } error } => error.Message ?? "書き出せませんでした。",
+            { Content: null } => "書き出すものがありません。",
+            { Issues.IsDefaultOrEmpty: false } => "埋め込めなかった画像があります。",
+            _ => null
+        };
         if (result.Content is not { } content)
         {
             return;

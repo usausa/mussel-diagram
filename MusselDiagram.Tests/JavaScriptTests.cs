@@ -21,8 +21,7 @@ public sealed class JavaScriptTests
         using var process = StartProcess(startInfo);
         if (process is null)
         {
-            Assert.Skip("node が見つからないため、JS のテストを省略しました");
-            return;
+            Assert.Skip("node was not found, so the JS tests are skipped.");
         }
 
         var token = Xunit.TestContext.Current.CancellationToken;

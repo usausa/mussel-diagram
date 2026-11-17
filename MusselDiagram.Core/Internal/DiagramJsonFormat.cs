@@ -484,17 +484,19 @@ internal static class DiagramJsonFormat
             var bounds = default(DiagramRect);
             if (kind != DiagramGroupKind.Overlay)
             {
+                var x = Finite(json.X);
+                var y = Finite(json.Y);
                 var size = boxType?.Size ?? DefaultSize;
                 var width = json.Width ?? size.Width;
                 var height = json.Height ?? size.Height;
-                if (!double.IsFinite(width) || !double.IsFinite(height) || (width <= 0) || (height <= 0))
+                if ((width <= 0) || (height <= 0) || !double.IsFinite(x + width) || !double.IsFinite(y + height))
                 {
                     Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidSize, id);
                     width = size.Width;
                     height = size.Height;
                 }
 
-                bounds = new DiagramRect(Finite(json.X), Finite(json.Y), width, height);
+                bounds = new DiagramRect(x, y, width, height);
             }
 
             var texts = json.Texts?.Where(static x => x.Value is not null).ToImmutableDictionary(static x => x.Key, static x => x.Value!, StringComparer.Ordinal);
