@@ -64,16 +64,29 @@ public static class DiagramIconImport
 
             if (root.TryGetProperty("aliases", out var aliases) && (aliases.ValueKind == JsonValueKind.Object))
             {
-                var count = aliases.GetPropertyCount();
+                var iconsByName = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var icon in iconValues.EnumerateObject())
+                {
+                    iconsByName.TryAdd(icon.Name, icon.Value);
+                }
+
+                var aliasesByName = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var alias in aliases.EnumerateObject())
+                {
+                    aliasesByName.TryAdd(alias.Name, alias.Value);
+                }
+
                 foreach (var alias in aliases.EnumerateObject())
                 {
                     var chain = new List<JsonElement>();
+                    var seen = new HashSet<string>(StringComparer.Ordinal) { alias.Name };
                     var current = alias.Value;
                     JsonElement found = default;
-                    while ((chain.Count < count) && (current.ValueKind == JsonValueKind.Object) && current.TryGetProperty("parent", out var parent) && (parent.ValueKind == JsonValueKind.String))
+                    while ((current.ValueKind == JsonValueKind.Object) && current.TryGetProperty("parent", out var parent) && (parent.ValueKind == JsonValueKind.String))
                     {
                         chain.Add(current);
-                        if (iconValues.TryGetProperty(parent.GetString()!, out found) || !aliases.TryGetProperty(parent.GetString()!, out current))
+                        var name = parent.GetString()!;
+                        if (iconsByName.TryGetValue(name, out found) || !seen.Add(name) || !aliasesByName.TryGetValue(name, out current))
                         {
                             break;
                         }
@@ -169,19 +182,22 @@ public static class DiagramIconImport
 
         using (archive)
         {
+            List<ZipArchiveEntry> entries;
             try
             {
-                return ReadFiles(
-                    archive.Entries
-                        .Where(static x => x.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-                        .Select(static x => (x.FullName.Replace('\\', '/'), (Func<string?>)(() => Read(x)))),
-                    prefix,
-                    map);
+                entries = [.. archive.Entries];
             }
             catch (InvalidDataException e)
             {
                 throw new DiagramException("The stream is not a zip file.", e);
             }
+
+            return ReadFiles(
+                entries
+                    .Where(static x => x.FullName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                    .Select(static x => (x.FullName.Replace('\\', '/'), (Func<string?>)(() => Read(x)))),
+                prefix,
+                map);
         }
     }
 

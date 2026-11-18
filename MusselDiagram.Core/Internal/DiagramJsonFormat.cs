@@ -69,8 +69,8 @@ internal static class DiagramJsonFormat
         }
     }
 
-    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version, RouteBudget? budget = null, bool waitForRoutes = false, MusselDiagramOptions? options = null) =>
-        new Reader(index, options ?? MusselDiagramOptions.Default).Read(document, version, budget, waitForRoutes);
+    public static DiagramLoadResult Read(DiagramJsonDocument document, SchemaIndex index, long version, RouteBudget? budget = null, bool waitForRoutes = false, MusselDiagramOptions? options = null, bool skipAppRouter = false) =>
+        new Reader(index, options ?? MusselDiagramOptions.Default).Read(document, version, budget, waitForRoutes, skipAppRouter);
 
     private static DiagramJsonDocument Check(DiagramJsonDocument? document)
     {
@@ -209,7 +209,7 @@ internal static class DiagramJsonFormat
 
         private readonly HashSet<string> seen = new(StringComparer.Ordinal);
 
-        public DiagramLoadResult Read(DiagramJsonDocument document, long version, RouteBudget? budget, bool waitForRoutes)
+        public DiagramLoadResult Read(DiagramJsonDocument document, long version, RouteBudget? budget, bool waitForRoutes, bool skipAppRouter)
         {
             var boxes = new List<DiagramBox>();
             var links = new List<DiagramLink>();
@@ -250,7 +250,7 @@ internal static class DiagramJsonFormat
             FixParents(boxes, byId);
             FixMembers(boxes, byId);
 
-            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, KeepMissingPorts = true, Budget = budget, WaitForRoutes = waitForRoutes };
+            var editor = new SnapshotEditor(DiagramSnapshot.Empty, index) { SkipKindCheck = true, SkipCycleCheck = true, KeepMissingPorts = true, Budget = budget, WaitForRoutes = waitForRoutes, SkipAppRouter = skipAppRouter };
             foreach (var group in ParentsFirst(boxes, byId))
             {
                 editor.Add(group);
@@ -456,6 +456,28 @@ internal static class DiagramJsonFormat
 
         private static double Finite(double? value) => (value is { } number) && double.IsFinite(number) ? number : 0;
 
+        private static DiagramRect MoveInside(DiagramRect bounds, DiagramSize size)
+        {
+            var fits = CanFit(bounds.Width) && CanFit(bounds.Height);
+            var width = fits ? bounds.Width : size.Width;
+            var height = fits ? bounds.Height : size.Height;
+            return new DiagramRect(PositionInside(bounds.X, width), PositionInside(bounds.Y, height), width, height);
+        }
+
+        private static bool CanFit(double size) => (size > 0) && (size <= 2 * SnapshotEditor.Limit);
+
+        private static double PositionInside(double position, double size)
+        {
+            var inside = Math.Max(position, -SnapshotEditor.Limit);
+            if (size <= SnapshotEditor.Limit - inside)
+            {
+                return inside;
+            }
+
+            var last = Math.Max(-SnapshotEditor.Limit, SnapshotEditor.Limit - size);
+            return size <= SnapshotEditor.Limit - last ? last : Math.BitDecrement(last);
+        }
+
         private string? Claim(string? id)
         {
             var value = string.IsNullOrEmpty(id) ? DiagramIds.Create() : id;
@@ -484,19 +506,13 @@ internal static class DiagramJsonFormat
             var bounds = default(DiagramRect);
             if (kind != DiagramGroupKind.Overlay)
             {
-                var x = Finite(json.X);
-                var y = Finite(json.Y);
                 var size = boxType?.Size ?? DefaultSize;
-                var width = json.Width ?? size.Width;
-                var height = json.Height ?? size.Height;
-                if ((width <= 0) || (height <= 0) || !double.IsFinite(x + width) || !double.IsFinite(y + height))
+                bounds = new DiagramRect(Finite(json.X), Finite(json.Y), json.Width ?? size.Width, json.Height ?? size.Height);
+                if (!SnapshotEditor.IsInside(bounds))
                 {
                     Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidSize, id);
-                    width = size.Width;
-                    height = size.Height;
+                    bounds = MoveInside(bounds, size);
                 }
-
-                bounds = new DiagramRect(x, y, width, height);
             }
 
             var texts = json.Texts?.Where(static x => x.Value is not null).ToImmutableDictionary(static x => x.Key, static x => x.Value!, StringComparer.Ordinal);

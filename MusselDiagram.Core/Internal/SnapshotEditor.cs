@@ -6,6 +6,8 @@ using System.Text.Json;
 
 internal sealed class SnapshotEditor
 {
+    internal const double Limit = 1e12;
+
     private const double Tolerance = 1e-6;
 
     private static readonly DiagramThickness DefaultPadding = new DiagramGroupType { Name = string.Empty }.Padding;
@@ -367,7 +369,7 @@ internal sealed class SnapshotEditor
             case DiagramBox box:
                 ValidateBox(box);
                 var before = (DiagramBox)current;
-                if (!string.Equals(before.ParentId, box.ParentId, StringComparison.Ordinal))
+                if ((box is DiagramGroup) && !string.Equals(before.ParentId, box.ParentId, StringComparison.Ordinal))
                 {
                     CheckCycle(box);
                 }
@@ -375,7 +377,7 @@ internal sealed class SnapshotEditor
                 var boxParts = BoxParts(before, box);
                 Put(box);
                 Changes.MarkUpdated(box.Id, boxParts);
-                if ((boxParts & (DiagramChangeParts.Position | DiagramChangeParts.Size | DiagramChangeParts.Parent | DiagramChangeParts.Members)) != 0)
+                if (((boxParts & (DiagramChangeParts.Position | DiagramChangeParts.Size | DiagramChangeParts.Parent | DiagramChangeParts.Members)) != 0) || ((box is DiagramGroup) && !string.Equals(before.Type, box.Type, StringComparison.Ordinal)))
                 {
                     touched.Add(box.Id);
                     if (before.ParentId is { } formerParent)
@@ -458,10 +460,7 @@ internal sealed class SnapshotEditor
         {
             var box = (DiagramBox)elements[id];
             var moved = box with { Bounds = box.Bounds.Offset(offset) };
-            if (!IsFinite(moved.Bounds))
-            {
-                throw new DiagramException($"The bounds of '{id}' are not finite numbers with a positive size.");
-            }
+            CheckBounds(id, moved.Bounds);
 
             Put(moved);
             Changes.MarkUpdated(id, DiagramChangeParts.Position);
@@ -494,7 +493,7 @@ internal sealed class SnapshotEditor
         }
     }
 
-    public void SetParent(IEnumerable<string> ids, string? parentId)
+    public void SetParent(IEnumerable<string> ids, string? parentId, bool checkCycle = true)
     {
         HashSet<string>? above = null;
         foreach (var id in ids)
@@ -511,7 +510,7 @@ internal sealed class SnapshotEditor
 
             var moved = box with { ParentId = parentId };
             ValidateBox(moved);
-            if (!SkipCycleCheck && (parentId is not null) && (above ??= Above(parentId)).Contains(id))
+            if (checkCycle && !SkipCycleCheck && (box is DiagramGroup) && (parentId is not null) && (above ??= Above(parentId)).Contains(id))
             {
                 throw new DiagramException($"The parents of '{id}' form a cycle.");
             }
@@ -823,16 +822,29 @@ internal sealed class SnapshotEditor
         throw new DiagramException($"The data of '{element.Id}' is neither the registered data type nor a JsonElement.");
     }
 
-    private static bool IsFinite(DiagramRect bounds) =>
-        double.IsFinite(bounds.X) && double.IsFinite(bounds.Y) && double.IsFinite(bounds.Right) && double.IsFinite(bounds.Bottom);
+    internal static bool IsInside(DiagramRect bounds) =>
+        (bounds.X >= -Limit) && (bounds.Y >= -Limit) && (bounds.Width > 0) && (bounds.Height > 0) && (bounds.Width <= Limit - bounds.X) && (bounds.Height <= Limit - bounds.Y);
+
+    internal static DiagramRect Clamp(DiagramRect bounds)
+    {
+        var left = Math.Max(bounds.X, -Limit);
+        var top = Math.Max(bounds.Y, -Limit);
+        return new DiagramRect(left, top, Math.Min(bounds.Right, Limit) - left, Math.Min(bounds.Bottom, Limit) - top);
+    }
+
+    private static void CheckBounds(string id, DiagramRect bounds)
+    {
+        if (!IsInside(bounds))
+        {
+            throw new DiagramException($"The bounds of '{id}' are outside -1e12 to 1e12 or have a size of 0 or less.");
+        }
+    }
 
     private void ValidateBox(DiagramBox box)
     {
-        var overlay = box is DiagramGroup { Kind: DiagramGroupKind.Overlay };
-        var bounds = box.Bounds;
-        if (!overlay && (!IsFinite(bounds) || (bounds.Width <= 0) || (bounds.Height <= 0)))
+        if (box is not DiagramGroup { Kind: DiagramGroupKind.Overlay })
         {
-            throw new DiagramException($"The bounds of '{box.Id}' are not finite numbers with a positive size.");
+            CheckBounds(box.Id, box.Bounds);
         }
 
         ValidateLook(box.Id, box.Look);
@@ -1339,12 +1351,13 @@ internal sealed class SnapshotEditor
 
     private bool FitGroup(DiagramGroup group, DiagramRect bounds)
     {
-        if (Near(bounds, group.Bounds))
+        var inside = Clamp(bounds);
+        if (Near(inside, group.Bounds))
         {
             return false;
         }
 
-        var resized = group with { Bounds = bounds };
+        var resized = group with { Bounds = inside };
         Put(resized);
         Changes.MarkUpdated(group.Id, BoxParts(group, resized));
         return true;

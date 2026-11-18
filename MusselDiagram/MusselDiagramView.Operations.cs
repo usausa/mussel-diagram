@@ -77,10 +77,10 @@ public sealed partial class MusselDiagramView
             {
                 var reason = CheckMove(ids, startVersion) ?? (reparent ? CheckParent(ids, parentId) : null) ??
                     (StayRules.Allows(Snapshot, Diagram.Index, ids, offset) ? null : Reason(DiagramReasonKind.Nesting));
-                var splits = (reason is null) && (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0);
+                var splits = (reason is null) && (splitLinkId is not null);
                 if (splits)
                 {
-                    reason = CheckSplit(splitLinkId, startVersion);
+                    reason = (ids.Length == 1) && (Snapshot.GetLinks(ids[0]).Length == 0) ? CheckSplit(splitLinkId, startVersion) : Reason(DiagramReasonKind.Changed);
                 }
 
                 split = splits && (reason is null)

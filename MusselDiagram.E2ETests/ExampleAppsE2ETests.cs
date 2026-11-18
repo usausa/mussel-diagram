@@ -394,8 +394,10 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await page.Locator("[data-action='export-menu'] button").First.ClickAsync();
         await page.GetByRole(AriaRole.Menuitem, new() { Name = "SVG", Exact = true }).ClickAsync();
 
-        await Expect(page.GetByText("書き出せませんでした。")).ToBeVisibleAsync();
-        await Expect(opened.View).ToBeVisibleAsync();
+        var message = page.GetByText("書き出せませんでした。");
+        await Expect(message).ToBeVisibleAsync();
+        await page.Locator(".diagram-area .mud-alert-close button").ClickAsync();
+        await Expect(message).ToHaveCountAsync(0);
     }
 
     [Theory]
@@ -552,6 +554,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await opened.Page.Locator(".page-switch a[href='large']").ClickAsync();
 
         await Expect(opened.Page.Locator(".mode-switch a").First).ToHaveAttributeAsync("href", new Regex("redirect=%2Flarge$"));
+        await Expect(opened.Page.Locator(".mode-switch a.active")).ToHaveTextAsync(mode == "server" ? "Server" : "WebAssembly");
     }
 
     [Fact]

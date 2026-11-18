@@ -30,9 +30,9 @@ public sealed class CommitTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moved, moved.Add));
         var version = diagram.Snapshot.Version;
-        var origin = cut.Instance.ScriptVersion;
+        var start = cut.Instance.ScriptVersion;
 
-        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 20), false, null, null, origin, 0));
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(10, 20), false, null, null, start, 0));
 
         Assert.True(result.Accepted);
         Assert.Equal(version + 1, result.Version);
@@ -132,12 +132,12 @@ public sealed class CommitTests : BunitContext
         diagram.Replace((DiagramNode)diagram.Find("c")! with { Locked = true });
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
         var version = diagram.Snapshot.Version;
-        var origin = cut.Instance.ScriptVersion;
+        var start = cut.Instance.ScriptVersion;
 
-        var locked = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, origin, 0));
-        var typed = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["d"], new DiagramPoint(10, 0), false, null, null, origin, locked.Rejections));
+        var locked = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["c"], new DiagramPoint(10, 0), false, null, null, start, 0));
+        var typed = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["d"], new DiagramPoint(10, 0), false, null, null, start, locked.Rejections));
         cut.Render(static parameters => parameters.Add(static p => p.ReadOnly, true));
-        var readOnly = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, origin, typed.Rejections));
+        var readOnly = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, start, typed.Rejections));
 
         Assert.False(locked.Accepted);
         Assert.False(typed.Accepted);
@@ -153,11 +153,11 @@ public sealed class CommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Moving, e => e.Cancel = decisions.Dequeue()));
-        var origin = cut.Instance.ScriptVersion;
+        var start = cut.Instance.ScriptVersion;
 
-        var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, origin, 0));
-        var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, origin, 0));
-        var third = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, origin, second.Rejections));
+        var first = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, start, 0));
+        var second = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, start, 0));
+        var third = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["b"], new DiagramPoint(10, 0), false, null, null, start, second.Rejections));
 
         Assert.False(first.Accepted);
         Assert.False(second.Accepted);
@@ -258,6 +258,24 @@ public sealed class CommitTests : BunitContext
         var result = drop
             ? await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(300, 0, 100, 50), null, null, "ab", start, 0))
             : await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["e"], new DiagramPoint(0, -300), false, null, "ab", start, 0));
+
+        Assert.False(result.Accepted);
+        Assert.Equal(MusselDiagramOptions.Default.Reason(DiagramReasonKind.Changed), result.Reason);
+        Assert.Equal(version, diagram.Snapshot.Version);
+    }
+
+    [Fact]
+    public async Task ASplitIsRejectedWhenTheMovedNodeGotALink()
+    {
+        var diagram = CreateDiagram();
+        diagram.Add(new DiagramNode { Id = "e", Type = "server", Bounds = new DiagramRect(300, 400, 100, 50) });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var start = cut.Instance.ScriptVersion;
+        var type = ((DiagramLink)diagram.Find("ab")!).Type;
+        await cut.InvokeAsync(() => diagram.Connect(new DiagramLink { Id = "ea", Type = type, Source = new DiagramLinkEnd("e"), Target = new DiagramLinkEnd("a") }));
+        var version = diagram.Snapshot.Version;
+
+        var result = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["e"], new DiagramPoint(0, -300), false, null, "ab", start, 0));
 
         Assert.False(result.Accepted);
         Assert.Equal(MusselDiagramOptions.Default.Reason(DiagramReasonKind.Changed), result.Reason);

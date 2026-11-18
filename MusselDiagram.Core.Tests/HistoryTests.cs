@@ -224,6 +224,51 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void AChildTakenOutOfAGroupDeletedWithoutHistoryStaysAfterAnUndo()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Node("a", 20, 40, "g"));
+        diagram.Add(Node("b", 400, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        diagram.ClearHistory();
+        diagram.Move(["b"], new DiagramPoint(0, 50));
+        using (diagram.BeginUpdate(Skip))
+        {
+            diagram.SetParent(["a"], null);
+            diagram.Delete(["g"]);
+        }
+
+        diagram.Undo();
+
+        Assert.Null(Assert.IsType<DiagramNode>(diagram.Find("a")).ParentId);
+        Assert.NotNull(diagram.Find("ab"));
+        Assert.Null(diagram.Find("g"));
+        Assert.Equal(new DiagramRect(400, 0, 100, 50), ((DiagramBox)diagram.Find("b")!).Bounds);
+    }
+
+    [Fact]
+    public void AReorderThatChangesNothingWithoutHistoryKeepsTheStepOfTheUser()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 200, 0));
+        diagram.Add(Node("c", 400, 0));
+        diagram.ClearHistory();
+        diagram.BringToFront(["a"]);
+        using (diagram.BeginUpdate(Skip))
+        {
+            diagram.Replace((DiagramNode)diagram.Find("c")! with { Label = "C" });
+            diagram.BringToFront(["a"]);
+        }
+
+        diagram.Undo();
+
+        Assert.Equal(["a", "b", "c"], diagram.Snapshot.Nodes.Select(static x => x.Id));
+        Assert.Equal("C", ((DiagramNode)diagram.Find("c")!).Label);
+    }
+
+    [Fact]
     public void BeginUpdateMakesOneChange()
     {
         var diagram = new Diagram(Schema);

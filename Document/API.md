@@ -119,7 +119,7 @@ Wraps HTML of the app so that a drag into the view starts from it. Other attribu
 
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
-Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘.  
+Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command.  
 The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
@@ -148,7 +148,7 @@ The model. It works without a view. Writing is not thread-safe.
 | `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, `SourceAngle` and `TargetAngle` (the direction each end marker points, in degrees: 0 right, 90 down), and `Path` (shortened at ends with markers) |
 
 Every writing method takes an optional `DiagramWriteOptions`: `Tag` (any object, given back in `Changed`) and `History` (`DiagramHistoryMode`: `Record`, `Skip` or `Merge`). `BeginUpdate` takes it too, and the outermost scope decides.  
-A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, positions, sizes or right and bottom edges that are not finite, sizes that are not positive) throws `DiagramException` and leaves the snapshot as it was.  
+A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, boxes outside ±1e12, sizes that are not positive) throws `DiagramException` and leaves the snapshot as it was.  
 
 `DiagramChangedEventArgs`:  
 
@@ -161,7 +161,7 @@ A write that breaks the structure (duplicate IDs, missing ends, parents or membe
 | `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order`, `Route` and `Look` |
 | `IsReset` | Everything changed (loading) |
 
-`DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`, for a server.  
+`DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`. Where a `Diagram` computes routes later (in the browser, or where there is a synchronization context), `Read` does not ask the router of the app, and those links come back provisional until a `Diagram` made from the snapshot routes them; elsewhere it waits for that router.  
 
 ## 📸 DiagramSnapshot
 
@@ -275,7 +275,7 @@ An immutable record.
 | Type | Members |
 |---|---|
 | `DiagramIssue` | `Severity` (`DiagramIssueSeverity`: `Error` or `Warning`), `Kind`, `Message`, `ElementIds`, `PortId`, `Slot`, `Arguments` |
-| `DiagramReason` | `Kind` (`DiagramReasonKind`), `Message`, `Arguments` |
+| `DiagramReason` | `Kind` (`DiagramReasonKind`), `Message` |
 
 `DiagramIssueKind`:  
 
@@ -349,8 +349,8 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTe
 
 | `DiagramTexts` | Description |
 |---|---|
-| `Reasons` | A format string for each `DiagramReasonKind` |
-| `Issues` | A format string for each `DiagramIssueKind` |
+| `Reasons` | The text for each `DiagramReasonKind`, used as it is |
+| `Issues` | A format string for each `DiagramIssueKind`; a string that does not fit its arguments falls back to the English one |
 | `Commands` | The display name of each built-in command, by name |
 | `SearchPlaceholder`, `NoMatches` | The palette and the type picker |
 
@@ -370,11 +370,12 @@ These are shared with the other Mussel libraries. Their light defaults follow th
 | `--mussel-critical` | Errors |
 | `--mussel-font-family` | Font family |
 
-These are for the diagram only. Set them on `.mussel-diagram`, on a `class` given to the view, or on a container.  
+These are for the diagram only. Set them on `.mussel-diagram` or on a `class` given to the view; the view declares them on its own element, so a value on a container does not reach it. Set the palette ones on `.mussel-diagram-palette` or on a `class` given to the palette.  
 
 | Variable | Use |
 |---|---|
 | `--mussel-diagram-background` | The background of the view |
+| `--mussel-diagram-font` | The font of the view |
 | `--mussel-diagram-grid-color`, `--mussel-diagram-grid-major-color` | The grid, and its major lines |
 | `--mussel-diagram-node-fill`, `--mussel-diagram-node-stroke`, `--mussel-diagram-text-color` | Shapes and labels without their own colors |
 | `--mussel-diagram-group-fill`, `--mussel-diagram-group-stroke` | Groups without their own colors |
@@ -401,6 +402,8 @@ These are for the diagram only. Set them on `.mussel-diagram`, on a `class` give
 | `--mussel-diagram-override-fill`, `--mussel-diagram-override-stroke`, `--mussel-diagram-override-stroke-width`, `--mussel-diagram-override-dash`, `--mussel-diagram-override-opacity` | Render overrides, set on the element |
 | `mussel-diagram-badge` and `data-tone` | Badges and their tones |
 | `mussel-diagram-nodrag`, `mussel-diagram-nowheel` | Set by the app on elements in templates |
+| `mussel-diagram-cursor` | An element that covers the view and shows the cursor while an operation runs |
+| `mussel-diagram-space`, `mussel-diagram-panning`, `mussel-diagram-dragging`, `mussel-diagram-connecting`, `mussel-diagram-resizing-<n, s, e, w, ne, nw, se or sw>`, `mussel-diagram-selecting`, `mussel-diagram-not-allowed` | States of the root of the view while Space is held, while panning, moving, connecting, resizing and selecting with a box, and where the operation is not allowed; CSS sets the cursor of `mussel-diagram-cursor` under them |
 
 ## ⚠️ Limits
 

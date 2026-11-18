@@ -1,3 +1,4 @@
+/* Page */
 html,
 body {
     height: 100%;
@@ -10,6 +11,16 @@ body {
     height: 100vh;
 }
 
+.layout-body {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.page-card {
+    max-width: 400px;
+}
+
+/* Top bar */
 .layout-bar {
     display: flex;
     align-items: center;
@@ -28,6 +39,7 @@ body {
     flex: 1 1 auto;
 }
 
+/* Render mode switch */
 .mode-switch,
 .page-switch {
     display: flex;
@@ -50,11 +62,7 @@ body {
     color: #1a73e8;
 }
 
-.layout-body {
-    flex: 1 1 auto;
-    min-height: 0;
-}
-
+/* Diagram pages */
 .diagram-page {
     height: 100%;
 }
@@ -132,7 +140,7 @@ body {
 }
 
 .card-empty {
-    fill: var(--mussel-muted-text, #8c959f);
+    fill: var(--mussel-muted-text, #6e7781);
 }
 
 .diagram-actions {
@@ -176,6 +184,8 @@ body {
     --example-flow-line: #64748b;
     --example-er-header: #eef2ff;
     --example-electric-line: #374151;
+    --example-electric-due: #bf8700;
+    --example-electric-expired: var(--mussel-critical, #cf222e);
 }
 
 .layout.mussel-dark {
@@ -198,6 +208,8 @@ body {
     --example-flow-line: #9ca3af;
     --example-er-header: #2c2c3a;
     --example-electric-line: #d1d5db;
+    --example-electric-due: #bb8009;
+    --example-electric-expired: var(--mussel-critical);
 }
 
 .layout .mussel-diagram-icon,
@@ -259,7 +271,7 @@ body {
 }
 
 .er-type {
-    fill: var(--mussel-muted-text, #8c959f);
+    fill: var(--mussel-muted-text, #6e7781);
     font-size: 11px;
     text-anchor: end;
 }
@@ -399,17 +411,12 @@ body {
 }
 
 .ledger-item[data-status="due"] .ledger-next {
-    color: var(--mussel-diagram-warning-color, #d29922);
+    color: var(--example-electric-due);
 }
 
 .ledger-item[data-status="expired"] .ledger-next {
-    color: var(--mussel-critical, #da3633);
+    color: var(--example-electric-expired);
     font-weight: 600;
-}
-
-/* Page */
-.page-card {
-    max-width: 400px;
 }
 
 /* Blazor error UI */

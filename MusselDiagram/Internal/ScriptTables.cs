@@ -5,9 +5,9 @@ using System.Text.Json;
 
 internal static class ScriptTables
 {
-    public static ScriptTable Build(DiagramSnapshot snapshot, SchemaIndex index, DiagramTemplateSet? templates = null) =>
+    public static ScriptTable Build(long version, DiagramSnapshot snapshot, SchemaIndex index, DiagramTemplateSet? templates = null) =>
         new(
-            snapshot.Version,
+            version,
             [.. snapshot.Groups.Select(x => Box(x, index, templates)), .. snapshot.Nodes.Select(x => Box(x, index, templates))],
             [.. snapshot.Links.Select(x => Link(x, index))]);
 

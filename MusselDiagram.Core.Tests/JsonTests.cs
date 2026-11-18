@@ -121,7 +121,7 @@ public sealed class JsonTests
     }
 
     [Fact]
-    public void SizesThatRunPastTheLargestNumberBecomeTheSizeOfTheType()
+    public void BoxesOutsideTheLimitsMoveInside()
     {
         var diagram = new Diagram(JsonSchema);
 
@@ -135,7 +135,8 @@ public sealed class JsonTests
               ],
               "nodes": [
                 { "id": "wide", "type": "server", "x": 1.7e308, "y": 0, "width": 1e308, "height": 50, "parent": "g" },
-                { "id": "tall", "type": "server", "x": 0, "y": 1.7e308, "width": 100, "height": 1e308 }
+                { "id": "tall", "type": "server", "x": 0, "y": 1.7e308, "width": 100, "height": 1e308 },
+                { "id": "far", "type": "server", "x": -5e12, "y": 2e12, "width": 100, "height": 50 }
               ],
               "links": [
                 { "id": "l", "type": "arrow", "source": { "element": "wide" }, "target": { "element": "tall" } }
@@ -143,10 +144,31 @@ public sealed class JsonTests
             }
             """);
 
-        Assert.Equal([(DiagramIssueKind.InvalidSize, "wide"), (DiagramIssueKind.InvalidSize, "tall")], issues.Select(static x => (x.Kind, x.ElementIds[0])));
-        Assert.Equal(new DiagramRect(1.7e308, 0, 120, 60), ((DiagramBox)diagram.Find("wide")!).Bounds);
-        Assert.Equal(new DiagramRect(0, 1.7e308, 120, 60), ((DiagramBox)diagram.Find("tall")!).Bounds);
+        Assert.Equal([(DiagramIssueKind.InvalidSize, "wide"), (DiagramIssueKind.InvalidSize, "tall"), (DiagramIssueKind.InvalidSize, "far")], issues.Select(static x => (x.Kind, x.ElementIds[0])));
+        Assert.Equal(new DiagramRect(1e12 - 120, 0, 120, 60), ((DiagramBox)diagram.Find("wide")!).Bounds);
+        Assert.Equal(new DiagramRect(0, 1e12 - 60, 120, 60), ((DiagramBox)diagram.Find("tall")!).Bounds);
+        Assert.Equal(new DiagramRect(-1e12, 1e12 - 50, 100, 50), ((DiagramBox)diagram.Find("far")!).Bounds);
         Assert.NotNull(diagram.ToJson());
+    }
+
+    [Fact]
+    public void ABoxMovedInsideCanBeWrittenAgain()
+    {
+        var diagram = new Diagram(JsonSchema);
+        diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "nodes": [
+                { "id": "thin", "type": "server", "x": 5e12, "y": 5e12, "width": 0.1, "height": 0.1 }
+              ]
+            }
+            """);
+
+        diagram.Replace((DiagramNode)diagram.Find("thin")! with { Label = "thin" });
+
+        Assert.Equal("thin", ((DiagramNode)diagram.Find("thin")!).Label);
     }
 
     [Fact]
@@ -249,6 +271,27 @@ public sealed class JsonTests
     }
 
     [Fact]
+    public async Task ReadingAsynchronouslyDecidesWhenItIsCalled()
+    {
+        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
+        foreach (var link in node["links"]!.AsArray())
+        {
+            link!.AsObject().Remove("route");
+        }
+
+        var router = new LateRouter();
+        var stream = new LateStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
+        await using (stream.ConfigureAwait(true))
+        {
+            var result = await StartInContext(() => DiagramJson.ReadAsync(stream, JsonSchema with { Router = router }, TestContext.Current.CancellationToken));
+
+            Assert.NotEmpty(result.Snapshot.Links);
+            Assert.All(result.Snapshot.Links, static x => Assert.Equal(DiagramRouteState.Provisional, x.RouteState));
+            Assert.Equal(0, router.Calls);
+        }
+    }
+
+    [Fact]
     public async Task StreamsWorkAsynchronously()
     {
         var source = CreateDiagram();
@@ -309,6 +352,33 @@ public sealed class JsonTests
         Assert.All(result.Snapshot.Links, static x => Assert.Equal((DiagramRouteState.Routed, 3), (x.RouteState, x.Route.Length)));
     }
 
+    [Fact]
+    public void ReadingWhereRoutesCanComeLaterLeavesTheRouterOfTheAppToTheDiagram()
+    {
+        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
+        foreach (var link in node["links"]!.AsArray())
+        {
+            link!.AsObject().Remove("route");
+        }
+
+        var router = new LateRouter();
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new QueueContext());
+        try
+        {
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
+            var result = DiagramJson.Read(stream, JsonSchema with { Router = router });
+
+            Assert.NotEmpty(result.Snapshot.Links);
+            Assert.All(result.Snapshot.Links, static x => Assert.Equal(DiagramRouteState.Provisional, x.RouteState));
+            Assert.Equal(0, router.Calls);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
     private static async Task<ImmutableArray<DiagramIssue>> LoadLateAsync(Diagram target, byte[] json)
     {
         var stream = new LateStream(json);
@@ -338,12 +408,29 @@ public sealed class JsonTests
 
     private sealed class LateRouter : IDiagramRouter
     {
+        public int Calls { get; private set; }
+
         public async ValueTask<DiagramRouteResult> RouteAsync(DiagramRouteRequest request, CancellationToken cancellationToken)
         {
+            Calls++;
             await Task.Delay(1, cancellationToken).ConfigureAwait(false);
             var start = request.Source.Position;
             var end = request.Target.Position;
             return new DiagramRouteResult { Points = [start, new DiagramPoint(end.X, start.Y), end] };
+        }
+    }
+
+    private static Task<TResult> StartInContext<TResult>(Func<Task<TResult>> start)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new QueueContext());
+        try
+        {
+            return start();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
         }
     }
 

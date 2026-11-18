@@ -21,7 +21,10 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
     }
 
     public Task WaitForDiagramAsync() =>
-        page.Locator(".mussel-diagram[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 30_000 });
+        page.WaitForFunctionAsync(
+            "() => { const roots = document.querySelectorAll('.mussel-diagram, .mussel-diagram-palette, .mussel-diagram-drag-source'); return (roots.length > 0) && [...roots].every((root) => root.hasAttribute('data-attached')); }",
+            null,
+            new() { Timeout = 30_000 });
 
     public async ValueTask DisposeAsync()
     {

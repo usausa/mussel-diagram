@@ -107,28 +107,23 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         await page.EvaluateAsync(
             """
             () => {
-                let wheeled = 0;
-                window.addEventListener('wheel', () => { wheeled = performance.now(); }, { capture: true });
+                const later = window.setTimeout;
+                window.heldSettles = 0;
+                window.setTimeout = (callback, delay, ...args) => (delay === 180 ? (window.heldSettles++, 0) : later(callback, delay, ...args));
                 window.addEventListener('pointerdown', () => {
                     window.pressedStyle = document.querySelector('.mussel-diagram-stage').getAttribute('style') ?? '';
-                    window.pressedAfter = performance.now() - wheeled;
                 });
             }
             """);
 
-        var after = double.PositiveInfinity;
-        for (var attempt = 0; (attempt < 3) && (after >= 150); attempt++)
-        {
-            await page.Mouse.MoveAsync(600, 400);
-            await page.Keyboard.DownAsync("Control");
-            await page.Mouse.WheelAsync(0, -100);
-            await page.Keyboard.UpAsync("Control");
-            await page.Mouse.DownAsync();
-            await page.Mouse.UpAsync();
-            after = await page.EvaluateAsync<double>("() => window.pressedAfter");
-        }
+        await page.Mouse.MoveAsync(600, 400);
+        await page.Keyboard.DownAsync("Control");
+        await page.Mouse.WheelAsync(0, -100);
+        await page.Keyboard.UpAsync("Control");
+        await page.WaitForFunctionAsync("() => window.heldSettles > 0");
+        await page.Mouse.DownAsync();
+        await page.Mouse.UpAsync();
 
-        Assert.InRange(after, 0, 150);
         Assert.Equal(string.Empty, await page.EvaluateAsync<string>("() => window.pressedStyle"));
     }
 

@@ -46,6 +46,7 @@ public sealed partial class MonitorPage : IDisposable
     {
         if (firstRender && (view is not null))
         {
+            StateHasChanged();
             var token = stop.Token;
             await view.ZoomToFitAsync();
             _ = RunAsync(token);

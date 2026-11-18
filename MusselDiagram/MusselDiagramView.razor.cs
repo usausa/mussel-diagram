@@ -249,7 +249,6 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
         try
         {
-            var options = ScriptJson.ToElement(CreateOptions());
             if (firstRender)
             {
                 module = await Runtime.InvokeAsync<IJSObjectReference>("import", ModulePath).ConfigureAwait(true);
@@ -259,14 +258,14 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 }
 
                 self ??= DotNetObjectReference.Create(new DiagramScriptBridge(this));
-                options = ScriptJson.ToElement(CreateOptions());
-                sentOptions = options.GetRawText();
+                var attachOptions = ScriptJson.ToElement(CreateOptions());
+                sentOptions = attachOptions.GetRawText();
                 tableChanged = false;
                 schemaChanged = false;
                 pendingChanges.Clear();
-                var table = ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates) with { Version = ++ScriptVersion });
+                var table = ScriptJson.ToElement(ScriptTables.Build(++ScriptVersion, Snapshot, Diagram.Index, templates));
                 var schema = ScriptJson.ToElement(ScriptTables.Schema(RenderContext, Options, templates));
-                controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, options, table, schema).ConfigureAwait(true);
+                controller = await module.InvokeAsync<IJSObjectReference>("attach", Root, self, attachOptions, table, schema).ConfigureAwait(true);
                 await SyncCommandsAsync(controller).ConfigureAwait(true);
                 if (IsDisposed)
                 {
@@ -299,14 +298,14 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 {
                     return;
                 }
-
-                options = ScriptJson.ToElement(CreateOptions());
             }
 
             if (controller is not { } current)
             {
                 return;
             }
+
+            var options = ScriptJson.ToElement(CreateOptions());
 
             if (!string.Equals(sentOptions, options.GetRawText(), StringComparison.Ordinal))
             {
@@ -585,7 +584,14 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         {
             if (currentController is not null)
             {
-                await currentController.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                try
+                {
+                    await currentController.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                }
+                catch (JSException)
+                {
+                }
+
                 await currentController.DisposeAsync().ConfigureAwait(true);
             }
 

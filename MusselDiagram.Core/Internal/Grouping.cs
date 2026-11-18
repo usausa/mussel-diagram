@@ -32,7 +32,7 @@ internal static class Grouping
         var top = boxes.Min(static x => x.Bounds.Y) - type.Padding.Top;
         var right = boxes.Max(static x => x.Bounds.Right) + type.Padding.Right;
         var bottom = boxes.Max(static x => x.Bounds.Bottom) + type.Padding.Bottom;
-        var group = new DiagramGroup { Type = type.Name, Bounds = new DiagramRect(left, top, right - left, bottom - top), ParentId = parentId, Data = type.DefaultData };
+        var group = new DiagramGroup { Type = type.Name, Bounds = SnapshotEditor.Clamp(new DiagramRect(left, top, right - left, bottom - top)), ParentId = parentId, Data = type.DefaultData };
         var children = boxes.Select(static x => x.Id).ToArray();
         var editor = new SnapshotEditor(snapshot, index) { SkipRoutes = true };
         editor.Add(group);
@@ -138,7 +138,7 @@ internal static class Grouping
             {
                 foreach (var (children, parentId) in moves)
                 {
-                    editor.SetParent(children, parentId);
+                    editor.SetParent(children, parentId, false);
                 }
 
                 editor.Delete(deleted);

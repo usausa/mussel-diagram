@@ -334,6 +334,9 @@ export function keyName(event, mac) {
         return null;
     }
     const ctrl = mac ? event.metaKey : event.ctrlKey;
+    if (mac ? event.ctrlKey : event.metaKey) {
+        return null;
+    }
     if ((key === '+') || (ctrl && (key === '='))) {
         key = 'Plus';
     } else if ((key === '-') || (ctrl && (key === '_'))) {
@@ -1102,7 +1105,6 @@ export function applyEntry(table, id, change) {
     if (current === undefined) {
         return null;
     }
-
     table.set(id, { ...current, ...change });
     return new Map([[id, current]]);
 }
@@ -1111,7 +1113,6 @@ export function scrollToShow(scrollTop, viewHeight, top, height) {
     if (top < scrollTop) {
         return top;
     }
-
     return top + height > scrollTop + viewHeight ? top + height - viewHeight : scrollTop;
 }
 
@@ -1120,22 +1121,26 @@ export function changedSelection(ids, sent) {
     return sent && (list.length === sent.size) && list.every((id) => sent.has(id)) ? null : list;
 }
 
-export function writeAttribute(written, element, attribute, value) {
-    element.setAttribute(attribute, value);
+export function writeAttribute(written, element, attribute, value, saved = null) {
     if (written) {
         let entry = written.get(element);
         if (!entry) {
             entry = new Map();
             written.set(element, entry);
         }
+        const previous = entry.get(attribute);
+        if ((previous !== undefined) && (element.getAttribute(attribute) !== previous)) {
+            saved?.get(element)?.set(attribute, element.getAttribute(attribute));
+        }
         entry.set(attribute, value);
     }
+    element.setAttribute(attribute, value);
 }
 
 export function restore(saved, written = null) {
     for (const [element, value] of saved) {
         const current = written?.get(element);
-        if (current && changedSince(element, value, current)) {
+        if (written && (!current || changedSince(element, value, current))) {
             continue;
         }
         for (const [attribute, old] of value) {
@@ -1148,8 +1153,11 @@ export function restore(saved, written = null) {
     }
 }
 
-export function keepWritten(entry) {
+export function keepWritten(entry, dragged = null) {
     for (const [element, attributes] of entry.written) {
+        if (dragged?.has(element)) {
+            continue;
+        }
         let rendered = false;
         for (const [attribute, value] of attributes) {
             rendered ||= element.getAttribute(attribute) !== value;
@@ -1831,8 +1839,8 @@ class DiagramController {
         const delta = wheelDelta(event, this.size.height);
         if (action === 'zoom') {
             this.zoomBy(Math.exp(-delta.y * WHEEL_ZOOM_RATE), this.point(event));
-            if (this.drag) {
-                this.foldGesture();
+            if (this.drag || this.external) {
+                this.foldGesture(false);
             }
         } else {
             this.foldGesture();
@@ -1856,13 +1864,15 @@ class DiagramController {
         this.stage.style.transform = `matrix(${this.gesture.k},0,0,${this.gesture.k},${this.gesture.x},${this.gesture.y})`;
     }
 
-    foldGesture() {
+    foldGesture(round = true) {
         if (!this.gesture) {
             return;
         }
         const { k, x, y, point } = this.gesture;
         this.gesture = null;
-        this.view = roundZoom({ zoom: this.view.zoom * k, x: (this.view.x * k) + x, y: (this.view.y * k) + y }, point);
+        const view = { zoom: this.view.zoom * k, x: (this.view.x * k) + x, y: (this.view.y * k) + y };
+        this.view = round ? roundZoom(view, point) : view;
+        this.unrounded = round ? null : point;
         this.stage.style.transform = '';
         this.applyView();
     }
@@ -1875,6 +1885,11 @@ class DiagramController {
     settle() {
         clearTimeout(this.settleTimer);
         this.foldGesture();
+        if (this.unrounded) {
+            this.view = roundZoom(this.view, this.unrounded);
+            this.unrounded = null;
+            this.applyView();
+        }
         this.notifyViewport();
     }
 
@@ -2303,7 +2318,7 @@ class DiagramController {
         this.drawSelection();
         if (this.dotnet) {
             this.sentSelection = new Set(next);
-            this.track(this.dotnet.invokeMethodAsync('OnSelectionChanged', [...next]).catch(() => { }));
+            this.track(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', [...next]).catch(() => { }));
         }
     }
 
@@ -2657,12 +2672,10 @@ class DiagramController {
 
     cancelDrag() {
         const drag = this.drag;
-        if (drag) {
-            this.markSplit(drag, null);
-        }
         if (!drag) {
             return;
         }
+        this.markSplit(drag, null);
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
         restore(drag.saved ?? new Map(), drag.written ?? null);
@@ -2946,34 +2959,34 @@ class DiagramController {
         for (const [id, element] of drag.elements) {
             const box = this.table.boxes.get(id);
             if (box) {
-                writeAttribute(drag.written, element, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
+                writeAttribute(drag.written, element, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`, drag.saved);
             }
         }
         for (const [id, set] of drag.badgeSets) {
             const box = this.table.boxes.get(id);
             if (box) {
-                writeAttribute(drag.written, set, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`);
+                writeAttribute(drag.written, set, 'transform', `translate(${formatNumber(box.x + drag.dx)},${formatNumber(box.y + drag.dy)})`, drag.saved);
             }
         }
         for (const link of drag.links) {
-            this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id), drag.written);
+            this.drawLink(link, moved(link.source), moved(link.target), drag.paths.get(link.id), drag.written, drag.saved);
         }
     }
 
-    drawLink(link, source, target, paths, written = null) {
+    drawLink(link, source, target, paths, written = null, saved = null) {
         if (!source || !target || !paths) {
             return;
         }
         const points = routeLink(link, source, target, this.options.gridSize);
         if (paths.hit) {
-            writeAttribute(written, paths.hit, 'd', toPath(points, link.form));
+            writeAttribute(written, paths.hit, 'd', toPath(points, link.form), saved);
         }
         if (paths.line) {
-            writeAttribute(written, paths.line, 'd', toPath(points, link.form, link.sourceCut, link.targetCut));
+            writeAttribute(written, paths.line, 'd', toPath(points, link.form, link.sourceCut, link.targetCut), saved);
         }
         if (paths.badges) {
             const middle = routeMidpoint(points);
-            writeAttribute(written, paths.badges, 'transform', `translate(${formatNumber(middle.x)},${formatNumber(middle.y)})`);
+            writeAttribute(written, paths.badges, 'transform', `translate(${formatNumber(middle.x)},${formatNumber(middle.y)})`, saved);
         }
     }
 
@@ -3064,7 +3077,7 @@ class DiagramController {
         for (const link of drag.links) {
             const source = link.source === drag.id ? resized : this.table.boxes.get(link.source);
             const target = link.target === drag.id ? resized : this.table.boxes.get(link.target);
-            this.drawLink(link, source, target, drag.paths.get(link.id), drag.written);
+            this.drawLink(link, source, target, drag.paths.get(link.id), drag.written, drag.saved);
         }
         this.drawGuides(drag, drag.rect);
         this.layers.preview.replaceChildren(svg('rect', { class: 'mussel-diagram-resize-frame', x: drag.rect.x, y: drag.rect.y, width: drag.rect.w, height: drag.rect.h }));
@@ -3079,7 +3092,7 @@ class DiagramController {
         }
         const previous = applyEntry(this.table.boxes, box.id, rect);
         if (previous === null) {
-            restore(drag.saved);
+            restore(drag.saved, drag.written);
             return;
         }
         const frame = svg('rect', { class: 'mussel-diagram-resize-frame', x: rect.x, y: rect.y, width: rect.w, height: rect.h });
@@ -3528,7 +3541,7 @@ class DiagramController {
         if (this.options.hostSearch && this.dotnet) {
             const token = (picker.token ?? 0) + 1;
             picker.token = token;
-            this.dotnet.invokeMethodAsync('SearchTypes', picker.search.value, picker.items.map((x) => x.type.name)).then((names) => {
+            this.dotnet.invokeMethodAsync('SearchTypesAsync', picker.search.value, picker.items.map((x) => x.type.name)).then((names) => {
                 if ((this.picker !== picker) || (picker.token !== token)) {
                     return;
                 }
@@ -3709,6 +3722,7 @@ class DiagramController {
         if (!this.pending.includes(entry)) {
             return;
         }
+        entry.sent = true;
         let result = null;
         try {
             result = await call();
@@ -3744,7 +3758,6 @@ class DiagramController {
             return;
         }
         const reverted = this.pending.splice(index);
-        let relinked = false;
         for (const item of reverted.reverse()) {
             restore(item.saved, item.written);
             for (const [id, box] of item.previous) {
@@ -3755,7 +3768,6 @@ class DiagramController {
             for (const [id, link] of item.previousLinks ?? []) {
                 if (this.table.links.has(id) && (this.table.links.get(id) === item.links.get(id))) {
                     this.table.links.set(id, link);
-                    relinked = true;
                 }
             }
             for (const overlay of item.overlays) {
@@ -3769,9 +3781,6 @@ class DiagramController {
             item.reconnecting?.removeAttribute('data-reconnecting');
         }
         this.table.index();
-        if (relinked) {
-            this.table.index();
-        }
         this.drawSelection();
     }
 
@@ -3790,7 +3799,9 @@ class DiagramController {
         }
         this.pending = kept;
         for (const entry of kept) {
-            keepWritten(entry);
+            if (!entry.sent || (entry.version !== null)) {
+                keepWritten(entry, this.drag?.written ?? null);
+            }
         }
     }
 

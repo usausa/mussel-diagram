@@ -373,6 +373,29 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
 
     [Theory]
     [MemberData(nameof(Modes))]
+    public async Task AnEmptiedTemplateTextShowsItsDefault(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var editor = opened.View.Locator("textarea.mussel-diagram-text-editor");
+        await DragInAsync(opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='card']"), 300, 520);
+        var note = opened.View.Locator("g.mussel-diagram-node[data-type='card'][data-template]:not([data-id='card'])").Locator("text[data-slot='note']");
+        await note.DblClickAsync();
+        await opened.Page.Keyboard.TypeAsync("Sato");
+        await opened.Page.Keyboard.PressAsync("Enter");
+        await Expect(note).ToHaveTextAsync("Sato");
+
+        await note.DblClickAsync();
+        await Expect(editor).ToHaveValueAsync("Sato");
+        await opened.Page.Keyboard.PressAsync("Control+A");
+        await opened.Page.Keyboard.PressAsync("Delete");
+        await opened.Page.Keyboard.PressAsync("Enter");
+
+        await Expect(editor).ToHaveCountAsync(0);
+        await Expect(note).ToHaveTextAsync("補足");
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task GroupAndUngroupWithKeys(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);

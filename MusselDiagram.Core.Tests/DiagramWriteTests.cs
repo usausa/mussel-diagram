@@ -41,6 +41,8 @@ public sealed class DiagramWriteTests
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(double.NaN, 0, 10, 10) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(1.7e308, 0, 1e308, 50) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(0, 1.7e308, 50, 1e308) }));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 1e12 - 50, 0)));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, -1e12 - 1)));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "missing")));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "a")));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0, "asg")));
@@ -59,18 +61,53 @@ public sealed class DiagramWriteTests
     }
 
     [Fact]
-    public void MovesThatLeaveTheFiniteNumbersThrow()
+    public void MovesThatLeaveTheLimitsThrow()
     {
         var diagram = new Diagram(Schema);
-        diagram.Add(Node("far", 1e308, 0));
-        diagram.Add(Node("wide", 0, 0) with { Bounds = new DiagramRect(1.7e308, 0, 5e306, 10) });
+        diagram.Add(Node("edge", 1e12 - 200, 0));
         var before = diagram.Snapshot;
 
-        Assert.Throws<DiagramException>(() => diagram.Move(["far"], new DiagramPoint(1e308, 0)));
-        Assert.Throws<DiagramException>(() => diagram.Move(["wide"], new DiagramPoint(5e306, 0)));
-
+        Assert.Throws<DiagramException>(() => diagram.Move(["edge"], new DiagramPoint(101, 0)));
+        Assert.Throws<DiagramException>(() => diagram.Move(["edge"], new DiagramPoint(0, -2e12)));
+        Assert.Throws<DiagramException>(() => diagram.Move(["edge"], new DiagramPoint(1e308, 0)));
         Assert.Same(before, diagram.Snapshot);
-        Assert.NotNull(diagram.ToJson());
+
+        diagram.Move(["edge"], new DiagramPoint(100, 0));
+
+        Assert.Equal(new DiagramRect(1e12 - 100, 0, 100, 50), ((DiagramBox)diagram.Find("edge")!).Bounds);
+    }
+
+    [Fact]
+    public void FramesOfGroupsStopAtTheLimits()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("left", -1e12, -1e12, 400, 300));
+        diagram.Add(Node("a", -1e12, -1e12, "left"));
+        diagram.Add(Group("right", 0.1, 0.1, 400, 300));
+        diagram.Add(Node("b", 1e12 - 100, 1e12 - 50, "right"));
+        diagram.Add(new DiagramGroup { Id = "asg", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["a"] });
+
+        Assert.Equal(new DiagramRect(-1e12, -1e12, 400, 300), ((DiagramBox)diagram.Find("left")!).Bounds);
+        Assert.Equal(new DiagramRect(0.1, 0.1, 1e12 - 0.1, 1e12 - 0.1), ((DiagramBox)diagram.Find("right")!).Bounds);
+        Assert.Equal(new DiagramRect(-1e12, -1e12, 120, 70), ((DiagramBox)diagram.Find("asg")!).Bounds);
+
+        diagram.Replace((DiagramGroup)diagram.Find("left")! with { Label = "left" });
+        diagram.Replace((DiagramGroup)diagram.Find("right")! with { Label = "right" });
+
+        Assert.Empty(new Diagram(Schema).LoadJson(diagram.ToJson()));
+    }
+
+    [Fact]
+    public void AnOverlayThatChangesItsTypeTakesThePaddingOfTheNewType()
+    {
+        var schema = Schema with { GroupTypes = [.. Schema.GroupTypes, new DiagramGroupType { Name = "wide", Kind = DiagramGroupKind.Overlay, Padding = new DiagramThickness(50, 50, 50, 50) }] };
+        var diagram = new Diagram(schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(new DiagramGroup { Id = "asg", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["a"] });
+
+        diagram.Replace((DiagramGroup)diagram.Find("asg")! with { Type = "wide" });
+
+        Assert.Equal(new DiagramRect(-50, -50, 200, 150), ((DiagramBox)diagram.Find("asg")!).Bounds);
     }
 
     [Fact]

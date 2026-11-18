@@ -82,7 +82,7 @@ The `Example` project shows the main features on Server and WebAssembly: a sampl
 
 | Part | Detail |
 |---|---|
-| Theme | CSS variables shared with the Mussel family (`--mussel-primary-text` and more), `--mussel-diagram-*` for the diagram, and `.mussel-dark` for dark backgrounds |
+| Theme | CSS variables shared with the Mussel family (`--mussel-primary-text`, `--mussel-grid-line` and more), `--mussel-diagram-*` for the diagram, and the dark `mussel-dark` |
 | Types | Rectangles, ellipses, diamonds and paths, icons, colors, strokes and dashes, presets, group headers and label slots with formats |
 | Templates | Razor templates for node types that need their own drawing |
 | Grid | Dots or lines behind the diagram |

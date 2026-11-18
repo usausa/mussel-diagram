@@ -211,6 +211,82 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(star1).ToHaveAttributeAsync("transform", shown!);
     }
 
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task AMovedLinkShowsTheRouteOfItsOwnRender(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        var line = opened.View.Locator("g.mussel-diagram-link[data-id='star1-triangle'] > path.mussel-diagram-link-line");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.answeredMoves = 0;
+                proto.invokeMethodAsync = function (name, ...args) {
+                    const result = invoke.call(this, name, ...args);
+                    if (name === 'CommitMoveAsync') {
+                        result.then(() => setTimeout(() => window.answeredMoves++));
+                    }
+                    return result;
+                };
+            }
+            """);
+
+        await DragAsync(250, 170, 0, 20, null);
+        await page.WaitForFunctionAsync("() => window.answeredMoves === 1");
+        var shown = await line.GetAttributeAsync("d");
+        await page.Keyboard.PressAsync("Control+Z");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
+        await page.Keyboard.PressAsync("Control+Y");
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
+
+        await Expect(line).ToHaveAttributeAsync("d", shown!);
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task AnEscapedDragKeepsWhatARenderDrewDuringIt(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var line = opened.View.Locator("g.mussel-diagram-link[data-id='star1-triangle'] > path.mussel-diagram-link-line");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name !== 'CommitMoveAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => resolve(invoke.call(this, name, ...args))));
+                };
+            }
+            """);
+
+        await DragAsync(250, 170, 0, 20, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        var shown = await line.GetAttributeAsync("d");
+        var (left, top) = await OriginAsync();
+        string? rendered = null;
+        await DragAsync(250, 190, 30, 0, async () =>
+        {
+            var version = await opened.View.GetAttributeAsync("data-version").ConfigureAwait(true);
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version!).ConfigureAwait(true);
+            rendered = await line.GetAttributeAsync("d").ConfigureAwait(true);
+            await page.Mouse.MoveAsync((float)left + 290, (float)top + 190).ConfigureAwait(true);
+            await page.Keyboard.PressAsync("Escape").ConfigureAwait(true);
+        });
+
+        Assert.NotEqual(shown, rendered);
+        await Expect(line).ToHaveAttributeAsync("d", rendered!);
+    }
+
     private async Task<(double X, double Y)> OriginAsync()
     {
         var box = await opened!.View.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The view is not shown.");

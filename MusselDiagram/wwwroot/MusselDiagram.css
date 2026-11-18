@@ -37,12 +37,13 @@
     --mussel-tooltip-background: #1F1F1D;
     --mussel-tooltip-border: rgba(240, 239, 236, 0.1);
     --mussel-tooltip-text: #F0EFEC;
+    --mussel-critical: #F2495C;
 }
 
 :where(.mussel-dark) :where(.mussel-diagram),
 :where(.mussel-diagram.mussel-dark) {
     --mussel-diagram-background: #1f1f1d;
-    --mussel-diagram-text-color: var(--mussel-primary-text, #f0efec);
+    --mussel-diagram-text-color: var(--mussel-primary-text);
     --mussel-diagram-node-fill: #262624;
     --mussel-diagram-node-stroke: #a8a69f;
     --mussel-diagram-group-stroke: #6e6c66;
@@ -53,16 +54,16 @@
     --mussel-diagram-handle-fill: #1f1f1d;
     --mussel-diagram-candidate-color: #6ea8fe;
     --mussel-diagram-drop-target-color: #56d364;
-    --mussel-diagram-not-allowed-color: var(--mussel-critical, #f85149);
-    --mussel-diagram-grid-color: var(--mussel-grid-line, #34332f);
+    --mussel-diagram-not-allowed-color: var(--mussel-critical);
+    --mussel-diagram-grid-color: var(--mussel-grid-line);
     --mussel-diagram-grid-major-color: #4d4b45;
-    --mussel-diagram-error-color: var(--mussel-critical, #f85149);
+    --mussel-diagram-error-color: var(--mussel-critical);
     --mussel-diagram-warning-color: #d29922;
     --mussel-diagram-badge-default: #8b949e;
     --mussel-diagram-badge-info: #4493f8;
     --mussel-diagram-badge-success: #2ea043;
     --mussel-diagram-badge-warning: #bb8009;
-    --mussel-diagram-badge-error: var(--mussel-critical, #da3633);
+    --mussel-diagram-badge-error: var(--mussel-critical);
 }
 
 .mussel-diagram {

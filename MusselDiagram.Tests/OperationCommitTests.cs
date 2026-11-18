@@ -69,12 +69,12 @@ public sealed class OperationCommitTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.Resized, resized.Add));
-        var origin = cut.Instance.ScriptVersion;
+        var start = cut.Instance.ScriptVersion;
 
-        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 150, 80), origin, 0));
+        var accepted = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 150, 80), start, 0));
         var written = ((DiagramBox)diagram.Find("a")!).Bounds;
         await cut.InvokeAsync(() => diagram.Move(["a"], new DiagramPoint(0, 5)));
-        var stale = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 160, 80), origin, accepted.Rejections));
+        var stale = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("a", new DiagramRect(40, 80, 160, 80), start, accepted.Rejections));
         var tooSmall = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("tiny", new DiagramRect(0, 600, 20, 20), cut.Instance.ScriptVersion, stale.Rejections));
         var content = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("fit", new DiagramRect(0, 0, 10, 10), cut.Instance.ScriptVersion, tooSmall.Rejections));
 

@@ -189,6 +189,18 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void GroupingAtTheLimitsStopsTheFrameThere()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", -1e12, -1e12));
+
+        var result = Grouping.Group(diagram.Snapshot, diagram.Index, ["a"], "vpc");
+        diagram.Write(null, DiagramChangeOrigin.User, result.Edit!);
+
+        Assert.Equal(new DiagramRect(-1e12, -1e12, 120, 70), ((DiagramBox)diagram.Find(result.Selection[0])!).Bounds);
+    }
+
+    [Fact]
     public void GroupNeedsOneParentAndAType()
     {
         var diagram = new Diagram(Schema);

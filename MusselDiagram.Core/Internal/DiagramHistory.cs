@@ -61,6 +61,11 @@ internal sealed class DiagramHistory
     private static DiagramSnapshot Apply(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
     {
         var editor = new SnapshotEditor(target, index) { SkipKindCheck = true, SkipAppRouter = true, DeferRoutes = true };
+        if (changes.Deleted.Count > 0)
+        {
+            MoveToNewParents(editor, target, after, changes);
+        }
+
         editor.Delete(changes.Deleted.Where(target.Contains));
 
         var added = changes.Added.ToHashSet(StringComparer.Ordinal);
@@ -151,10 +156,30 @@ internal sealed class DiagramHistory
         }
     }
 
+    private static void MoveToNewParents(SnapshotEditor editor, DiagramSnapshot target, DiagramSnapshot after, ChangeSet changes)
+    {
+        var deleted = changes.Deleted.ToHashSet(StringComparer.Ordinal);
+        foreach (var (id, parts) in changes.Updated)
+        {
+            if (((parts & DiagramChangeParts.Parent) == 0) || !target.Contains(id) || (after.Find(id) is not DiagramBox moved))
+            {
+                continue;
+            }
+
+            try
+            {
+                editor.SetParent([id], (moved.ParentId is { } parent) && target.Contains(parent) && !deleted.Contains(parent) ? parent : null);
+            }
+            catch (DiagramException)
+            {
+            }
+        }
+    }
+
     private static bool RoutesOnly(ChangeSet changes) =>
         (changes.Added.Count == 0) && (changes.Deleted.Count == 0) && changes.Updated.Values.All(static x => x == DiagramChangeParts.Route);
 
-    private static DiagramSnapshot ApplyRoutes(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
+    internal static DiagramSnapshot ApplyRoutes(DiagramSnapshot target, DiagramSnapshot before, DiagramSnapshot after, ChangeSet changes, SchemaIndex index)
     {
         if (target.Nodes != before.Nodes)
         {

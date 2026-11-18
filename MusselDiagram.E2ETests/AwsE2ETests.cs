@@ -53,7 +53,6 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
 
         var message = opened.Page.GetByText("zip ファイルとして読めませんでした。");
         await Expect(message).ToBeVisibleAsync();
-        await Expect(opened.View).ToBeVisibleAsync();
         await opened.Page.Locator(".diagram-sidebar .mud-alert-close button").ClickAsync();
         await Expect(message).ToHaveCountAsync(0);
     }

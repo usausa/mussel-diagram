@@ -116,6 +116,42 @@ public sealed class DeepTreeTests
             TestContext.Current.CancellationToken);
     }
 
+    [Fact(Timeout = 30_000)]
+    public Task UngroupingEveryOtherGroupOfADeepChainRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0));
+                var odd = Enumerable.Range(0, Depth / 2).Select(static i => $"g{(i * 2) + 1}").ToList();
+
+                var result = Grouping.Ungroup(diagram.Snapshot, diagram.Index, odd);
+                Assert.Null(result.Reason);
+                diagram.Write(null, DiagramChangeOrigin.User, result.Edit!);
+
+                Assert.Equal(Depth / 2, diagram.Snapshot.Groups.Length);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task MovingManyNodesIntoADeepGroupWithoutHistoryRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(Leaves));
+                diagram.Move(["g0"], new DiagramPoint(10, 0));
+
+                diagram.SetParent(Enumerable.Range(0, Leaves).Select(static i => $"n{i}"), $"g{Depth - 1}", new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+
+                Assert.All(diagram.Snapshot.Nodes, static x => Assert.Equal($"g{Depth - 1}", x.ParentId));
+            },
+            TestContext.Current.CancellationToken);
+    }
+
     private static string Chain(int leaves) =>
         JsonSerializer.Serialize(
             new

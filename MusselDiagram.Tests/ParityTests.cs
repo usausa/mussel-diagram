@@ -131,7 +131,7 @@ public sealed class ParityTests
 
         var data = new JsonObject
         {
-            ["table"] = JsonNode.Parse(ScriptJson.ToElement(ScriptTables.Build(snapshot, index)).GetRawText()),
+            ["table"] = JsonNode.Parse(ScriptJson.ToElement(ScriptTables.Build(snapshot.Version, snapshot, index)).GetRawText()),
             ["schema"] = JsonNode.Parse(ScriptJson.ToElement(ScriptTables.Schema(context, MusselDiagramOptions.Default)).GetRawText()),
             ["routes"] = routes,
             ["rules"] = rules,

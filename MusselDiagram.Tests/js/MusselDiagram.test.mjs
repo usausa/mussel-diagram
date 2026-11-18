@@ -8,6 +8,13 @@ import {
 
 const measure = (text) => [...text].length * 10;
 
+const fakeElement = (attributes) => ({
+    attributes: new Map(attributes),
+    getAttribute(name) { return this.attributes.get(name) ?? null; },
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    removeAttribute(name) { this.attributes.delete(name); },
+});
+
 test('labels break at word boundaries', () => {
     assert.deepEqual(wrapLabel('Amazon EC2 instance', 100, 0, measure), { lines: ['Amazon EC2', 'instance'], truncated: false });
 });
@@ -308,14 +315,8 @@ test('quick add places the element beside the connection point', () => {
 });
 
 test('reverting keeps the values that changed after the commit', () => {
-    const element = (transform) => ({
-        attributes: new Map([['transform', transform]]),
-        getAttribute(name) { return this.attributes.get(name) ?? null; },
-        setAttribute(name, value) { this.attributes.set(name, String(value)); },
-        removeAttribute(name) { this.attributes.delete(name); },
-    });
-    const moved = element('translate(50,0)');
-    const rendered = element('translate(80,0)');
+    const moved = fakeElement([['transform', 'translate(50,0)']]);
+    const rendered = fakeElement([['transform', 'translate(80,0)']]);
     const saved = new Map([[moved, new Map([['transform', 'translate(0,0)']])], [rendered, new Map([['transform', 'translate(0,0)']])]]);
     const written = new Map([[moved, new Map([['transform', 'translate(50,0)']])], [rendered, new Map([['transform', 'translate(50,0)']])]]);
 
@@ -337,12 +338,7 @@ test('a commit writes over the entry as it is when the pointer is released', () 
 });
 
 test('an element that a render changed is not restored in part', () => {
-    const label = {
-        attributes: new Map([['data-label', 'Bar']]),
-        getAttribute(name) { return this.attributes.get(name) ?? null; },
-        setAttribute(name, value) { this.attributes.set(name, String(value)); },
-        removeAttribute(name) { this.attributes.delete(name); },
-    };
+    const label = fakeElement([['data-label', 'Bar']]);
     const saved = new Map([[label, new Map([['data-label', 'Untitled'], ['data-default', '']])]]);
     const written = new Map([[label, new Map([['data-label', 'Foo'], ['data-default', null]])]]);
 
@@ -353,14 +349,8 @@ test('an element that a render changed is not restored in part', () => {
 });
 
 test('a commit still waiting keeps what it wrote over an older render, and goes back to that render', () => {
-    const element = (attributes) => ({
-        attributes: new Map(attributes),
-        getAttribute(name) { return this.attributes.get(name) ?? null; },
-        setAttribute(name, value) { this.attributes.set(name, String(value)); },
-        removeAttribute(name) { this.attributes.delete(name); },
-    });
-    const label = element([['data-label', 'Bar']]);
-    const moved = element([['transform', 'translate(50,0)']]);
+    const label = fakeElement([['data-label', 'Bar']]);
+    const moved = fakeElement([['transform', 'translate(50,0)']]);
     const node = { nodeValue: 'Rendered' };
     const entry = {
         saved: new Map([[label, new Map([['data-label', 'Untitled'], ['data-default', '']])], [moved, new Map([['transform', 'translate(0,0)']])]]),
@@ -379,14 +369,8 @@ test('a commit still waiting keeps what it wrote over an older render, and goes 
 });
 
 test('a drag remembers what it wrote so that a cancel keeps a newer render', () => {
-    const element = (value) => ({
-        attributes: new Map([['d', value]]),
-        getAttribute(name) { return this.attributes.get(name) ?? null; },
-        setAttribute(name, value) { this.attributes.set(name, String(value)); },
-        removeAttribute(name) { this.attributes.delete(name); },
-    });
-    const drawn = element('M0 0');
-    const rendered = element('M0 0');
+    const drawn = fakeElement([['d', 'M0 0']]);
+    const rendered = fakeElement([['d', 'M0 0']]);
     const saved = new Map([[drawn, new Map([['d', 'M0 0']])], [rendered, new Map([['d', 'M0 0']])]]);
     const written = new Map();
     writeAttribute(written, drawn, 'd', 'M5 5');
@@ -397,6 +381,49 @@ test('a drag remembers what it wrote so that a cancel keeps a newer render', () 
 
     assert.equal(drawn.getAttribute('d'), 'M0 0');
     assert.equal(rendered.getAttribute('d'), 'M9 9');
+});
+
+test('a render that arrives during a drag is what a cancel goes back to', () => {
+    const element = fakeElement([['d', 'M0 0']]);
+    const saved = new Map([[element, new Map([['d', 'M0 0']])]]);
+    const written = new Map();
+    writeAttribute(written, element, 'd', 'M5 5', saved);
+    element.setAttribute('d', 'M9 9');
+    writeAttribute(written, element, 'd', 'M6 6', saved);
+
+    restore(saved, written);
+
+    assert.equal(element.getAttribute('d'), 'M9 9');
+});
+
+test('a cancel leaves alone what the drag has not written', () => {
+    const element = fakeElement([['d', 'M0 0']]);
+    const saved = new Map([[element, new Map([['d', 'M0 0']])]]);
+    element.setAttribute('d', 'M9 9');
+
+    restore(saved, new Map());
+
+    assert.equal(element.getAttribute('d'), 'M9 9');
+});
+
+test('a key with the Control key of a Mac or the Windows key has no name', () => {
+    const base = { key: 'v', code: 'KeyV', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
+    assert.equal(keyName({ ...base, ctrlKey: true }, true), null);
+    assert.equal(keyName({ ...base, metaKey: true }, false), null);
+    assert.equal(keyName({ ...base, metaKey: true }, true), 'Ctrl+V');
+});
+
+test('a commit still waiting leaves alone what the current drag has written', () => {
+    const element = fakeElement([['transform', 'translate(80,0)']]);
+    const entry = {
+        saved: new Map([[element, new Map([['transform', 'translate(0,0)']])]]),
+        written: new Map([[element, new Map([['transform', 'translate(50,0)']])]]),
+    };
+
+    keepWritten(entry, new Map([[element, new Map([['transform', 'translate(80,0)']])]]));
+
+    assert.equal(element.getAttribute('transform'), 'translate(80,0)');
+    assert.equal(entry.saved.get(element).get('transform'), 'translate(0,0)');
 });
 
 test('a selection that the view already has is not sent again', () => {

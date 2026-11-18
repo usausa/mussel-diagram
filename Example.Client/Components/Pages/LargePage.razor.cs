@@ -21,6 +21,7 @@ public sealed partial class LargePage
     {
         if (firstRender && (view is not null))
         {
+            StateHasChanged();
             await view.ZoomToFitAsync();
         }
     }

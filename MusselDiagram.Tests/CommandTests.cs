@@ -162,9 +162,9 @@ public sealed class CommandTests : BunitContext
             .Add(static p => p.Diagram, diagram)
             .Add(p => p.TextCommitted, committed.Add));
         var version = diagram.Snapshot.Version;
-        var origin = cut.Instance.ScriptVersion;
+        var start = cut.Instance.ScriptVersion;
 
-        var label = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", origin, 0));
+        var label = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", start, 0));
         var same = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "title", "Hello", cut.Instance.ScriptVersion, 0));
         var fixedSlot = await cut.InvokeAsync(() => cut.Instance.CommitTextAsync("n", "body", "No", cut.Instance.ScriptVersion, 0));
 

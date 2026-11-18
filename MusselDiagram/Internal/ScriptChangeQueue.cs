@@ -33,7 +33,7 @@ internal sealed class ScriptChangeQueue
 
         foreach (var id in change.Updated)
         {
-            if (listed.Add(id))
+            if ((change.GetChanges(id) != DiagramChangeParts.Route) && listed.Add(id))
             {
                 order.Add(id);
             }

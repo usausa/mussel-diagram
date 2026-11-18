@@ -313,7 +313,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         opened = await app.OpenAsync("large", "server");
         var page = opened.Page;
         var node = opened.View.Locator("g.mussel-diagram-node[data-id='n000']");
-        var moved = await node.GetAttributeAsync("transform");
+        var before = await node.GetAttributeAsync("transform");
         await page.EvaluateAsync(
             """
             () => {
@@ -340,7 +340,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         await page.Mouse.UpAsync();
 
         await Expect(opened.View).Not.ToHaveAttributeAsync("data-version", version!);
-        await Expect(node).Not.ToHaveAttributeAsync("transform", moved!);
+        await Expect(node).Not.ToHaveAttributeAsync("transform", before!);
         Assert.InRange(await page.EvaluateAsync<int>("() => Math.max(0, ...window.sentSizes)"), 0, 4096);
     }
 

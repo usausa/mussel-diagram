@@ -1,7 +1,5 @@
 namespace MusselDiagram;
 
-using System.Collections.Immutable;
-
 public enum DiagramReasonKind
 {
     NoConnectionPoint,
@@ -21,7 +19,4 @@ public enum DiagramReasonKind
     App
 }
 
-public sealed record DiagramReason(DiagramReasonKind Kind, string? Message = null)
-{
-    public ImmutableArray<string> Arguments { get; init; } = [];
-}
+public sealed record DiagramReason(DiagramReasonKind Kind, string? Message = null);

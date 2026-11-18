@@ -321,6 +321,46 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void RoutesThatArriveBeforeAnUndoLeaveTheSavedContentUnmodified()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Group("g", 0, 300, 200, 100));
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Connect(Link("ab", "a", "b"));
+            diagram.MarkSaved();
+            diagram.Replace((DiagramGroup)diagram.Find("g")! with { Label = "Renamed" });
+            router.Complete(router.Count - 1, [new(100, 25), new(250, 100), new(400, 25)]);
+            context.RunOne();
+            var renamed = diagram.IsModified;
+
+            diagram.Undo();
+
+            Assert.Equal((true, false), (renamed, diagram.IsModified));
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+        });
+    }
+
+    [Fact]
+    public void RoutesThatARouterGivesAtOnceDoNotMarkANewDiagramModified()
+    {
+        RunWith(static _ =>
+        {
+            var waiting = new Diagram(Schema with { Router = new ManualRouter() });
+            waiting.Add(Node("a", 0, 0));
+            waiting.Add(Node("b", 400, 0));
+            waiting.Connect(Link("ab", "a", "b"));
+
+            var copy = new Diagram(Schema with { Router = new FixedRouter() }, waiting.Snapshot);
+
+            Assert.Equal((DiagramRouteState.Routed, false), (LinkOf(copy).RouteState, copy.IsModified));
+        });
+    }
+
+    [Fact]
     public void LateRoutesAreThrownAwayWhenTheEndsMoved()
     {
         RunWith(static context =>

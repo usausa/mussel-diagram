@@ -1,5 +1,6 @@
 namespace MusselDiagram;
 
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -91,6 +92,14 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void AnExceptionFromTheMapOfTheAppIsNotTakenForABrokenZip()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="1" height="1"/></svg>""";
+
+        Assert.Throws<InvalidDataException>(() => DiagramIconImport.FromZip(Zip(("icon.svg", svg)), "demo", static _ => throw new InvalidDataException("mine")));
+    }
+
+    [Fact]
     public void AliasesOfAliasesFollowTheChain()
     {
         const string json = """
@@ -113,6 +122,38 @@ public sealed class IconImportTests
         Assert.Contains("rotate(90", chained, StringComparison.Ordinal);
         Assert.Contains("scale(-1 1)", chained, StringComparison.Ordinal);
         Assert.Equal(2, result.Issues.Length);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task ALongCycleOfAliasesEndsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var aliases = string.Join(", ", Enumerable.Range(0, 3000).Select(static i => $"\"a{i}\": {{ \"parent\": \"a{(i + 1) % 3000}\" }}"));
+                var json = $$"""{ "prefix": "demo", "icons": { "home": { "body": "<path d='M0 0'/>" } }, "aliases": { {{aliases}} } }""";
+
+                var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+                Assert.Equal(["home"], result.IconSet.Icons.Select(static x => x.Id));
+                Assert.Equal(3000, result.Issues.Length);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(0x01)]
+    [InlineData(0x41)]
+    public void AnEncryptedFileIsAnUnreadableIcon(int flags)
+    {
+        var bytes = Zip(("locked.svg", "<svg/>"), ("open.svg", "<svg><rect width='1' height='1'/></svg>")).ToArray();
+        Encrypt(bytes, [0x50, 0x4B, 0x03, 0x04], 6, flags);
+        Encrypt(bytes, [0x50, 0x4B, 0x01, 0x02], 8, flags);
+
+        var result = DiagramIconImport.FromZip(new MemoryStream(bytes), "demo");
+
+        Assert.Equal(["open"], result.IconSet.Icons.Select(static x => x.Id));
+        Assert.Equal(DiagramIssueKind.UnreadableIcon, Assert.Single(result.Issues).Kind);
     }
 
     [Fact]
@@ -326,6 +367,12 @@ public sealed class IconImportTests
     }
 
     private const string Square = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\"><rect width=\"64\" height=\"64\"/></svg>";
+
+    private static void Encrypt(byte[] bytes, byte[] signature, int offset, int flags)
+    {
+        var at = bytes.AsSpan().IndexOf(signature) + offset;
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(at), (ushort)(BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(at)) | flags));
+    }
 
     private static MemoryStream Zip(params (string Path, string Text)[] files)
     {

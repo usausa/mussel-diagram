@@ -162,8 +162,9 @@ Changing parents:
   - The parent tree has no cycle
   - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group, an overlay group without members), and the kind of a group does not change
   - The data is the data type registered for the type, or `JsonElement`
-  - Positions, sizes and the right and bottom edges are finite, and sizes are greater than 0
+  - Boxes lie inside ±1e12 (their left, top, right and bottom edges), and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
+- A frame that a group takes from its contents (a growing group, a group sized to its contents, an overlay group, a new group from grouping) stops at the limits of ±1e12
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
 | Event | When | Content |
@@ -753,6 +754,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 ### Dropping on a link
 
 - Releasing one node on a link splices the node into the link. This works when placing from the palette, and when moving a single node that has no links
+- When the link to splice changed after the drag started, or the moved node got a link meanwhile, the whole operation is rejected as changed and goes back
 - On a link means that the pointer is in the hit area of the link (`LinkHitWidth`). With several links, the frontmost counts
 - Splicing works only when both new links, from the old source to the node and from the node to the old target, pass the connection rules with the link type of the old link. The connection points of the node, on the incoming and on the outgoing side, are the first declared ones that can connect
 - When splicing works, the link is highlighted. On release, the target of the old link moves to the node, and a link of the same type goes from the node to the old target (with the default data of the type). The old link keeps its ID and data
@@ -807,11 +809,11 @@ A user operation is shown by the browser first, then checked by C# and written t
 
 ### Commit flow
 
-On release (for a command, when it runs), JS sends the operation, the version of the element table it started from and the selection of that moment to C#, once. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
+On release (for a command, when it runs), JS sends the operation and the selection of that moment to C#, once. Except for connections (with the elements they add) and commands, it also sends the version of the element table the operation started from. The element table is the copy of the elements that C# gives JS, and its version grows by 1 each time C# sends the copy or a change. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
 
 | Order | Step | Reason for rejecting |
 |---|---|---|
-| 1 | Nothing but earlier commits of the same view has changed what the operation writes (the positions and sizes of the moved elements and of the contents of moved overlays, parents, ends, text) since that version | The diagram changed |
+| 1 | For an operation that sends a version, nothing has changed what it writes (the positions and sizes of the moved elements and of the contents of moved overlays, parents, ends, text) since that version, except earlier commits of the same view; commands and undo of the same view do count | The diagram changed |
 | 2 | The declared rules (Types and rules) are checked again on the current snapshot | The reason of the rule |
 | 3 | The app rules | The reason of the app |
 | 4 | The before event (`…ing`). `Cancel` stops the operation, and a reason can be returned | The reason of the app, otherwise "Canceled" |
@@ -861,7 +863,8 @@ On release (for a command, when it runs), JS sends the operation, the version of
 ### Provisional display and late results
 
 - Until the rendering of the snapshot after the commit arrives from C#, JS keeps the provisional display (the moved elements, links with simple routes, the preview of a placed element, the written text). Each rendering carries its snapshot number, which tells JS which one has arrived
-- A rendering of a snapshot older than the commit that arrives late does not undo the provisional display
+- A rendering that arrives before the commit is sent does not undo its provisional display. Once the commit is sent, JS shows the renderings as they arrive, because the next one may be the commit's own; a rendering by another writer that arrives within that round trip can show the earlier state for a moment
+- Two overlaps within the round trip of a commit are left as they are, since the final state is right: in Wait, text committed just after another writer changed the same slot is rejected, and committing it again is rejected once more until that change reaches JS; and while a later commit of the same elements waits, the table changes of the earlier one put the selection back for a moment, so grabbing the element again in that moment starts its preview from there
 - The provisional display computes port positions and cut ends with the same formulas as C#. When the rendering arrives and replaces it, elements do not move; only the links change from the simple route to the route of C#
 - The result of an asynchronous router is applied when both ends and the nodes to avoid have not changed since the snapshot the computation started from. Otherwise it is thrown away and computed again (Link routes)
 
@@ -1078,7 +1081,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 | A parent that does not exist or is not a tree group, and parent cycles | The element goes to the top level |
 | Members referring to elements that do not exist, or that are not nodes or tree groups | Those members are removed. An overlay group with no members left is dropped |
 | A group whose kind does not match its type | Treated like an unregistered type |
-| A size of 0 or less, or one that puts the right or bottom edge past the finite numbers | The default size of the type |
+| A box outside ±1e12, or a size of 0 or less | A size of 0 or less or larger than 2e12 becomes the default size of the type, and the box moves inside the limits |
 | Data the data type cannot read | Kept as `JsonElement` (a warning) |
 | Values of a look that cannot be used (color syntax, widths, names of markers and so on) | Those values are removed (a warning) |
 
@@ -1212,7 +1215,7 @@ A group type declares the form of its header.
 
 - The app reads the Icon package, which the user downloaded from the official page, with the icon import (Palette). The Example has a function that makes the ID, the name and the category from the relative path of a file
 - The user extracts the SVG files of the package into `AwsIcons/` at the root of the repository, which Git ignores. The build of the Example copies the files it reads (the table below) to `AwsIcons/` in the output folder
-- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read in full at once, and for a zip it cannot read or one over 256 MB, the panel shows why
+- The AWS page lists the copied files when it opens, and reads each icon the first time it is shown. Interactive Server reads the files, and WebAssembly gets the list and then each file over HTTP. A zip chosen with the file button is read in full at once, and for a zip it cannot read or one over 256 MB, the panel shows why. A zip without usable icons leaves the types as they are and shows why, and the panel shows how many problems the import had
 - The ID is the file name without the release date and the size, with the prefix `aws`. It stays the same when a new release (three a year) replaces the package
 
 | File | ID | Size read |
@@ -1244,7 +1247,7 @@ The code of the core, the components and JS knows no language. Texts are in lang
 - Texts follow `CurrentUICulture`, looked up from the culture to its parents (`ja-JP`, `ja`, the empty name). Items not set and empty items do not count, and items found nowhere are English. Each text is looked up on its own, so a culture can hold only the texts it changes
 - The built-in languages are English under the empty name and Japanese under `ja`. Japanese uses only the public API and is a model for other languages. The app adds languages in the same form, and can replace the built-in texts
 - A diagram follows its own `Diagram.Options`, set when it is made, then the options registered with `AddMusselDiagram` once a view shows it, then the built-in languages. The APIs that take no diagram (reading JSON, importing icons, `DiagramSnapshot.Validate`) use the built-in languages
-- Issues and rejection reasons have a kind and arguments. Their texts are format strings filled with the arguments (display names of types, counts and so on). Reasons returned by app rules use the text of the app as it is
+- Issues have a kind and arguments. Their texts are format strings filled with the arguments (display names of types, counts and so on), and a text that does not fit its arguments falls back to the English text. Rejection reasons have a kind, and their texts are used as they are. Reasons returned by app rules use the text of the app
 - The view sends the texts of the current language to JS as data (for rejection reasons while dragging)
 - The display names of types and categories, and the default texts of label slots, are passed by the app in the schema. The app makes the values for each language
 

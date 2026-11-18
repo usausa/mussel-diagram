@@ -117,14 +117,6 @@ public sealed partial class MusselDiagramView
         }
     }
 
-    internal void Report(Exception exception)
-    {
-        if (!IsDisposed)
-        {
-            _ = DispatchExceptionAsync(exception);
-        }
-    }
-
     private static async Task<T> HandleAsync<T>(GateTurn? turn, Func<Task<T>> handler)
     {
         if (turn is null)
@@ -182,7 +174,10 @@ public sealed partial class MusselDiagramView
         }
         catch (Exception ex) when (ex is not (JSDisconnectedException or OperationCanceledException))
         {
-            Report(ex);
+            if (!IsDisposed)
+            {
+                await DispatchExceptionAsync(ex).ConfigureAwait(true);
+            }
         }
     }
 
@@ -242,7 +237,7 @@ public sealed partial class MusselDiagramView
             if (resend)
             {
                 pendingChanges.Clear();
-                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(Snapshot, Diagram.Index, templates) with { Version = ++ScriptVersion })).ConfigureAwait(true);
+                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(++ScriptVersion, Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
                 return;
             }
 
