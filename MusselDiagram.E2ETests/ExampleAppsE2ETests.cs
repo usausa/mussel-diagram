@@ -252,6 +252,34 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheStateColorsInTheListsMatchTheBadges(bool dark)
+    {
+        opened = await app.OpenAsync("electric", "server");
+        var view = opened.View;
+        var page = opened.Page;
+        if (dark)
+        {
+            await page.Locator("button[aria-label='暗い配色']").ClickAsync();
+            await Expect(page.Locator(".layout")).ToHaveClassAsync(new Regex("mussel-dark"));
+        }
+
+        var warning = await view.Locator(".mussel-diagram-badge-set[data-for='vcb'] .mussel-diagram-badge[data-tone='warning'] > .mussel-diagram-badge-frame").EvaluateAsync<string>("frame => getComputedStyle(frame).fill");
+        var error = await view.Locator(".mussel-diagram-badge-set[data-for='tr2'] .mussel-diagram-badge[data-tone='error'] > .mussel-diagram-badge-frame").EvaluateAsync<string>("frame => getComputedStyle(frame).fill");
+        Assert.Equal(warning, await page.Locator(".ledger-item[data-status='due'] .ledger-next").First.EvaluateAsync<string>("next => getComputedStyle(next).color"));
+        Assert.Equal(error, await page.Locator(".ledger-item[data-status='expired'] .ledger-next").First.EvaluateAsync<string>("next => getComputedStyle(next).color"));
+
+        await page.Locator(".page-switch a[href='monitor']").ClickAsync();
+        await page.Locator(".monitor-item[data-device='server-a']").ClickAsync();
+        await Expect(page.Locator(".monitor-detail[data-device='server-a'] .monitor-state")).ToBeVisibleAsync();
+        Assert.Equal(warning, await ColorInStateAsync(".monitor-item[data-device='server-a']", "warning", "::before", "background-color"));
+        Assert.Equal(error, await ColorInStateAsync(".monitor-item[data-device='server-a']", "down", "::before", "background-color"));
+        Assert.Equal(warning, await ColorInStateAsync(".monitor-detail[data-device='server-a'] .monitor-state", "warning", null, "color"));
+        Assert.Equal(error, await ColorInStateAsync(".monitor-detail[data-device='server-a'] .monitor-state", "down", null, "color"));
+    }
+
+    [Theory]
     [MemberData(nameof(Modes))]
     public async Task TheSingleLineDiagramConnectsOnlyTheSameVoltage(string mode)
     {
@@ -699,4 +727,9 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await opened!.Page.Locator($"[data-panel='look'] [data-field='{field}']").ClickAsync().ConfigureAwait(true);
         await opened.Page.Locator(".mud-popover-open").GetByRole(AriaRole.Option, new() { Name = option, Exact = true }).ClickAsync().ConfigureAwait(true);
     }
+
+    private Task<string> ColorInStateAsync(string selector, string state, string? pseudo, string property) =>
+        opened!.Page.Locator(selector).EvaluateAsync<string>(
+            "(element, { state, pseudo, property }) => { const before = element.getAttribute('data-state'); element.setAttribute('data-state', state); const color = getComputedStyle(element, pseudo).getPropertyValue(property); if (before === null) { element.removeAttribute('data-state'); } else { element.setAttribute('data-state', before); } return color; }",
+            new { state, pseudo, property });
 }

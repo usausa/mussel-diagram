@@ -184,8 +184,8 @@ body {
     --example-flow-line: #64748b;
     --example-er-header: #eef2ff;
     --example-electric-line: #374151;
-    --example-electric-due: #bf8700;
-    --example-electric-expired: var(--mussel-critical, #cf222e);
+    --example-warning: #bf8700;
+    --example-critical: var(--mussel-critical, #cf222e);
 }
 
 .layout.mussel-dark {
@@ -208,8 +208,8 @@ body {
     --example-flow-line: #9ca3af;
     --example-er-header: #2c2c3a;
     --example-electric-line: #d1d5db;
-    --example-electric-due: #bb8009;
-    --example-electric-expired: var(--mussel-critical);
+    --example-warning: #bb8009;
+    --example-critical: var(--mussel-critical);
 }
 
 .layout .mussel-diagram-icon,
@@ -333,11 +333,11 @@ body {
 }
 
 .monitor-state[data-state="warning"] {
-    color: #bf8700;
+    color: var(--example-warning);
 }
 
 .monitor-state[data-state="down"] {
-    color: #cf222e;
+    color: var(--example-critical);
 }
 
 .monitor-list {
@@ -373,11 +373,11 @@ body {
 }
 
 .monitor-item[data-state="warning"]::before {
-    background: #bf8700;
+    background: var(--example-warning);
 }
 
 .monitor-item[data-state="down"]::before {
-    background: #cf222e;
+    background: var(--example-critical);
 }
 
 .monitor-item:hover {
@@ -411,11 +411,11 @@ body {
 }
 
 .ledger-item[data-status="due"] .ledger-next {
-    color: var(--example-electric-due);
+    color: var(--example-warning);
 }
 
 .ledger-item[data-status="expired"] .ledger-next {
-    color: var(--example-electric-expired);
+    color: var(--example-critical);
     font-weight: 600;
 }
 
