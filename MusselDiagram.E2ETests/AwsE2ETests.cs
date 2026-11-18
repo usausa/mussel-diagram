@@ -303,5 +303,5 @@ public sealed class AwsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAs
     }
 
     private static (string Path, string Text) Icon(string path, int size, string color) =>
-        (path, string.Create(CultureInfo.InvariantCulture, $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" viewBox=\"0 0 {size} {size}\"><rect width=\"{size}\" height=\"{size}\" fill=\"{color}\" /></svg>"));
+        (path, String.Create(CultureInfo.InvariantCulture, $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" viewBox=\"0 0 {size} {size}\"><rect width=\"{size}\" height=\"{size}\" fill=\"{color}\" /></svg>"));
 }

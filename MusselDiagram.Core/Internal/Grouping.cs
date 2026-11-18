@@ -233,7 +233,7 @@ internal static class Grouping
         }
 
         var parentId = boxes[0].ParentId;
-        if (boxes.Any(x => !string.Equals(x.ParentId, parentId, StringComparison.Ordinal) || !ElementPermissions.Allows(x, index, DiagramPermissions.Move)))
+        if (boxes.Any(x => !String.Equals(x.ParentId, parentId, StringComparison.Ordinal) || !ElementPermissions.Allows(x, index, DiagramPermissions.Move)))
         {
             return null;
         }
@@ -266,7 +266,7 @@ internal static class Grouping
         [.. selection.Distinct(StringComparer.Ordinal).Select(snapshot.Find).OfType<DiagramBox>().Where(static x => x is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree })];
 
     private static DiagramReason? CheckCount(DiagramSnapshot snapshot, DiagramGroupType type) =>
-        (type.MaxCount is { } max) && (snapshot.Groups.Count(x => string.Equals(x.Type, type.Name, StringComparison.Ordinal)) >= max) ? Reason(DiagramReasonKind.Count) : null;
+        (type.MaxCount is { } max) && (snapshot.Groups.Count(x => String.Equals(x.Type, type.Name, StringComparison.Ordinal)) >= max) ? Reason(DiagramReasonKind.Count) : null;
 
     private static DiagramReason? CheckStay(SchemaIndex index, IEnumerable<DiagramBox> boxes) =>
         boxes.Any(x => (x.ParentId is not null) && (index.FindBoxType(x) is { StayInParent: true })) ? Reason(DiagramReasonKind.Nesting) : null;

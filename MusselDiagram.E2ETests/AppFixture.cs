@@ -216,7 +216,7 @@ public sealed partial class AppFixture : IAsyncLifetime
     {
         lock (output)
         {
-            return string.Join(Environment.NewLine, output);
+            return String.Join(Environment.NewLine, output);
         }
     }
 }

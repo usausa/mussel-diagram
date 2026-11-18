@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
-    keyName, nextZoom, stackOffsets, restore, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, commandKey,
+    keyName, nextZoom, stackOffsets, restore, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, settleWritten, revertSaved, firstById, commandKey,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -81,8 +81,15 @@ test('fitting centers the bounds on a 1% grid', () => {
 });
 
 test('wheel zoom ends on a 1% grid around the pointer', () => {
-    const view = roundZoom({ x: 0, y: 0, zoom: 1.23456 }, { x: 0, y: 0 });
+    const view = roundZoom({ x: 0, y: 0, zoom: 1.23456 }, { x: 0, y: 0 }, 0.05, 8);
     assert.equal(view.zoom, 1.23);
+});
+
+test('rounding the zoom stays inside the limits', () => {
+    const point = { x: 0, y: 0 };
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 0.003 }, point, 0.001, 8).zoom - 0.001) < 1e-12);
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 1 / 3 }, point, 1 / 3, 8).zoom - (1 / 3)) < 1e-12);
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 7.996 }, point, 0.05, 7.995).zoom - 7.995) < 1e-12);
 });
 
 test('wheel deltas in lines and pages become pixels', () => {
@@ -359,7 +366,7 @@ test('a commit still waiting keeps what it wrote over an older render, and goes 
         writtenTexts: new Map([[node, 'New']]),
     };
 
-    keepWritten(entry);
+    keepWritten(entry, new Set());
     const kept = [label.getAttribute('data-label'), label.getAttribute('data-default'), moved.getAttribute('transform'), node.nodeValue];
     restore(entry.saved, entry.written);
 
@@ -368,13 +375,44 @@ test('a commit still waiting keeps what it wrote over an older render, and goes 
     assert.equal(entry.texts[0][1], 'Rendered');
 });
 
+test('a drag that started on a rejected commit goes back to where that commit started', () => {
+    const moved = fakeElement([['transform', 'translate(80,0)']]);
+    const rendered = fakeElement([['transform', 'translate(80,0)']]);
+    const first = {
+        saved: new Map([[moved, new Map([['transform', 'translate(0,0)']])], [rendered, new Map([['transform', 'translate(0,0)']])]]),
+        written: new Map([[moved, new Map([['transform', 'translate(20,0)']])], [rendered, new Map([['transform', 'translate(20,0)']])]]),
+    };
+    const second = {
+        saved: new Map([[moved, new Map([['transform', 'translate(20,0)']])]]),
+        written: new Map([[moved, new Map([['transform', 'translate(50,0)']])]]),
+    };
+    const drag = new Map([[moved, new Map([['transform', 'translate(50,0)']])], [rendered, new Map([['transform', 'translate(30,0)']])]]);
+
+    revertSaved(drag, second);
+    revertSaved(drag, first);
+
+    assert.equal(drag.get(moved).get('transform'), 'translate(0,0)');
+    assert.equal(drag.get(rendered).get('transform'), 'translate(30,0)');
+});
+
+test('the first write of a drag keeps a render that arrived before it', () => {
+    const element = fakeElement([['transform', 'translate(9,9)']]);
+    const saved = new Map([[element, new Map([['transform', 'translate(0,0)']])]]);
+    const written = new Map();
+
+    writeAttribute(written, element, 'transform', 'translate(5,5)', saved);
+    restore(saved, written);
+
+    assert.equal(element.getAttribute('transform'), 'translate(9,9)');
+});
+
 test('a drag remembers what it wrote so that a cancel keeps a newer render', () => {
     const drawn = fakeElement([['d', 'M0 0']]);
     const rendered = fakeElement([['d', 'M0 0']]);
     const saved = new Map([[drawn, new Map([['d', 'M0 0']])], [rendered, new Map([['d', 'M0 0']])]]);
     const written = new Map();
-    writeAttribute(written, drawn, 'd', 'M5 5');
-    writeAttribute(written, rendered, 'd', 'M5 5');
+    writeAttribute(written, drawn, 'd', 'M5 5', saved);
+    writeAttribute(written, rendered, 'd', 'M5 5', saved);
     rendered.setAttribute('d', 'M9 9');
 
     restore(saved, written);
@@ -416,14 +454,52 @@ test('a key with the Control key of a Mac or the Windows key has no name', () =>
 test('a commit still waiting leaves alone what the current drag has written', () => {
     const element = fakeElement([['transform', 'translate(80,0)']]);
     const entry = {
+        sent: false,
+        version: null,
         saved: new Map([[element, new Map([['transform', 'translate(0,0)']])]]),
         written: new Map([[element, new Map([['transform', 'translate(50,0)']])]]),
+        writtenTexts: new Map(),
     };
 
-    keepWritten(entry, new Map([[element, new Map([['transform', 'translate(80,0)']])]]));
+    settleWritten([entry], new Map([[element, new Map([['transform', 'translate(80,0)']])]]));
 
     assert.equal(element.getAttribute('transform'), 'translate(80,0)');
     assert.equal(entry.saved.get(element).get('transform'), 'translate(0,0)');
+});
+
+test('a commit still waiting leaves alone what a later commit has written, so both go back to the start', () => {
+    const element = fakeElement([['transform', 'translate(10,10)']]);
+    const node = { nodeValue: 'Second' };
+    const first = {
+        sent: false,
+        version: null,
+        saved: new Map([[element, new Map([['transform', 'translate(0,0)']])]]),
+        written: new Map([[element, new Map([['transform', 'translate(10,0)']])]]),
+        texts: [[node, 'Start']],
+        writtenTexts: new Map([[node, 'First']]),
+    };
+    const second = {
+        sent: false,
+        version: null,
+        saved: new Map([[element, new Map([['transform', 'translate(10,0)']])]]),
+        written: new Map([[element, new Map([['transform', 'translate(10,10)']])]]),
+        texts: [[node, 'First']],
+        writtenTexts: new Map([[node, 'Second']]),
+    };
+
+    settleWritten([first, second], null);
+    const kept = [element.getAttribute('transform'), node.nodeValue];
+    for (const item of [second, first]) {
+        restore(item.saved, item.written);
+        for (const [text, value] of item.texts) {
+            if (text.nodeValue === item.writtenTexts.get(text)) {
+                text.nodeValue = value;
+            }
+        }
+    }
+
+    assert.deepEqual(kept, ['translate(10,10)', 'Second']);
+    assert.deepEqual([element.getAttribute('transform'), node.nodeValue], ['translate(0,0)', 'Start']);
 });
 
 test('a selection that the view already has is not sent again', () => {
@@ -438,4 +514,11 @@ test('a list scrolls just enough to show the active row', () => {
     assert.equal(scrollToShow(0, 100, 40, 20), 0);
     assert.equal(scrollToShow(0, 100, 120, 20), 40);
     assert.equal(scrollToShow(80, 100, 40, 20), 40);
+});
+
+test('an id finds its first element, the same as a query of the element', () => {
+    const element = (id) => ({ dataset: { id } });
+    const first = element('a');
+    const other = element('b');
+    assert.deepEqual([...firstById([first, other, element('a')], 'id')], [['a', first], ['b', other]]);
 });

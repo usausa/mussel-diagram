@@ -248,6 +248,134 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void ABoxTakenOutOfAGroupEarlierStaysWhenTheGroupIsDeletedWithoutHistory()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Node("a", 20, 40, "g"));
+        diagram.Add(Node("b", 400, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        diagram.ClearHistory();
+        using (diagram.BeginUpdate())
+        {
+            diagram.SetParent(["a"], null);
+            diagram.Move(["b"], new DiagramPoint(0, 50));
+        }
+
+        diagram.Delete(["g"], Skip);
+        diagram.Undo();
+
+        Assert.Null(Assert.IsType<DiagramNode>(diagram.Find("a")).ParentId);
+        Assert.NotNull(diagram.Find("ab"));
+        Assert.Null(diagram.Find("g"));
+        Assert.Equal(new DiagramRect(400, 0, 100, 50), ((DiagramBox)diagram.Find("b")!).Bounds);
+    }
+
+    [Fact]
+    public void ABoxPutIntoAGroupStaysWhenTheGroupIsDeletedBeforeTheRedo()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Node("a", 20, 40));
+        diagram.Add(Node("b", 400, 0));
+        diagram.ClearHistory();
+        using (diagram.BeginUpdate())
+        {
+            diagram.SetParent(["a"], "g");
+            diagram.Move(["b"], new DiagramPoint(0, 50));
+        }
+
+        diagram.Undo();
+        diagram.Delete(["g"], Skip);
+        diagram.Redo();
+
+        Assert.Null(Assert.IsType<DiagramNode>(diagram.Find("a")).ParentId);
+        Assert.Equal(new DiagramRect(400, 50, 100, 50), ((DiagramBox)diagram.Find("b")!).Bounds);
+    }
+
+    [Fact]
+    public void AnUnrelatedDeleteLeavesABoxInItsGroupWhenItsNewParentIsMissing()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Node("a", 20, 40, "g"));
+        diagram.Add(Node("x", 400, 0));
+        diagram.ClearHistory();
+        diagram.Add(Group("h", 500, 0, 300, 200));
+        using (diagram.BeginUpdate(Skip))
+        {
+            diagram.SetParent(["a"], "h");
+            diagram.Delete(["x"]);
+        }
+
+        diagram.Undo();
+
+        Assert.Equal("g", Assert.IsType<DiagramNode>(diagram.Find("a")).ParentId);
+        Assert.Null(diagram.Find("h"));
+    }
+
+    [Fact]
+    public void ABoxTheUserMovedIntoAnotherGroupStaysThereWhenItsFormerGroupIsDeletedWithoutHistory()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 300, 200));
+        diagram.Add(Group("h", 400, 0, 300, 200));
+        diagram.Add(Node("a", 20, 40, "g"));
+        diagram.Add(Node("b", 0, 300));
+        diagram.ClearHistory();
+        diagram.Move(["b"], new DiagramPoint(0, 50));
+        diagram.SetParent(["a"], "h");
+        diagram.Delete(["g"], Skip);
+
+        diagram.Undo();
+
+        Assert.Equal("h", Assert.IsType<DiagramNode>(diagram.Find("a")).ParentId);
+        Assert.Null(diagram.Find("g"));
+    }
+
+    [Fact]
+    public void AGroupTheUserMovedIntoAnotherGroupKeepsItsChildrenWhenItsFormerGroupIsDeletedWithoutHistory()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 600, 400));
+        diagram.Add(Group("h", 700, 0, 600, 400));
+        diagram.Add(Group("k", 20, 20, 300, 200, "g"));
+        diagram.Add(Node("n", 40, 60, "k"));
+        diagram.Add(Node("b", 0, 500));
+        diagram.ClearHistory();
+        diagram.Move(["b"], new DiagramPoint(0, 50));
+        diagram.SetParent(["k"], "h");
+        diagram.Delete(["g"], Skip);
+
+        diagram.Undo();
+
+        Assert.Equal("h", Assert.IsType<DiagramGroup>(diagram.Find("k")).ParentId);
+        Assert.Equal("k", Assert.IsType<DiagramNode>(diagram.Find("n")).ParentId);
+        Assert.Null(diagram.Find("g"));
+    }
+
+    [Fact]
+    public void AGroupThatCannotGoIntoItsNewParentGoesToTheTopInsteadOfBeingDeleted()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 600, 400));
+        diagram.Add(Group("a", 20, 20, 400, 300, "g"));
+        diagram.Add(Group("p", 40, 40, 200, 150, "a"));
+        diagram.ClearHistory();
+        diagram.SetParent(["p"], null);
+        using (diagram.BeginUpdate(Skip))
+        {
+            diagram.SetParent(["a"], "p");
+            diagram.Delete(["g"]);
+        }
+
+        diagram.Undo();
+
+        Assert.Null(Assert.IsType<DiagramGroup>(diagram.Find("a")).ParentId);
+        Assert.Equal("a", Assert.IsType<DiagramGroup>(diagram.Find("p")).ParentId);
+    }
+
+    [Fact]
     public void AReorderThatChangesNothingWithoutHistoryKeepsTheStepOfTheUser()
     {
         var diagram = new Diagram(Schema);

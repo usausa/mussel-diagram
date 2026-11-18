@@ -10,7 +10,7 @@ internal sealed record ElementLook(ImmutableArray<string> States, DiagramRenderO
         States.SequenceEqual(other.States, StringComparer.Ordinal) &&
         Equals(Style, other.Style) &&
         (Severity == other.Severity) &&
-        string.Equals(IssueText, other.IssueText, StringComparison.Ordinal);
+        String.Equals(IssueText, other.IssueText, StringComparison.Ordinal);
 
     public override int GetHashCode() => HashCode.Combine(States.Length, Style, Severity, IssueText);
 }
@@ -79,9 +79,9 @@ internal sealed class OverlayIndex
             var overlay = overlays?.GetValueOrDefault(id);
             var found = problems.GetValueOrDefault(id);
             var severity = found is null ? (DiagramIssueSeverity?)null : found.Any(static x => x.Severity == DiagramIssueSeverity.Error) ? DiagramIssueSeverity.Error : DiagramIssueSeverity.Warning;
-            var text = found is null ? null : string.Join('\n', found.Select(static x => x.Message).Where(static x => !string.IsNullOrEmpty(x)));
+            var text = found is null ? null : String.Join('\n', found.Select(static x => x.Message).Where(static x => !String.IsNullOrEmpty(x)));
             var states = overlay is null ? [] : overlay.States.Where(IsStateName).Distinct(StringComparer.Ordinal).ToImmutableArray();
-            var look = new ElementLook(states, overlay?.Style, severity, string.IsNullOrEmpty(text) ? null : text);
+            var look = new ElementLook(states, overlay?.Style, severity, String.IsNullOrEmpty(text) ? null : text);
             if (!look.States.IsEmpty || (look.Style is not null) || (look.Severity is not null))
             {
                 looks[id] = Reuse(previous.Looks, id, look);
@@ -128,5 +128,5 @@ internal sealed class OverlayIndex
         previous.TryGetValue(id, out var old) && old.Equals(value) ? old : value;
 
     private static bool IsStateName(string name) =>
-        (name.Length > 0) && name.All(static c => char.IsAsciiLetterOrDigit(c) || (c == '-'));
+        (name.Length > 0) && name.All(static c => Char.IsAsciiLetterOrDigit(c) || (c == '-'));
 }

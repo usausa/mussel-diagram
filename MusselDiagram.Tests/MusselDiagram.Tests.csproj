@@ -4,6 +4,7 @@
     <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>MusselDiagram</RootNamespace>
+    <NoWarn>$(NoWarn);BL0016</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

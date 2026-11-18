@@ -119,9 +119,9 @@ internal sealed class DiagramLinkView : ComponentBase
         var own = type?.GetTooltip?.Invoke(link);
         if (look?.IssueText is not { } issues)
         {
-            return string.IsNullOrEmpty(own) ? null : own;
+            return String.IsNullOrEmpty(own) ? null : own;
         }
 
-        return string.IsNullOrEmpty(own) ? issues : $"{own}\n{issues}";
+        return String.IsNullOrEmpty(own) ? issues : $"{own}\n{issues}";
     }
 }

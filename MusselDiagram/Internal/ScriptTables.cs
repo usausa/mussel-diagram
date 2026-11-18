@@ -96,7 +96,7 @@ internal static class ScriptTables
                 continue;
             }
 
-            if (!string.Equals(boxes[index].Id, id, StringComparison.Ordinal))
+            if (!String.Equals(boxes[index].Id, id, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -186,7 +186,7 @@ internal static class ScriptTables
             Name = type.Name,
             Label = type.DisplayName ?? type.Name,
             Category = type.Category,
-            CategoryLabel = type.Category is { } category ? context.Index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null,
+            CategoryLabel = TypeSearch.CategoryLabel(type, context.Index),
             Search = type.SearchWords.IsEmpty ? null : [.. type.SearchWords],
             Slots = [.. LabelLayout.SlotsOf(type, isGroup).Select(static x => new ScriptSlot { Name = x.Name, Editable = x.Editable, MaxLines = x.MaxLines ?? 0, Placeholder = x.DefaultText })],
             Group = isGroup,

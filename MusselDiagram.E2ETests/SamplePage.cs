@@ -39,7 +39,7 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
     private async Task DumpAsync(string folder)
     {
         Directory.CreateDirectory(folder);
-        var name = string.Concat((TestContext.Current.Test?.TestDisplayName ?? "test").Select(static x => char.IsAsciiLetterOrDigit(x) ? x : '_'));
+        var name = String.Concat((TestContext.Current.Test?.TestDisplayName ?? "test").Select(static x => Char.IsAsciiLetterOrDigit(x) ? x : '_'));
         string state;
         try
         {
@@ -73,6 +73,6 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
             state = e.Message;
         }
 
-        await File.WriteAllTextAsync(Path.Combine(folder, name + ".txt"), $"{state}{Environment.NewLine}{string.Join(Environment.NewLine, events)}{Environment.NewLine}--- app{Environment.NewLine}{appLog()}").ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(folder, name + ".txt"), $"{state}{Environment.NewLine}{String.Join(Environment.NewLine, events)}{Environment.NewLine}--- app{Environment.NewLine}{appLog()}").ConfigureAwait(false);
     }
 }

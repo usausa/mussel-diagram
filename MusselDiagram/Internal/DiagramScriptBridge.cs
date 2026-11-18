@@ -64,7 +64,7 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
     public async Task<JsonElement> CommitReconnectAsync(string linkId, string side, string element, string? port, long startVersion, int rejectionsSeen, string[]? selection) =>
         ScriptJson.ToElement(await RunAsync(() => view.CommitReconnectAsync(
             linkId,
-            string.Equals(side, "source", StringComparison.Ordinal) ? DiagramLinkEndSide.Source : DiagramLinkEndSide.Target,
+            String.Equals(side, "source", StringComparison.Ordinal) ? DiagramLinkEndSide.Source : DiagramLinkEndSide.Target,
             new DiagramLinkEnd(element, port),
             startVersion,
             rejectionsSeen,
@@ -74,10 +74,12 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
     public async Task<JsonElement> CommitPlaceAsync(string type, double x, double y, double width, double height, string? parentId, string fromElement, string? fromPort, string linkType, int rejectionsSeen, string[]? selection) =>
         ScriptJson.ToElement(await RunAsync(() => view.CommitPlaceAsync(type, new DiagramRect(x, y, width, height), parentId, new DiagramLinkEnd(fromElement, fromPort), linkType, rejectionsSeen, selection)).ConfigureAwait(true));
 
-    private Task RunAsync(Func<Task> operation) => view.IsDisposed ? Task.CompletedTask : view.ReportAsync(operation());
+    private Task RunAsync(Func<Task> operation) => view.IsDisposed ? Task.CompletedTask : view.ReportAsync(StartAsync(operation));
 
     private Task<T> RunAsync<T>(Func<Task<T>> operation) =>
         view.IsDisposed ? Task.FromCanceled<T>(new CancellationToken(true)) : view.ReportAsync(StartAsync(operation));
+
+    private static async Task StartAsync(Func<Task> operation) => await operation().ConfigureAwait(true);
 
     private static async Task<T> StartAsync<T>(Func<Task<T>> operation) => await operation().ConfigureAwait(true);
 }

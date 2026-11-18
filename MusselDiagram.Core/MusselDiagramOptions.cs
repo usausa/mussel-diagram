@@ -22,7 +22,7 @@ public sealed class MusselDiagramOptions
     internal string? Reason(DiagramReasonKind kind) => Find(static x => x.Reasons, kind);
 
     internal string Issue(DiagramIssueKind kind, ImmutableArray<string> arguments) =>
-        Format(Find(static x => x.Issues, kind) ?? "{0}", arguments) ?? Format(DiagramTexts.English.Issues.GetValueOrDefault(kind) ?? "{0}", arguments) ?? string.Join(", ", arguments);
+        Format(Find(static x => x.Issues, kind) ?? "{0}", arguments) ?? Format(DiagramTexts.English.Issues.GetValueOrDefault(kind) ?? "{0}", arguments) ?? String.Join(", ", arguments);
 
     internal string Command(string name) => Find(static x => x.Commands, name) ?? name;
 
@@ -34,7 +34,7 @@ public sealed class MusselDiagramOptions
     {
         try
         {
-            return string.Format(CultureInfo.InvariantCulture, text, [.. arguments]);
+            return String.Format(CultureInfo.InvariantCulture, text, [.. arguments]);
         }
         catch (FormatException)
         {

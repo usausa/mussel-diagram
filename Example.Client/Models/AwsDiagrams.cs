@@ -208,7 +208,7 @@ public static class AwsDiagrams
         }
 
         var groupIcons = icons.Icons.Where(static x => x.Category == GroupCategory).ToList();
-        var icon = names.Select(name => groupIcons.FirstOrDefault(x => string.Equals(x.Id, name, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(static x => x is not null)
+        var icon = names.Select(name => groupIcons.FirstOrDefault(x => String.Equals(x.Id, name, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(static x => x is not null)
             ?? groupIcons.FirstOrDefault(x => x.Id.Contains(names[^1], StringComparison.OrdinalIgnoreCase));
         return icon is null ? null : $"{Prefix}:{icon.Id}";
     }

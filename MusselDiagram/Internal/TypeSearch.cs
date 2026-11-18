@@ -16,10 +16,10 @@ internal static class TypeSearch
         {
             var type = types[i];
             var label = Normalize(type.DisplayName ?? type.Name, normalizer);
-            var haystack = string.Join('\u0001', [label, Normalize(type.Name, normalizer), Normalize(CategoryLabel(type, index) ?? string.Empty, normalizer), .. type.SearchWords.Select(x => Normalize(x, normalizer))]);
+            var haystack = String.Join('\u0001', [label, Normalize(type.Name, normalizer), Normalize(CategoryLabel(type, index) ?? string.Empty, normalizer), .. type.SearchWords.Select(x => Normalize(x, normalizer))]);
             if (words.All(x => haystack.Contains(x, StringComparison.Ordinal)))
             {
-                var rank = string.Equals(label, text, StringComparison.Ordinal) ? 0 : label.StartsWith(text, StringComparison.Ordinal) ? 1 : 2;
+                var rank = String.Equals(label, text, StringComparison.Ordinal) ? 0 : label.StartsWith(text, StringComparison.Ordinal) ? 1 : 2;
                 ranked.Add((type, i, rank));
             }
         }
@@ -30,15 +30,15 @@ internal static class TypeSearch
     public static List<string> OrderCategories(IEnumerable<DiagramBoxType> types, SchemaIndex index)
     {
         var order = index.Schema.Categories.Select(static x => x.Name).ToList();
-        return [.. types.Select(static x => x.Category).OfType<string>().Distinct(StringComparer.Ordinal).OrderBy(x => order.IndexOf(x) is var i and >= 0 ? i : int.MaxValue)];
+        return [.. types.Select(static x => x.Category).OfType<string>().Distinct(StringComparer.Ordinal).OrderBy(x => order.IndexOf(x) is var i and >= 0 ? i : Int32.MaxValue)];
     }
 
     public static IEnumerable<DiagramBoxType> InPaletteOrder(IReadOnlyList<DiagramBoxType> types, SchemaIndex index) =>
         types.Where(static x => x.Category is null)
-            .Concat(OrderCategories(types, index).SelectMany(category => types.Where(x => string.Equals(x.Category, category, StringComparison.Ordinal))));
+            .Concat(OrderCategories(types, index).SelectMany(category => types.Where(x => String.Equals(x.Category, category, StringComparison.Ordinal))));
 
     public static string? CategoryLabel(DiagramBoxType type, SchemaIndex index) =>
-        type.Category is { } category ? index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null;
+        type.Category is { } category ? index.Schema.Categories.FirstOrDefault(x => String.Equals(x.Name, category, StringComparison.Ordinal))?.DisplayName ?? category : null;
 
     public static List<DiagramBoxType> PaletteTypes(DiagramSnapshot snapshot, SchemaIndex index)
     {

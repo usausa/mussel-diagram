@@ -63,7 +63,6 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         var page = opened.Page;
         var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
         var source = page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']");
-        await page.Locator(".mussel-diagram-palette[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
         var from = await source.BoundingBoxAsync() ?? throw new InvalidOperationException("The source is not shown.");
         var view = await opened.View.BoundingBoxAsync() ?? throw new InvalidOperationException("The view is not shown.");
 
@@ -183,7 +182,6 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         var source = page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']");
         await ClickAsync(250, 170);
         await Expect(selected).ToHaveCountAsync(1);
-        await source.Locator("xpath=ancestor-or-self::*[@data-attached][1]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
         var from = await source.BoundingBoxAsync() ?? throw new InvalidOperationException("The source is not shown.");
         var (left, top) = await OriginAsync();
 
@@ -515,7 +513,6 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     private async Task DragInAsync(Microsoft.Playwright.ILocator source, float x, float y)
     {
         var page = opened!.Page;
-        await source.Locator("xpath=ancestor-or-self::*[@data-attached][1]").WaitForAsync(new() { State = WaitForSelectorState.Attached }).ConfigureAwait(true);
         var from = await source.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The source is not shown.");
         var (left, top) = await OriginAsync().ConfigureAwait(true);
         await page.Mouse.MoveAsync(from.X + (from.Width / 2), from.Y + (from.Height / 2)).ConfigureAwait(true);

@@ -41,7 +41,7 @@ internal static class DiagramRules
             return Reason(DiagramReasonKind.Direction);
         }
 
-        if ((source.Port?.Definition.Kind is { } sourceKind) && (target.Port?.Definition.Kind is { } targetKind) && !string.Equals(sourceKind, targetKind, StringComparison.Ordinal))
+        if ((source.Port?.Definition.Kind is { } sourceKind) && (target.Port?.Definition.Kind is { } targetKind) && !String.Equals(sourceKind, targetKind, StringComparison.Ordinal))
         {
             return Reason(DiagramReasonKind.PortKind);
         }
@@ -57,7 +57,7 @@ internal static class DiagramRules
         }
 
         var linkType = index.FindLinkType(linkTypeName) ?? DefaultLinkType;
-        if (!linkType.AllowSelf && string.Equals(sourceEnd.ElementId, targetEnd.ElementId, StringComparison.Ordinal))
+        if (!linkType.AllowSelf && String.Equals(sourceEnd.ElementId, targetEnd.ElementId, StringComparison.Ordinal))
         {
             return Reason(DiagramReasonKind.SelfOrDuplicate);
         }
@@ -72,7 +72,7 @@ internal static class DiagramRules
             return Reason(DiagramReasonKind.PeerType);
         }
 
-        if (!linkType.AllowCrossParent && !string.Equals(source.Element.ParentId, target.Element.ParentId, StringComparison.Ordinal))
+        if (!linkType.AllowCrossParent && !String.Equals(source.Element.ParentId, target.Element.ParentId, StringComparison.Ordinal))
         {
             return Reason(DiagramReasonKind.CrossParent);
         }
@@ -174,7 +174,7 @@ internal static class DiagramRules
 
     private static bool MakesCycle(DiagramSnapshot snapshot, string sourceId, string targetId, string linkType, string? exceptLinkId)
     {
-        if (string.Equals(sourceId, targetId, StringComparison.Ordinal))
+        if (String.Equals(sourceId, targetId, StringComparison.Ordinal))
         {
             return true;
         }
@@ -186,13 +186,13 @@ internal static class DiagramRules
         {
             foreach (var link in snapshot.GetLinks(queue.Dequeue(), DiagramLinkDirection.Out))
             {
-                if (!string.Equals(link.Type, linkType, StringComparison.Ordinal) || string.Equals(link.Id, exceptLinkId, StringComparison.Ordinal))
+                if (!String.Equals(link.Type, linkType, StringComparison.Ordinal) || String.Equals(link.Id, exceptLinkId, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
                 var next = link.Target.ElementId;
-                if (string.Equals(next, sourceId, StringComparison.Ordinal))
+                if (String.Equals(next, sourceId, StringComparison.Ordinal))
                 {
                     return true;
                 }

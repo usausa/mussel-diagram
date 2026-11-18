@@ -9,7 +9,7 @@ public sealed class MonitorSimulation(Diagram diagram)
     private int tick;
 
     public static string Format(double value, DeviceMetric metric) =>
-        string.Create(CultureInfo.InvariantCulture, $"{value:0} {metric.Unit}");
+        String.Create(CultureInfo.InvariantCulture, $"{value:0} {metric.Unit}");
 
     public DeviceReading? ReadingOf(string id) => readings.GetValueOrDefault(id);
 
@@ -26,7 +26,7 @@ public sealed class MonitorSimulation(Diagram diagram)
                 continue;
             }
 
-            var down = string.Equals(node.Id, "sensor-2", StringComparison.Ordinal) && (tick % 14 is >= 10 and <= 12);
+            var down = String.Equals(node.Id, "sensor-2", StringComparison.Ordinal) && (tick % 14 is >= 10 and <= 12);
             var wave = 0.5 + (0.35 * Math.Sin((tick * 0.7) + i)) + (0.15 * Math.Sin((tick * 1.9) + (2 * i)));
             var value = down ? 0 : Math.Round(metric.Low + ((metric.High - metric.Low) * wave));
             var state = down ? "down" : value >= metric.Warning ? "warning" : "ok";
@@ -57,11 +57,11 @@ public sealed class MonitorSimulation(Diagram diagram)
 
     private static IEnumerable<DiagramBadge> Badges(string state, string value)
     {
-        if (string.Equals(state, "warning", StringComparison.Ordinal))
+        if (String.Equals(state, "warning", StringComparison.Ordinal))
         {
             yield return new DiagramBadge { Kind = "status", Text = "注意", Tone = DiagramBadgeTone.Warning };
         }
-        else if (string.Equals(state, "down", StringComparison.Ordinal))
+        else if (String.Equals(state, "down", StringComparison.Ordinal))
         {
             yield return new DiagramBadge { Kind = "status", Text = "停止", Tone = DiagramBadgeTone.Error };
         }

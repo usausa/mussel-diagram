@@ -124,7 +124,7 @@ internal sealed class SchemaIndex
     }
 
     public PortPlacement? FindPort(DiagramBox box, string? portId) =>
-        portId is null ? null : PortsOf(box).FirstOrDefault(x => string.Equals(x.Id, portId, StringComparison.Ordinal));
+        portId is null ? null : PortsOf(box).FirstOrDefault(x => String.Equals(x.Id, portId, StringComparison.Ordinal));
 
     private DiagramLook Resolve(DiagramLook look) => looks.GetValueOrDefault(look) ?? look;
 

@@ -49,7 +49,7 @@ public static class ErDiagrams
     public static IReadOnlyList<ColumnData> ColumnsOf(object? data) => data is TableData table ? table.Columns : [];
 
     public static string NextId(IEnumerable<ColumnData> columns) =>
-        string.Create(CultureInfo.InvariantCulture, $"c{columns.Select(static x => int.TryParse(x.Id.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0).DefaultIfEmpty().Max() + 1}");
+        String.Create(CultureInfo.InvariantCulture, $"c{columns.Select(static x => Int32.TryParse(x.Id.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0).DefaultIfEmpty().Max() + 1}");
 
     public static Diagram Create()
     {
@@ -78,7 +78,7 @@ public static class ErDiagrams
 
     private static DiagramNode Table(string name, double x, double y, params (string Name, string Type, bool Key)[] columns)
     {
-        IReadOnlyList<ColumnData> list = [.. columns.Select(static (c, i) => new ColumnData(string.Create(CultureInfo.InvariantCulture, $"c{i + 1}"), c.Name, c.Type, c.Key))];
+        IReadOnlyList<ColumnData> list = [.. columns.Select(static (c, i) => new ColumnData(String.Create(CultureInfo.InvariantCulture, $"c{i + 1}"), c.Name, c.Type, c.Key))];
         return new DiagramNode { Id = name, Type = "table", Bounds = new DiagramRect(x, y, Width, HeightOf(list.Count)), Label = name, Data = new TableData(list) };
     }
 

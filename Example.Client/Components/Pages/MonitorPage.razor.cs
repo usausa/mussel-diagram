@@ -77,7 +77,7 @@ public sealed partial class MonitorPage : IDisposable
     }
 
     private string? TypeName(DiagramNode device) =>
-        diagram.Schema.NodeTypes.FirstOrDefault(x => string.Equals(x.Name, device.Type, StringComparison.Ordinal))?.DisplayName;
+        diagram.Schema.NodeTypes.FirstOrDefault(x => String.Equals(x.Name, device.Type, StringComparison.Ordinal))?.DisplayName;
 
     private void OnSelectionChanged(IReadOnlyList<string> ids) => selection = ids;
 

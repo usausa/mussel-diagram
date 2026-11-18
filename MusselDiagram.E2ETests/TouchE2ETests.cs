@@ -113,7 +113,6 @@ public sealed class TouchE2ETests(AppFixture app) : IClassFixture<AppFixture>, I
         await OpenAsync(mode);
         var nodes = opened!.View.Locator("g.mussel-diagram-node");
         await Expect(nodes).ToHaveCountAsync(9);
-        await opened.Page.Locator(".mussel-diagram-palette[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
         var item = await opened.Page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']").BoundingBoxAsync() ?? throw new InvalidOperationException("The item is not shown.");
         var from = (X: item.X + (item.Width / 2) - origin.X, Y: item.Y + (item.Height / 2) - origin.Y);
 

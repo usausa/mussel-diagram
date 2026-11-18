@@ -107,7 +107,7 @@ internal static partial class SvgSanitizer
         var builder = new StringBuilder(value.Length);
         foreach (var c in value)
         {
-            builder.Append(char.IsAsciiLetterOrDigit(c) || (c is '-' or '_') ? c : '_');
+            builder.Append(Char.IsAsciiLetterOrDigit(c) || (c is '-' or '_') ? c : '_');
         }
 
         return builder.ToString();
@@ -124,7 +124,7 @@ internal static partial class SvgSanitizer
             using var reader = XmlReader.Create(new StringReader(text), settings);
             using var shallow = new ShallowReader(reader, MaxDepth);
             var root = XElement.Load(shallow);
-            return string.Equals(root.Name.LocalName, "svg", StringComparison.Ordinal) ? root : null;
+            return String.Equals(root.Name.LocalName, "svg", StringComparison.Ordinal) ? root : null;
         }
         catch (XmlException)
         {
@@ -138,11 +138,11 @@ internal static partial class SvgSanitizer
         {
             var parts = viewBox.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
             if ((parts.Length == 4) &&
-                double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var minX) &&
-                double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var minY) &&
-                double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) &&
-                double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var height) &&
-                double.IsFinite(minX) && double.IsFinite(minY) && double.IsFinite(width) && double.IsFinite(height) &&
+                Double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var minX) &&
+                Double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var minY) &&
+                Double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var width) &&
+                Double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var height) &&
+                Double.IsFinite(minX) && Double.IsFinite(minY) && Double.IsFinite(width) && Double.IsFinite(height) &&
                 (width > 0) && (height > 0))
             {
                 return (width, height, minX, minY);
@@ -165,7 +165,7 @@ internal static partial class SvgSanitizer
             trimmed = trimmed[..^2];
         }
 
-        return double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) && double.IsFinite(result) && (result > 0) ? result : null;
+        return Double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) && Double.IsFinite(result) && (result > 0) ? result : null;
     }
 
     private static SanitizedSvg Sanitize(XElement root, string idPrefix)
@@ -314,7 +314,7 @@ internal static partial class SvgSanitizer
             }
         }
 
-        return kept.Count == 0 ? null : string.Join(';', kept);
+        return kept.Count == 0 ? null : String.Join(';', kept);
     }
 
     private static IEnumerable<string> Declarations(string value)

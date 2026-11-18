@@ -85,7 +85,7 @@ internal sealed class DiagramBadgesView : ComponentBase
         {
             var item = items[i];
             var badge = item.Badge;
-            var hasText = !string.IsNullOrEmpty(badge.Text);
+            var hasText = !String.IsNullOrEmpty(badge.Text);
             builder.OpenElement(10, "g");
             builder.SetKey(i);
             builder.AddAttribute(11, "class", "mussel-diagram-badge");
@@ -97,7 +97,7 @@ internal sealed class DiagramBadgesView : ComponentBase
                 builder.AddAttribute(15, "data-clickable", string.Empty);
             }
 
-            if (Context.Tooltips && !string.IsNullOrEmpty(badge.Tooltip))
+            if (Context.Tooltips && !String.IsNullOrEmpty(badge.Tooltip))
             {
                 builder.OpenElement(16, "title");
                 builder.AddContent(17, badge.Tooltip);

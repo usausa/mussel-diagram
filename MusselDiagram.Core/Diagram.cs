@@ -84,7 +84,9 @@ public sealed class Diagram
 
     internal MusselDiagramOptions EffectiveOptions => Options ?? registeredOptions ?? MusselDiagramOptions.Default;
 
-    internal TimeSpan RouteLimit { get; set; } = TimeSpan.FromMilliseconds(20);
+    internal static readonly TimeSpan DefaultRouteLimit = TimeSpan.FromMilliseconds(20);
+
+    internal TimeSpan RouteLimit { get; set; } = DefaultRouteLimit;
 
     internal TimeSpan BackgroundRouteLimit { get; set; } = TimeSpan.FromMilliseconds(4);
 
@@ -218,13 +220,10 @@ public sealed class Diagram
     internal void Reconnect(string linkId, DiagramLinkEndSide side, DiagramLinkEnd end, DiagramWriteOptions? options, DiagramChangeOrigin origin) =>
         Write(options, origin, editor => editor.Reconnect(linkId, side, end));
 
-    internal void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, bool fromRouter = false) =>
-        Write(options, origin, edit, updateDepth > 0 ? updateBudget : NewBudget(RouteLimit), fromRouter);
-
-    private void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, RouteBudget? budget, bool fromRouter = false)
+    internal void Write(DiagramWriteOptions? options, DiagramChangeOrigin origin, Action<SnapshotEditor> edit, bool fromRouter = false)
     {
         var before = Snapshot;
-        var editor = new SnapshotEditor(before, Index) { Budget = budget, WaitForRoutes = !CanDefer };
+        var editor = new SnapshotEditor(before, Index) { Budget = updateDepth > 0 ? updateBudget : NewBudget(RouteLimit), WaitForRoutes = !CanDefer };
         edit(editor);
         editor.Complete();
         if (!editor.Changes.HasChanges)
@@ -412,7 +411,7 @@ public sealed class Diagram
         Defer(ids);
         if (requests.Count > 0)
         {
-            Write(SkipHistory, DiagramChangeOrigin.Api, editor => editor.RequestRoutes(requests), null, true);
+            Write(SkipHistory, DiagramChangeOrigin.Api, editor => editor.RequestRoutes(requests), true);
         }
     }
 
@@ -500,7 +499,7 @@ public sealed class Diagram
 
         (DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)[] results = [.. routedLinks.Values];
         routedLinks.Clear();
-        Write(SkipHistory, DiagramChangeOrigin.Api, editor => editor.ApplyRoutes(results), null, true);
+        Write(SkipHistory, DiagramChangeOrigin.Api, editor => editor.ApplyRoutes(results), true);
     }
 
     private ImmutableArray<DiagramIssue> Reset(DiagramJsonDocument document, DiagramWriteOptions? options)

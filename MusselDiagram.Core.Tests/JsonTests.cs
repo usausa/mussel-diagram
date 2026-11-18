@@ -217,6 +217,30 @@ public sealed class JsonTests
     }
 
     [Fact]
+    public void ARouteWithPointsOutsideTheRangeIsRoutedAgainWhenRead()
+    {
+        var diagram = new Diagram(JsonSchema);
+
+        diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "nodes": [
+                { "id": "a", "type": "server", "x": 0, "y": 0, "width": 100, "height": 50 },
+                { "id": "b", "type": "server", "x": 300, "y": 0, "width": 100, "height": 50 }
+              ],
+              "links": [
+                { "id": "far", "type": "arrow", "source": { "element": "a" }, "target": { "element": "b" }, "route": [[100, 25], [1e308, 25], [300, 25]] }
+              ]
+            }
+            """);
+
+        Assert.Equal([new DiagramPoint(100, 25), new DiagramPoint(300, 25)], ((DiagramLink)diagram.Find("far")!).Route);
+        Assert.DoesNotContain("Infinity", diagram.GetLinkGeometry("far")!.Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LoadClearsTheHistoryAndTheModifiedFlag()
     {
         var diagram = new Diagram(Schema);
@@ -273,17 +297,11 @@ public sealed class JsonTests
     [Fact]
     public async Task ReadingAsynchronouslyDecidesWhenItIsCalled()
     {
-        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
-        foreach (var link in node["links"]!.AsArray())
-        {
-            link!.AsObject().Remove("route");
-        }
-
         var router = new LateRouter();
-        var stream = new LateStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
+        var stream = new LateStream(JsonWithoutRoutes());
         await using (stream.ConfigureAwait(true))
         {
-            var result = await StartInContext(() => DiagramJson.ReadAsync(stream, JsonSchema with { Router = router }, TestContext.Current.CancellationToken));
+            var result = await InContext(_ => DiagramJson.ReadAsync(stream, JsonSchema with { Router = router }, TestContext.Current.CancellationToken));
 
             Assert.NotEmpty(result.Snapshot.Links);
             Assert.All(result.Snapshot.Links, static x => Assert.Equal(DiagramRouteState.Provisional, x.RouteState));
@@ -318,34 +336,22 @@ public sealed class JsonTests
         var target = new Diagram(JsonSchema);
         var contexts = new List<SynchronizationContext?>();
         target.Changed += (_, _) => contexts.Add(SynchronizationContext.Current);
-        var previous = SynchronizationContext.Current;
-        var context = new QueueContext();
-        SynchronizationContext.SetSynchronizationContext(context);
-        try
-        {
-            var load = LoadLateAsync(target, json);
-            context.RunUntil(load);
 
-            Assert.Empty(await load.ConfigureAwait(true));
-        }
-        finally
+        var (context, load) = InContext(context =>
         {
-            SynchronizationContext.SetSynchronizationContext(previous);
-        }
+            var started = LoadLateAsync(target, json);
+            context.RunUntil(started);
+            return (context, started);
+        });
 
+        Assert.Empty(await load.ConfigureAwait(true));
         Assert.Same(context, Assert.Single(contexts));
     }
 
     [Fact]
     public void ReadingWithoutADiagramWaitsForTheRouterOfTheApp()
     {
-        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
-        foreach (var link in node["links"]!.AsArray())
-        {
-            link!.AsObject().Remove("route");
-        }
-
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
+        using var stream = new MemoryStream(JsonWithoutRoutes());
         var result = DiagramJson.Read(stream, JsonSchema with { Router = new LateRouter() });
 
         Assert.NotEmpty(result.Snapshot.Links);
@@ -355,28 +361,42 @@ public sealed class JsonTests
     [Fact]
     public void ReadingWhereRoutesCanComeLaterLeavesTheRouterOfTheAppToTheDiagram()
     {
-        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
-        foreach (var link in node["links"]!.AsArray())
-        {
-            link!.AsObject().Remove("route");
-        }
-
         var router = new LateRouter();
-        var previous = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(new QueueContext());
-        try
-        {
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(node.ToJsonString()));
-            var result = DiagramJson.Read(stream, JsonSchema with { Router = router });
+        var json = JsonWithoutRoutes();
 
-            Assert.NotEmpty(result.Snapshot.Links);
-            Assert.All(result.Snapshot.Links, static x => Assert.Equal(DiagramRouteState.Provisional, x.RouteState));
-            Assert.Equal(0, router.Calls);
-        }
-        finally
+        var result = InContext(_ =>
         {
-            SynchronizationContext.SetSynchronizationContext(previous);
-        }
+            using var stream = new MemoryStream(json);
+            return DiagramJson.Read(stream, JsonSchema with { Router = router });
+        });
+
+        Assert.NotEmpty(result.Snapshot.Links);
+        Assert.All(result.Snapshot.Links, static x => Assert.Equal(DiagramRouteState.Provisional, x.RouteState));
+        Assert.Equal(0, router.Calls);
+    }
+
+    [Fact]
+    public void ReadingWhereRoutesCanComeLaterRoutesWithinTheBudgetOfLoading()
+    {
+        using var stream = new MemoryStream(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "nodes": [
+                { "id": "a", "type": "server", "x": 0, "y": 0, "width": 100, "height": 50 },
+                { "id": "b", "type": "server", "x": 400, "y": 0, "width": 100, "height": 50 },
+                { "id": "x", "type": "server", "x": 200, "y": -50, "width": 50, "height": 150 }
+              ],
+              "links": [
+                { "id": "ab", "type": "arrow", "source": { "element": "a" }, "target": { "element": "b" } }
+              ]
+            }
+            """u8.ToArray());
+
+        var result = DiagramJson.Read(stream, JsonSchema, defer: true, TimeSpan.Zero);
+
+        Assert.Equal(DiagramRouteState.Provisional, Assert.Single(result.Snapshot.Links).RouteState);
     }
 
     private static async Task<ImmutableArray<DiagramIssue>> LoadLateAsync(Diagram target, byte[] json)
@@ -420,18 +440,30 @@ public sealed class JsonTests
         }
     }
 
-    private static Task<TResult> StartInContext<TResult>(Func<Task<TResult>> start)
+    private static TResult InContext<TResult>(Func<QueueContext, TResult> run)
     {
         var previous = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(new QueueContext());
+        var context = new QueueContext();
+        SynchronizationContext.SetSynchronizationContext(context);
         try
         {
-            return start();
+            return run(context);
         }
         finally
         {
             SynchronizationContext.SetSynchronizationContext(previous);
         }
+    }
+
+    private static byte[] JsonWithoutRoutes()
+    {
+        var node = JsonNode.Parse(CreateDiagram().ToJson())!;
+        foreach (var link in node["links"]!.AsArray())
+        {
+            link!.AsObject().Remove("route");
+        }
+
+        return Encoding.UTF8.GetBytes(node.ToJsonString());
     }
 
     private sealed class LateStream(byte[] data) : Stream

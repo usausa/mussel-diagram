@@ -158,7 +158,7 @@ public sealed class DiagramCommandRegistry
 
     public bool TryGet(string name, [NotNullWhen(true)] out DiagramCommand? command)
     {
-        command = commands.Find(x => string.Equals(x.Name, name, StringComparison.Ordinal));
+        command = commands.Find(x => String.Equals(x.Name, name, StringComparison.Ordinal));
         return command is not null;
     }
 
@@ -291,7 +291,7 @@ public sealed class DiagramCommandRegistry
             }
         }
 
-        return string.Concat(others) + (ctrl ? "Ctrl+" : string.Empty) + (alt ? "Alt+" : string.Empty) + (shift ? "Shift+" : string.Empty) + NameOf(parts[^1]);
+        return String.Concat(others) + (ctrl ? "Ctrl+" : string.Empty) + (alt ? "Alt+" : string.Empty) + (shift ? "Shift+" : string.Empty) + NameOf(parts[^1]);
     }
 
     private static string NameOf(string name)
@@ -303,12 +303,12 @@ public sealed class DiagramCommandRegistry
 
         foreach (var known in KeyNames)
         {
-            if (string.Equals(known, name, StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(known, name, StringComparison.OrdinalIgnoreCase))
             {
                 return known;
             }
         }
 
-        return (name[0] == 'f') && !name.AsSpan(1).ContainsAnyExceptInRange('0', '9') ? string.Concat("F", name.AsSpan(1)) : name;
+        return (name[0] == 'f') && !name.AsSpan(1).ContainsAnyExceptInRange('0', '9') ? String.Concat("F", name.AsSpan(1)) : name;
     }
 }

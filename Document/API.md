@@ -161,7 +161,7 @@ A write that breaks the structure (duplicate IDs, missing ends, parents or membe
 | `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order`, `Route` and `Look` |
 | `IsReset` | Everything changed (loading) |
 
-`DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`. Where a `Diagram` computes routes later (in the browser, or where there is a synchronization context), `Read` does not ask the router of the app, and those links come back provisional until a `Diagram` made from the snapshot routes them; elsewhere it waits for that router.  
+`DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`. Where a `Diagram` computes routes later (in the browser, or where there is a synchronization context), `Read` does not ask the router of the app and computes the built-in routes for up to 20 ms, as loading a `Diagram` does, and the links left come back provisional until a `Diagram` made from the snapshot routes them; elsewhere it waits for every route.  
 
 ## 📸 DiagramSnapshot
 
@@ -358,7 +358,7 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTe
 
 ## 🎨 Theme
 
-Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables; an app changes them from any selector. `.mussel-dark` on an ancestor switches to the dark values, including those of the shared variables (the same class as MusselChart and MusselCalendar).  
+Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container or on the view itself switches to the dark values, the same class as the other Mussel libraries. A value an app sets is used in both themes, so include `.mussel-dark` in the selector to change a dark value.  
 
 These are shared with the other Mussel libraries. Their light defaults follow the look of each library, so set them on a container to give several libraries the same colors.  
 
@@ -394,16 +394,18 @@ These are for the diagram only. Set them on `.mussel-diagram` or on a `class` gi
 | `data-attached` | Set on the root of the view when JS is attached and the first view calls are applied, and on the roots of the palette and the drag source. The content of the view is hidden until then |
 | `mussel-diagram-node`, `mussel-diagram-group`, `mussel-diagram-link`, `mussel-diagram-port`, and `data-type` | Elements and their type names |
 | `data-template` | Nodes drawn by a template |
-| `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending` | Built-in states that the view sets while editing; hover is `:hover` |
+| `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending`, `data-split-target`, `data-reconnecting`, `data-editing` | Built-in states that the view sets while editing, also on a link that a dropped node splits, a link whose end moves and a label being written; hover is `:hover` |
 | `mussel-diagram-error`, `mussel-diagram-warning`, `mussel-diagram-locked`, `mussel-diagram-unregistered` | Built-in states from issues, locks and unregistered types |
 | `mussel-diagram-fixed`, `mussel-diagram-unconnectable`, `mussel-diagram-fill-hit` | Elements that cannot move or connect, and groups whose fill is hit-tested |
 | `data-direction` (`in`, `out` or `both`) and `data-kind` on ports | Ports by direction and kind |
+| `data-hidden` and `data-revealed` on ports | Hidden ports, and those shown while a link end looks for a target |
+| `mussel-diagram-palette-item` and `data-armed` | Items of the palette, and the item lifted by a long press on touch |
 | `mussel-diagram-state-<name>` | States of overlays |
 | `--mussel-diagram-override-fill`, `--mussel-diagram-override-stroke`, `--mussel-diagram-override-stroke-width`, `--mussel-diagram-override-dash`, `--mussel-diagram-override-opacity` | Render overrides, set on the element |
 | `mussel-diagram-badge` and `data-tone` | Badges and their tones |
 | `mussel-diagram-nodrag`, `mussel-diagram-nowheel` | Set by the app on elements in templates |
 | `mussel-diagram-cursor` | An element that covers the view and shows the cursor while an operation runs |
-| `mussel-diagram-space`, `mussel-diagram-panning`, `mussel-diagram-dragging`, `mussel-diagram-connecting`, `mussel-diagram-resizing-<n, s, e, w, ne, nw, se or sw>`, `mussel-diagram-selecting`, `mussel-diagram-not-allowed` | States of the root of the view while Space is held, while panning, moving, connecting, resizing and selecting with a box, and where the operation is not allowed; CSS sets the cursor of `mussel-diagram-cursor` under them |
+| `mussel-diagram-space`, `mussel-diagram-panning`, `mussel-diagram-dragging`, `mussel-diagram-connecting`, `mussel-diagram-resizing-<n, s, e, w, ne, nw, se or sw>`, `mussel-diagram-selecting`, `mussel-diagram-not-allowed`, `mussel-diagram-dropping` | States of the root of the view while Space is held, while panning, moving, connecting, resizing and selecting with a box, where the operation is not allowed, and while an item of a palette or a drag source is over the view; CSS sets the cursor of `mussel-diagram-cursor` under them |
 
 ## ⚠️ Limits
 

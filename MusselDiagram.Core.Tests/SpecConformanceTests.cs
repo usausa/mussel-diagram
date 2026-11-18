@@ -61,7 +61,7 @@ public sealed class SpecConformanceTests
         var diagram = new Diagram(Schema);
         diagram.Add(new DiagramNode { Id = "a", Type = "step", Bounds = new DiagramRect(0, 0, 80, 40) });
 
-        Assert.Throws<DiagramException>(() => diagram.Move(["a"], new DiagramPoint(double.NaN, 0)));
+        Assert.Throws<DiagramException>(() => diagram.Move(["a"], new DiagramPoint(Double.NaN, 0)));
         Assert.Equal(new DiagramRect(0, 0, 80, 40), ((DiagramBox)diagram.Find("a")!).Bounds);
     }
 

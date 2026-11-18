@@ -75,7 +75,7 @@ public sealed partial class MusselDiagramView
             selection,
             () =>
             {
-                var reason = CheckMove(ids, startVersion) ?? (reparent ? CheckParent(ids, parentId) : null) ??
+                var reason = CheckMove(ids, offset, startVersion) ?? (reparent ? CheckParent(ids, parentId) : null) ??
                     (StayRules.Allows(Snapshot, Diagram.Index, ids, offset) ? null : Reason(DiagramReasonKind.Nesting));
                 var splits = (reason is null) && (splitLinkId is not null);
                 if (splits)
@@ -231,6 +231,11 @@ public sealed partial class MusselDiagramView
         turn?.Begin();
         try
         {
+            if (IsDisposed)
+            {
+                throw new OperationCanceledException();
+            }
+
             if (rejectionsSeen < rejections)
             {
                 return new ScriptCommitResult(false, Snapshot.Version, null, rejections);
@@ -294,7 +299,7 @@ public sealed partial class MusselDiagramView
             : new DiagramGroup { Type = boxType.Name, Bounds = bounds, ParentId = parentId, Label = content?.Label, Texts = content?.Texts ?? [], Data = data };
     }
 
-    private DiagramReason? CheckMove(IEnumerable<string> ids, long startVersion)
+    private DiagramReason? CheckMove(IEnumerable<string> ids, DiagramPoint offset, long startVersion)
     {
         if (ReadOnly || !MoveEnabled)
         {
@@ -325,10 +330,17 @@ public sealed partial class MusselDiagramView
                 {
                     return Reason(DiagramReasonKind.Changed);
                 }
+
+                if (((current.Find(start) is DiagramBox moved) && !Fits(moved)) || !current.GetDescendants(start).All(Fits))
+                {
+                    return Reason(DiagramReasonKind.Permission);
+                }
             }
         }
 
         return null;
+
+        bool Fits(DiagramBox moved) => SnapshotEditor.IsInside(moved.Bounds.Offset(offset));
     }
 
     private DiagramReason? CheckParent(IEnumerable<string> ids, string? parentId)
@@ -347,14 +359,14 @@ public sealed partial class MusselDiagramView
                 return Reason(DiagramReasonKind.Changed);
             }
 
-            if (string.Equals(box.ParentId, parentId, StringComparison.Ordinal))
+            if (String.Equals(box.ParentId, parentId, StringComparison.Ordinal))
             {
                 continue;
             }
 
             if ((box is DiagramGroup { Kind: DiagramGroupKind.Overlay }) ||
                 (index.FindBoxType(box) is not { StayInParent: false }) ||
-                ((parentId is not null) && (string.Equals(parentId, id, StringComparison.Ordinal) || current.GetAncestors(parentId).Any(x => string.Equals(x.Id, id, StringComparison.Ordinal)))))
+                ((parentId is not null) && (String.Equals(parentId, id, StringComparison.Ordinal) || current.GetAncestors(parentId).Any(x => String.Equals(x.Id, id, StringComparison.Ordinal)))))
             {
                 return Reason(DiagramReasonKind.Nesting);
             }
@@ -381,9 +393,7 @@ public sealed partial class MusselDiagramView
         }
 
         var minimum = Diagram.Index.FindBoxType(box)?.MinSize;
-        if (!ScriptTables.CanResize(box, Diagram.Index) ||
-            !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) || !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height) ||
-            (bounds.Width <= 0) || (bounds.Height <= 0) ||
+        if (!ScriptTables.CanResize(box, Diagram.Index) || !SnapshotEditor.IsInside(bounds) ||
             ((minimum is { } min) && ((bounds.Width < min.Width - 0.001) || (bounds.Height < min.Height - 0.001))))
         {
             return Reason(DiagramReasonKind.Permission);
@@ -426,7 +436,7 @@ public sealed partial class MusselDiagramView
         current = link;
         var source = EndOf(link, side, end, DiagramLinkEndSide.Source);
         var target = EndOf(link, side, end, DiagramLinkEndSide.Target);
-        return DiagramRules.CheckConnection(Snapshot, Diagram.Index, source, target, link.Type, x => !string.Equals(x.Id, linkId, StringComparison.Ordinal), linkId, true);
+        return DiagramRules.CheckConnection(Snapshot, Diagram.Index, source, target, link.Type, x => !String.Equals(x.Id, linkId, StringComparison.Ordinal), linkId, true);
     }
 
     private DiagramReason? CheckPlace(DiagramBox? element, DiagramLinkEnd from, string linkType, out DiagramLinkEnd target)

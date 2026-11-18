@@ -50,7 +50,7 @@ public sealed partial class ErPage : IDisposable
 
     private void Rename(DiagramNode table, string? name)
     {
-        if (!string.IsNullOrWhiteSpace(name))
+        if (!String.IsNullOrWhiteSpace(name))
         {
             diagram.Replace(table with { Label = name });
         }

@@ -165,11 +165,11 @@ public sealed class LookTests
         var diagram = new Diagram(LookSchema);
 
         Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0) with { Look = new DiagramBoxLook { StrokeWidth = -1 } }));
-        Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0) with { Look = new DiagramBoxLook { StrokeWidth = double.NaN } }));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0) with { Look = new DiagramBoxLook { StrokeWidth = Double.NaN } }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0) with { Look = new DiagramBoxLook { Dash = (DiagramDash)9 } }));
         diagram.Add(Node("a", 0, 0));
         diagram.Add(Node("b", 300, 0));
-        Assert.Throws<DiagramException>(() => diagram.Connect(Link("ab", "a", "b") with { Look = new DiagramLinkLook { StrokeWidth = double.PositiveInfinity } }));
+        Assert.Throws<DiagramException>(() => diagram.Connect(Link("ab", "a", "b") with { Look = new DiagramLinkLook { StrokeWidth = Double.PositiveInfinity } }));
         Assert.Throws<DiagramException>(() => diagram.Connect(Link("ab", "a", "b") with { Look = new DiagramLinkLook { TargetMarker = (DiagramMarker)9 } }));
         Assert.Throws<DiagramException>(() => diagram.Connect(Link("ab", "a", "b") with { Look = new DiagramLinkLook { Form = (DiagramLineForm)9 } }));
     }

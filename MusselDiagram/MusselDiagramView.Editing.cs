@@ -111,7 +111,7 @@ public sealed partial class MusselDiagramView
             },
             async () =>
             {
-                if (string.Equals(oldText, newText, StringComparison.Ordinal))
+                if (String.Equals(oldText, newText, StringComparison.Ordinal))
                 {
                     return null;
                 }
@@ -122,12 +122,12 @@ public sealed partial class MusselDiagramView
             },
             () =>
             {
-                if (!string.Equals(oldText, newText, StringComparison.Ordinal) && (Snapshot.Find(elementId) is DiagramBox box))
+                if (!String.Equals(oldText, newText, StringComparison.Ordinal) && (Snapshot.Find(elementId) is DiagramBox box))
                 {
                     Diagram.Write(null, DiagramChangeOrigin.User, editor => editor.Replace(WithText(box, slot, newText)));
                 }
             },
-            snapshot => string.Equals(oldText, newText, StringComparison.Ordinal)
+            snapshot => String.Equals(oldText, newText, StringComparison.Ordinal)
                 ? Task.CompletedTask
                 : TextCommitted.InvokeAsync(new DiagramTextCommittedEventArgs(elementId, slot, oldText, newText, snapshot)));
     }
@@ -149,12 +149,12 @@ public sealed partial class MusselDiagramView
     }
 
     private string? TextOf(DiagramBox box, string slot) =>
-        string.Equals(LabelLayout.SlotsOf(box, Diagram.Index.FindBoxType(box))[0].Name, slot, StringComparison.Ordinal) ? box.Label : box.Texts.GetValueOrDefault(slot);
+        String.Equals(LabelLayout.SlotsOf(box, Diagram.Index.FindBoxType(box))[0].Name, slot, StringComparison.Ordinal) ? box.Label : box.Texts.GetValueOrDefault(slot);
 
     private DiagramBox WithText(DiagramBox box, string slot, string? text)
     {
         var slots = LabelLayout.SlotsOf(box, Diagram.Index.FindBoxType(box));
-        if (string.Equals(slots[0].Name, slot, StringComparison.Ordinal))
+        if (String.Equals(slots[0].Name, slot, StringComparison.Ordinal))
         {
             return box with { Label = text };
         }
@@ -179,7 +179,7 @@ public sealed partial class MusselDiagramView
         var position = -1;
         for (var i = 0; i < slots.Length; i++)
         {
-            if (string.Equals(slots[i].Name, slot, StringComparison.Ordinal))
+            if (String.Equals(slots[i].Name, slot, StringComparison.Ordinal))
             {
                 position = i;
                 break;
@@ -201,7 +201,7 @@ public sealed partial class MusselDiagramView
 
     private DiagramReason? CheckDrop(DiagramBox? element)
     {
-        if (ReadOnly || !DropEnabled || (element is null))
+        if (ReadOnly || !DropEnabled || (element is null) || !SnapshotEditor.IsInside(element.Bounds))
         {
             return Reason(DiagramReasonKind.Permission);
         }
@@ -228,7 +228,7 @@ public sealed partial class MusselDiagramView
     private Splice? SpliceOf(string nodeId, string? splitLinkId, Action<SnapshotEditor> change)
     {
         if ((splitLinkId is null) || (Snapshot.Find(splitLinkId) is not DiagramLink link) ||
-            string.Equals(link.Source.ElementId, nodeId, StringComparison.Ordinal) || string.Equals(link.Target.ElementId, nodeId, StringComparison.Ordinal))
+            String.Equals(link.Source.ElementId, nodeId, StringComparison.Ordinal) || String.Equals(link.Target.ElementId, nodeId, StringComparison.Ordinal))
         {
             return null;
         }
@@ -258,7 +258,7 @@ public sealed partial class MusselDiagramView
             candidates.Add(new DiagramLinkEnd(node.Id));
         }
 
-        bool Others(DiagramLink x) => !string.Equals(x.Id, link.Id, StringComparison.Ordinal);
+        bool Others(DiagramLink x) => !String.Equals(x.Id, link.Id, StringComparison.Ordinal);
         var incoming = candidates.Where(x => DiagramRules.CheckConnection(trial, index, link.Source, x, link.Type, Others, link.Id, true) is null).Select(static x => (DiagramLinkEnd?)x).FirstOrDefault();
         var outgoing = candidates.Where(x => DiagramRules.CheckConnection(trial, index, x, link.Target, link.Type, Others, null, true) is null).Select(static x => (DiagramLinkEnd?)x).FirstOrDefault();
         return (incoming is { } into) && (outgoing is { } outOf) ? new Splice(link, into, outOf, DiagramIds.Create()) : null;

@@ -307,7 +307,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
             var options = ScriptJson.ToElement(CreateOptions());
 
-            if (!string.Equals(sentOptions, options.GetRawText(), StringComparison.Ordinal))
+            if (!String.Equals(sentOptions, options.GetRawText(), StringComparison.Ordinal))
             {
                 sentOptions = options.GetRawText();
                 await current.InvokeVoidAsync("setOptions", options).ConfigureAwait(true);
@@ -361,10 +361,10 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             return default;
         }
 
-        var left = double.PositiveInfinity;
-        var top = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var bottom = double.NegativeInfinity;
+        var left = Double.PositiveInfinity;
+        var top = Double.PositiveInfinity;
+        var right = Double.NegativeInfinity;
+        var bottom = Double.NegativeInfinity;
         foreach (var point in link.Route)
         {
             left = Math.Min(left, point.X);

@@ -398,7 +398,7 @@ internal static class OrthogonalRouter
             return dx + dy + (bends * BendPenalty);
         }
 
-        double CostOf(int state) => stamp[state] == generation ? cost[state] : double.PositiveInfinity;
+        double CostOf(int state) => stamp[state] == generation ? cost[state] : Double.PositiveInfinity;
 
         void Set(int state, double value, int from)
         {
@@ -511,7 +511,7 @@ internal static class OrthogonalRouter
                 Closed = new int[states];
             }
 
-            if (generation == int.MaxValue)
+            if (generation == Int32.MaxValue)
             {
                 generation = 0;
                 Array.Clear(BlockedNode);

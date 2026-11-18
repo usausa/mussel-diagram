@@ -38,7 +38,7 @@ public sealed class DiagramWriteTests
         Assert.Throws<DiagramException>(() => diagram.Add(Node("a", 0, 0)));
         Assert.Throws<DiagramException>(() => diagram.Add(Node(string.Empty, 0, 0)));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(0, 0, 0, 50) }));
-        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(double.NaN, 0, 10, 10) }));
+        Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(Double.NaN, 0, 10, 10) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(1.7e308, 0, 1e308, 50) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 0, 0) with { Bounds = new DiagramRect(0, 1.7e308, 50, 1e308) }));
         Assert.Throws<DiagramException>(() => diagram.Add(Node("b", 1e12 - 50, 0)));

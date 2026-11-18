@@ -136,7 +136,7 @@ public sealed partial class MusselDiagramView
             ScriptJsonContext.Default.ListScriptCommand);
         try
         {
-            if (!string.Equals(map, sentCommands, StringComparison.Ordinal))
+            if (!String.Equals(map, sentCommands, StringComparison.Ordinal))
             {
                 sentCommands = map;
                 await current.InvokeVoidAsync("setCommands", JsonElement.Parse(map)).ConfigureAwait(true);
@@ -149,7 +149,7 @@ public sealed partial class MusselDiagramView
             var palette = Diagram.Index.Schema.Rules.InPalette is null
                 ? null
                 : JsonSerializer.Serialize(TypeSearch.PaletteTypes(Snapshot, Diagram.Index).Select(static x => x.Name).ToList(), ScriptJsonContext.Default.IReadOnlyListString);
-            if (!string.Equals(palette, sentPalette, StringComparison.Ordinal))
+            if (!String.Equals(palette, sentPalette, StringComparison.Ordinal))
             {
                 sentPalette = palette;
                 await current.InvokeVoidAsync("setPaletteTypes", palette is null ? null : JsonElement.Parse(palette)).ConfigureAwait(true);
@@ -187,7 +187,10 @@ public sealed partial class MusselDiagramView
         turn?.Begin();
         try
         {
-            write();
+            if (!IsDisposed)
+            {
+                write();
+            }
         }
         finally
         {
@@ -202,6 +205,11 @@ public sealed partial class MusselDiagramView
         DiagramReason? reason;
         try
         {
+            if (IsDisposed)
+            {
+                return false;
+            }
+
             reason = check();
             if ((reason is null) && (before is not null))
             {

@@ -19,10 +19,10 @@ internal sealed class ObstacleIndex
         cells = new Dictionary<(int X, int Y), List<int>>(nodes.Count);
         rects = new DiagramRect[nodes.Count];
         ids = new string[nodes.Count];
-        var left = double.PositiveInfinity;
-        var top = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var bottom = double.NegativeInfinity;
+        var left = Double.PositiveInfinity;
+        var top = Double.PositiveInfinity;
+        var right = Double.NegativeInfinity;
+        var bottom = Double.NegativeInfinity;
         for (var i = 0; i < nodes.Count; i++)
         {
             var bounds = nodes[i].Bounds;
@@ -63,7 +63,7 @@ internal sealed class ObstacleIndex
     {
         for (var i = 0; i < rects.Length; i++)
         {
-            if (!string.Equals(ids[i], exceptA, StringComparison.Ordinal) && !string.Equals(ids[i], exceptB, StringComparison.Ordinal))
+            if (!String.Equals(ids[i], exceptA, StringComparison.Ordinal) && !String.Equals(ids[i], exceptB, StringComparison.Ordinal))
             {
                 output.Add(rects[i]);
             }
@@ -112,7 +112,7 @@ internal sealed class ObstacleIndex
         {
             var rect = rects[i];
             if ((rect.Right < area.X) || (rect.X > area.Right) || (rect.Bottom < area.Y) || (rect.Y > area.Bottom) ||
-                string.Equals(ids[i], exceptA, StringComparison.Ordinal) || string.Equals(ids[i], exceptB, StringComparison.Ordinal))
+                String.Equals(ids[i], exceptA, StringComparison.Ordinal) || String.Equals(ids[i], exceptB, StringComparison.Ordinal))
             {
                 return;
             }

@@ -113,7 +113,7 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.CloseElement();
         }
 
-        var shown = type is null ? box with { Label = string.IsNullOrEmpty(box.Label) ? box.Type : box.Label } : box;
+        var shown = type is null ? box with { Label = String.IsNullOrEmpty(box.Label) ? box.Type : box.Label } : box;
         var editable = (type is not null) && ((ScriptTables.PermissionsOf(box, Context.Index) & DiagramPermissions.EditText) != 0);
         foreach (var label in LabelLayout.Arrange(shown, type, isGroup && ((iconId is not null) || (iconUrl is not null)), editable))
         {
@@ -183,7 +183,7 @@ internal sealed class DiagramBoxView : ComponentBase
                 builder.AddAttribute(88, "data-hidden", string.Empty);
             }
 
-            if (Context.Tooltips && !string.IsNullOrEmpty(port.Definition.Label))
+            if (Context.Tooltips && !String.IsNullOrEmpty(port.Definition.Label))
             {
                 builder.OpenElement(89, "title");
                 builder.AddContent(90, port.Definition.Label);
@@ -291,11 +291,11 @@ internal sealed class DiagramBoxView : ComponentBase
         var own = type?.GetTooltip?.Invoke(box);
         if (look?.IssueText is not { } issues)
         {
-            return string.IsNullOrEmpty(own) ? null : own;
+            return String.IsNullOrEmpty(own) ? null : own;
         }
 
-        var head = string.IsNullOrEmpty(own) ? box.Label : own;
-        return string.IsNullOrEmpty(head) ? issues : $"{head}\n{issues}";
+        var head = String.IsNullOrEmpty(own) ? box.Label : own;
+        return String.IsNullOrEmpty(head) ? issues : $"{head}\n{issues}";
     }
 
     internal static void AppendLook(StringBuilder builder, ElementLook? look)

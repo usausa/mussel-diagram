@@ -115,13 +115,13 @@ public sealed partial class MusselDiagramView
             return;
         }
 
-        var current = SelectedIds.Count == 1 ? ordered.FindIndex(x => string.Equals(x.Id, SelectedIds[0], StringComparison.Ordinal)) : -1;
+        var current = SelectedIds.Count == 1 ? ordered.FindIndex(x => String.Equals(x.Id, SelectedIds[0], StringComparison.Ordinal)) : -1;
         var next = current < 0
             ? (forward ? 0 : ordered.Count - 1)
             : (current + (forward ? 1 : ordered.Count - 1)) % ordered.Count;
         var (id, bounds) = ordered[next];
         await SelectAsync([id]).ConfigureAwait(true);
-        if ((Viewport?.VisibleBounds is not { } visible) || !Contains(visible, bounds!.Value))
+        if ((Viewport?.VisibleBounds is not { } visible) || !Covers(visible, bounds!.Value))
         {
             await CenterOnAsync(id).ConfigureAwait(true);
         }
@@ -133,7 +133,4 @@ public sealed partial class MusselDiagramView
         DiagramLink { Route.IsDefaultOrEmpty: false } link => RouteBounds(link),
         _ => null
     };
-
-    private static bool Contains(DiagramRect outer, DiagramRect inner) =>
-        (inner.X >= outer.X) && (inner.Y >= outer.Y) && (inner.Right <= outer.Right) && (inner.Bottom <= outer.Bottom);
 }

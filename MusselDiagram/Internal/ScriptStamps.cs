@@ -118,14 +118,14 @@ internal sealed class ScriptStamps
             StampOf(now.Id).Bounds = version;
         }
 
-        if (!string.Equals(old.ParentId, now.ParentId, StringComparison.Ordinal))
+        if (!String.Equals(old.ParentId, now.ParentId, StringComparison.Ordinal))
         {
             StampOf(now.Id).Parent = version;
             Touch(old.ParentId, version);
             Touch(now.ParentId, version);
         }
 
-        if (!string.Equals(old.Label, now.Label, StringComparison.Ordinal))
+        if (!String.Equals(old.Label, now.Label, StringComparison.Ordinal))
         {
             StampOf(now.Id).Label = version;
         }
@@ -134,7 +134,7 @@ internal sealed class ScriptStamps
         {
             foreach (var (slot, text) in now.Texts)
             {
-                if (!string.Equals(old.Texts.GetValueOrDefault(slot), text, StringComparison.Ordinal))
+                if (!String.Equals(old.Texts.GetValueOrDefault(slot), text, StringComparison.Ordinal))
                 {
                     MarkText(now.Id, slot, version);
                 }

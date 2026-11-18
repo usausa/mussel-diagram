@@ -17,8 +17,8 @@ internal static class SnapshotContent
         }
 
         if ((x.GetType() != y.GetType()) ||
-            !string.Equals(x.Id, y.Id, StringComparison.Ordinal) ||
-            !string.Equals(x.Type, y.Type, StringComparison.Ordinal) ||
+            !String.Equals(x.Id, y.Id, StringComparison.Ordinal) ||
+            !String.Equals(x.Type, y.Type, StringComparison.Ordinal) ||
             !SameData(x.Data, y.Data))
         {
             return false;
@@ -30,8 +30,8 @@ internal static class SnapshotContent
             (DiagramBox a, DiagramBox b) => SameBox(a, b),
             (DiagramLink a, DiagramLink b) =>
                 (a.Source == b.Source) && (a.Target == b.Target) && a.Route.SequenceEqual(b.Route) && (a.RouteState == b.RouteState) &&
-                string.Equals(a.RouteError, b.RouteError, StringComparison.Ordinal) && (a.Look == b.Look) && (a.Locked == b.Locked) && (a.Permissions == b.Permissions),
-            (DiagramSharedItem a, DiagramSharedItem b) => string.Equals(a.Label, b.Label, StringComparison.Ordinal),
+                String.Equals(a.RouteError, b.RouteError, StringComparison.Ordinal) && (a.Look == b.Look) && (a.Locked == b.Locked) && (a.Permissions == b.Permissions),
+            (DiagramSharedItem a, DiagramSharedItem b) => String.Equals(a.Label, b.Label, StringComparison.Ordinal),
             _ => false
         };
     }
@@ -53,7 +53,7 @@ internal static class SnapshotContent
 
         foreach (var (key, value) in x)
         {
-            if (!y.TryGetValue(key, out var other) || !string.Equals(value, other, StringComparison.Ordinal))
+            if (!y.TryGetValue(key, out var other) || !String.Equals(value, other, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -88,10 +88,10 @@ internal static class SnapshotContent
 
     private static bool SameBox(DiagramBox x, DiagramBox y) =>
         (x.Bounds == y.Bounds) &&
-        string.Equals(x.ParentId, y.ParentId, StringComparison.Ordinal) &&
-        string.Equals(x.Label, y.Label, StringComparison.Ordinal) &&
+        String.Equals(x.ParentId, y.ParentId, StringComparison.Ordinal) &&
+        String.Equals(x.Label, y.Label, StringComparison.Ordinal) &&
         SameTexts(x.Texts, y.Texts) &&
-        string.Equals(x.Icon, y.Icon, StringComparison.Ordinal) &&
+        String.Equals(x.Icon, y.Icon, StringComparison.Ordinal) &&
         (x.Look == y.Look) &&
         (x.Locked == y.Locked) &&
         (x.Permissions == y.Permissions);

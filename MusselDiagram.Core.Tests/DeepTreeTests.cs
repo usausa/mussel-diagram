@@ -152,13 +152,31 @@ public sealed class DeepTreeTests
             TestContext.Current.CancellationToken);
     }
 
-    private static string Chain(int leaves) =>
+    [Fact(Timeout = 30_000)]
+    public Task MovingManyGroupsIntoADeepGroupWithoutHistoryRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0, Leaves));
+                diagram.Move(["g0"], new DiagramPoint(10, 0));
+
+                diagram.SetParent(Enumerable.Range(0, Leaves).Select(static i => $"t{i}"), $"g{Depth - 1}", new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+
+                Assert.All(diagram.Snapshot.Groups.Where(static x => x.Id.StartsWith('t', StringComparison.Ordinal)), static x => Assert.Equal($"g{Depth - 1}", x.ParentId));
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static string Chain(int leaves, int tops = 0) =>
         JsonSerializer.Serialize(
             new
             {
                 format = "mussel-diagram",
                 version = 1,
-                groups = Enumerable.Range(0, Depth).Select(static i => new { id = $"g{i}", type = "vpc", kind = "tree", x = 0, y = 0, width = 400, height = 300, parent = i == 0 ? null : $"g{i - 1}" }),
+                groups = Enumerable.Range(0, Depth).Select(static i => new { id = $"g{i}", type = "vpc", kind = "tree", x = 0, y = 0, width = 400, height = 300, parent = i == 0 ? null : $"g{i - 1}" })
+                    .Concat(Enumerable.Range(0, tops).Select(static i => new { id = $"t{i}", type = "vpc", kind = "tree", x = 0, y = 0, width = 400, height = 300, parent = (string?)null })),
                 nodes = Enumerable.Range(0, leaves).Select(static i => new { id = $"n{i}", type = "server", x = 0, y = 0, width = 100, height = 50 })
             },
             Options);

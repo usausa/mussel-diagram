@@ -89,14 +89,14 @@ public sealed partial class WorkflowPage : IDisposable
 
     private void OnBadgeClicked(DiagramBadgeClickedEventArgs e)
     {
-        if ((run is not null) && string.Equals(e.Badge.Kind, WorkflowDiagrams.RunsBadge, StringComparison.Ordinal) && run.Rerun(e.ElementId))
+        if ((run is not null) && String.Equals(e.Badge.Kind, WorkflowDiagrams.RunsBadge, StringComparison.Ordinal) && run.Rerun(e.ElementId))
         {
             overlays = run.Overlays();
         }
     }
 
     private void Rename(DiagramNode node, string? name) =>
-        diagram.Replace(node with { Label = string.IsNullOrWhiteSpace(name) ? null : name });
+        diagram.Replace(node with { Label = String.IsNullOrWhiteSpace(name) ? null : name });
 
     private void Update(DiagramNode node, object data) => diagram.Replace(node with { Data = data });
 

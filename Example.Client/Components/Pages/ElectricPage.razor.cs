@@ -76,7 +76,7 @@ public sealed partial class ElectricPage : IDisposable
     private void OnViewportChanged(DiagramViewport viewport) => zoom = viewport.Zoom;
 
     private string? TypeName(DiagramNode node) =>
-        diagram.Schema.NodeTypes.FirstOrDefault(x => string.Equals(x.Name, node.Type, StringComparison.Ordinal))?.DisplayName;
+        diagram.Schema.NodeTypes.FirstOrDefault(x => String.Equals(x.Name, node.Type, StringComparison.Ordinal))?.DisplayName;
 
     private string StatusName(DiagramNode node) => ElectricDiagrams.StatusOf(node.Data as EquipmentData, today) switch
     {
@@ -86,7 +86,7 @@ public sealed partial class ElectricPage : IDisposable
     };
 
     private void Rename(DiagramNode node, string? name) =>
-        diagram.Replace(node with { Label = string.IsNullOrWhiteSpace(name) ? null : name });
+        diagram.Replace(node with { Label = String.IsNullOrWhiteSpace(name) ? null : name });
 
     private void Update(DiagramNode node, EquipmentData data) => diagram.Replace(node with { Data = data });
 

@@ -92,7 +92,14 @@ public sealed partial class MusselDiagramPalette
         {
             if (attached is not null)
             {
-                await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                try
+                {
+                    await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                }
+                catch (JSException)
+                {
+                }
+
                 await attached.DisposeAsync().ConfigureAwait(true);
             }
 
@@ -184,12 +191,12 @@ public sealed partial class MusselDiagramPalette
 
         foreach (var category in TypeSearch.OrderCategories(shown, index))
         {
-            var definition = index.Schema.Categories.FirstOrDefault(x => string.Equals(x.Name, category, StringComparison.Ordinal));
+            var definition = index.Schema.Categories.FirstOrDefault(x => String.Equals(x.Name, category, StringComparison.Ordinal));
             var open = searching || ((definition?.Collapsed ?? false) == toggled.Contains(category));
             result.Add(new PaletteRow(null, category, definition?.DisplayName ?? category, null, open, DiagramShape.Rectangle, null, null));
             if (open)
             {
-                result.AddRange(shown.Where(x => string.Equals(x.Category, category, StringComparison.Ordinal)).Select(Item));
+                result.AddRange(shown.Where(x => String.Equals(x.Category, category, StringComparison.Ordinal)).Select(Item));
             }
         }
 

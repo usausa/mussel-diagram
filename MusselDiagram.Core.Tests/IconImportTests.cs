@@ -130,13 +130,32 @@ public sealed class IconImportTests
         return Task.Run(
             static () =>
             {
-                var aliases = string.Join(", ", Enumerable.Range(0, 3000).Select(static i => $"\"a{i}\": {{ \"parent\": \"a{(i + 1) % 3000}\" }}"));
+                var aliases = String.Join(", ", Enumerable.Range(0, 30000).Select(static i => $"\"a{i}\": {{ \"parent\": \"a{(i + 1) % 30000}\" }}"));
                 var json = $$"""{ "prefix": "demo", "icons": { "home": { "body": "<path d='M0 0'/>" } }, "aliases": { {{aliases}} } }""";
 
                 var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
 
                 Assert.Equal(["home"], result.IconSet.Icons.Select(static x => x.Id));
-                Assert.Equal(3000, result.Issues.Length);
+                Assert.Equal(30000, result.Issues.Length);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task ALongChainOfAliasesEndsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var aliases = String.Join(", ", Enumerable.Range(0, 30000).Select(static i => $"\"a{i}\": {{ \"parent\": \"{(i == 29999 ? "home" : $"a{i + 1}")}\", \"rotate\": 1 }}"));
+                var json = $$"""{ "prefix": "demo", "icons": { "home": { "body": "<path d='M0 0'/>" } }, "aliases": { {{aliases}} } }""";
+
+                var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+                Assert.Equal(30001, result.IconSet.Icons.Length);
+                Assert.Empty(result.Issues);
+                Assert.DoesNotContain("rotate(", result.IconSet.Icons.Single(static x => x.Id == "a0").Body, StringComparison.Ordinal);
+                Assert.Contains("rotate(90", result.IconSet.Icons.Single(static x => x.Id == "a29999").Body, StringComparison.Ordinal);
             },
             TestContext.Current.CancellationToken);
     }
@@ -198,7 +217,7 @@ public sealed class IconImportTests
     public async Task DeeplyNestedContentIsRemoved()
     {
         const int levels = 400_000;
-        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">" + string.Concat(Enumerable.Repeat("<g>", levels)) + "<path d=\"M0 0\"/>" + string.Concat(Enumerable.Repeat("</g>", levels)) + "</svg>";
+        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">" + String.Concat(Enumerable.Repeat("<g>", levels)) + "<path d=\"M0 0\"/>" + String.Concat(Enumerable.Repeat("</g>", levels)) + "</svg>";
 
         var result = await Task.Run(() => DiagramIconImport.FromZip(Zip(("deep.svg", svg)), "demo"), TestContext.Current.CancellationToken);
 

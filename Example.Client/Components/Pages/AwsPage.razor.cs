@@ -49,7 +49,7 @@ public sealed partial class AwsPage
         message = null;
         if (e.File.Size > MaxPackageSize)
         {
-            message = string.Create(CultureInfo.InvariantCulture, $"{MaxPackageSize / (1024 * 1024)} MB を超える zip は読み込めません。");
+            message = String.Create(CultureInfo.InvariantCulture, $"{MaxPackageSize / (1024 * 1024)} MB を超える zip は読み込めません。");
             return;
         }
 
@@ -73,7 +73,7 @@ public sealed partial class AwsPage
             Apply(result.IconSet);
             if (!result.Issues.IsEmpty)
             {
-                message = string.Create(CultureInfo.InvariantCulture, $"アイコンの取り込みで {result.Issues.Length} 件の問題がありました。");
+                message = String.Create(CultureInfo.InvariantCulture, $"アイコンの取り込みで {result.Issues.Length} 件の問題がありました。");
             }
         }
         catch (DiagramException)

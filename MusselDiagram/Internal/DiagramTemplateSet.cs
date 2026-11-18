@@ -16,7 +16,7 @@ internal sealed class DiagramTemplateSet
     {
         if (types.TryGetValue(template, out var type))
         {
-            if (string.Equals(type, template.Type, StringComparison.Ordinal))
+            if (String.Equals(type, template.Type, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -40,7 +40,7 @@ internal sealed class DiagramTemplateSet
         if (ReferenceEquals(byType.GetValueOrDefault(type), template))
         {
             byType.Remove(type);
-            if (types.FirstOrDefault(x => string.Equals(x.Value, type, StringComparison.Ordinal)).Key is { } other)
+            if (types.FirstOrDefault(x => String.Equals(x.Value, type, StringComparison.Ordinal)).Key is { } other)
             {
                 byType[type] = other;
             }

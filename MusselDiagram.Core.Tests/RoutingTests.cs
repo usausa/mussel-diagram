@@ -204,7 +204,8 @@ public sealed class RoutingTests
             new AnsweringRouter(static () => ValueTask.FromException<DiagramRouteResult>(new InvalidOperationException("Broken"))),
             new AnsweringRouter(static () => ValueTask.FromResult<DiagramRouteResult>(null!)),
             new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult())),
-            new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult { Points = [new DiagramPoint(Double.NaN, 25), new DiagramPoint(400, 25)] }))
+            new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult { Points = [new DiagramPoint(Double.NaN, 25), new DiagramPoint(400, 25)] })),
+            new AnsweringRouter(static () => ValueTask.FromResult(new DiagramRouteResult { Points = [new DiagramPoint(100, 25), new DiagramPoint(1e308, 25), new DiagramPoint(400, 25)] }))
         ];
 
         var errors = new List<string?>();
@@ -222,6 +223,20 @@ public sealed class RoutingTests
         }
 
         Assert.Equal(["Broken", "Broken"], errors[..2]);
+    }
+
+    [Fact]
+    public void ARouteReplacedWithPointsOutsideTheRangeIsRoutedAgain()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 400, 0));
+        diagram.Connect(Link("ab", "a", "b"));
+        var routed = LinkOf(diagram).Route;
+
+        diagram.Replace(LinkOf(diagram) with { Route = [routed[0], new DiagramPoint(5e12, 25), routed[^1]] });
+
+        Assert.Equal(routed, LinkOf(diagram).Route);
     }
 
     [Fact]
@@ -467,6 +482,24 @@ public sealed class RoutingTests
             Assert.Empty(diagram.Snapshot.Links);
             diagram.Redo();
             Assert.True(LinkOf(diagram).Route.Length > 2);
+        });
+    }
+
+    [Fact]
+    public void BuiltInRoutesThatFollowLaterDoNotMarkASavedDiagramModified()
+    {
+        RunWith(static context =>
+        {
+            var diagram = new Diagram(Schema) { RouteLimit = TimeSpan.Zero };
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Add(Node("x", 200, -50) with { Bounds = new DiagramRect(200, -50, 50, 150) });
+            diagram.Connect(Link("ab", "a", "b"));
+            diagram.MarkSaved();
+
+            context.RunOne();
+
+            Assert.Equal((DiagramRouteState.Routed, false), (LinkOf(diagram).RouteState, diagram.IsModified));
         });
     }
 

@@ -8,6 +8,8 @@ internal sealed class SnapshotEditor
 {
     internal const double Limit = 1e12;
 
+    internal const double RouteLimit = 2 * Limit;
+
     private const double Tolerance = 1e-6;
 
     private static readonly DiagramThickness DefaultPadding = new DiagramGroupType { Name = string.Empty }.Padding;
@@ -43,6 +45,8 @@ internal sealed class SnapshotEditor
     private bool nodesChanged;
 
     private bool reorder;
+
+    private (string ParentId, HashSet<string> Above)? sharedAbove;
 
     public SnapshotEditor(DiagramSnapshot source, SchemaIndex index)
     {
@@ -267,7 +271,7 @@ internal sealed class SnapshotEditor
 
     private void Add(DiagramElement element, bool route)
     {
-        if (string.IsNullOrEmpty(element.Id))
+        if (String.IsNullOrEmpty(element.Id))
         {
             throw new DiagramException("An element has an empty ID.");
         }
@@ -369,7 +373,7 @@ internal sealed class SnapshotEditor
             case DiagramBox box:
                 ValidateBox(box);
                 var before = (DiagramBox)current;
-                if ((box is DiagramGroup) && !string.Equals(before.ParentId, box.ParentId, StringComparison.Ordinal))
+                if ((box is DiagramGroup) && !String.Equals(before.ParentId, box.ParentId, StringComparison.Ordinal))
                 {
                     CheckCycle(box);
                 }
@@ -377,7 +381,7 @@ internal sealed class SnapshotEditor
                 var boxParts = BoxParts(before, box);
                 Put(box);
                 Changes.MarkUpdated(box.Id, boxParts);
-                if (((boxParts & (DiagramChangeParts.Position | DiagramChangeParts.Size | DiagramChangeParts.Parent | DiagramChangeParts.Members)) != 0) || ((box is DiagramGroup) && !string.Equals(before.Type, box.Type, StringComparison.Ordinal)))
+                if (((boxParts & (DiagramChangeParts.Position | DiagramChangeParts.Size | DiagramChangeParts.Parent | DiagramChangeParts.Members)) != 0) || ((box is DiagramGroup) && !String.Equals(before.Type, box.Type, StringComparison.Ordinal)))
                 {
                     touched.Add(box.Id);
                     if (before.ParentId is { } formerParent)
@@ -405,8 +409,8 @@ internal sealed class SnapshotEditor
                 var old = (DiagramLink)current;
                 var linkParts = LinkParts(old, link);
                 var linkType = index.FindLinkType(link.Type);
-                var reroute = ((linkParts & DiagramChangeParts.Ends) != 0) || !string.Equals(old.Type, link.Type, StringComparison.Ordinal) ||
-                    (LinkRouting.FormOf(linkType, old.Look) != LinkRouting.FormOf(linkType, link.Look));
+                var reroute = ((linkParts & DiagramChangeParts.Ends) != 0) || !String.Equals(old.Type, link.Type, StringComparison.Ordinal) ||
+                    (LinkRouting.FormOf(linkType, old.Look) != LinkRouting.FormOf(linkType, link.Look)) || !link.Route.All(IsInRouteRange);
                 Put(reroute ? Track(RouteOf(link)) : link);
                 Changes.MarkUpdated(link.Id, reroute ? linkParts | DiagramChangeParts.Route : linkParts);
                 break;
@@ -419,7 +423,7 @@ internal sealed class SnapshotEditor
 
     public void Move(IEnumerable<string> ids, DiagramPoint offset)
     {
-        if (!double.IsFinite(offset.X) || !double.IsFinite(offset.Y))
+        if (!Double.IsFinite(offset.X) || !Double.IsFinite(offset.Y))
         {
             throw new DiagramException("The offset is not a pair of finite numbers.");
         }
@@ -503,7 +507,7 @@ internal sealed class SnapshotEditor
                 throw new DiagramException($"The element '{id}' is not a node or a group.");
             }
 
-            if (string.Equals(box.ParentId, parentId, StringComparison.Ordinal))
+            if (String.Equals(box.ParentId, parentId, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -577,12 +581,12 @@ internal sealed class SnapshotEditor
             parts |= DiagramChangeParts.Size;
         }
 
-        if (!string.Equals(before.ParentId, after.ParentId, StringComparison.Ordinal))
+        if (!String.Equals(before.ParentId, after.ParentId, StringComparison.Ordinal))
         {
             parts |= DiagramChangeParts.Parent;
         }
 
-        if (!string.Equals(before.Label, after.Label, StringComparison.Ordinal) || !SnapshotContent.SameTexts(before.Texts, after.Texts))
+        if (!String.Equals(before.Label, after.Label, StringComparison.Ordinal) || !SnapshotContent.SameTexts(before.Texts, after.Texts))
         {
             parts |= DiagramChangeParts.Label;
         }
@@ -634,7 +638,7 @@ internal sealed class SnapshotEditor
     private static DiagramChangeParts SharedItemParts(DiagramSharedItem before, DiagramSharedItem after)
     {
         var parts = DiagramChangeParts.None;
-        if (!string.Equals(before.Label, after.Label, StringComparison.Ordinal))
+        if (!String.Equals(before.Label, after.Label, StringComparison.Ordinal))
         {
             parts |= DiagramChangeParts.Label;
         }
@@ -649,10 +653,10 @@ internal sealed class SnapshotEditor
 
     private static DiagramRect Union(IEnumerable<DiagramRect> rects)
     {
-        var left = double.PositiveInfinity;
-        var top = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var bottom = double.NegativeInfinity;
+        var left = Double.PositiveInfinity;
+        var top = Double.PositiveInfinity;
+        var right = Double.NegativeInfinity;
+        var bottom = Double.NegativeInfinity;
         foreach (var rect in rects)
         {
             left = Math.Min(left, rect.X);
@@ -678,10 +682,10 @@ internal sealed class SnapshotEditor
             return null;
         }
 
-        var left = double.PositiveInfinity;
-        var top = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var bottom = double.NegativeInfinity;
+        var left = Double.PositiveInfinity;
+        var top = Double.PositiveInfinity;
+        var right = Double.NegativeInfinity;
+        var bottom = Double.NegativeInfinity;
         foreach (var id in ids)
         {
             var rect = ((DiagramBox)elements[id]).Bounds;
@@ -757,6 +761,7 @@ internal sealed class SnapshotEditor
         }
 
         groups.RemoveAll(x => targets.Contains(x.Id));
+        sharedAbove = null;
         links.RemoveAll(x => targets.Contains(x.Id));
         sharedItems.RemoveAll(x => targets.Contains(x.Id));
         foreach (var id in targets)
@@ -804,7 +809,7 @@ internal sealed class SnapshotEditor
         }
 
         bool LosesEnd(DiagramLinkEnd end) =>
-            string.Equals(end.ElementId, after.Id, StringComparison.Ordinal) && (end.PortId is not null) && lost.Contains(end.PortId);
+            String.Equals(end.ElementId, after.Id, StringComparison.Ordinal) && (end.PortId is not null) && lost.Contains(end.PortId);
     }
 
     private void ValidateData(DiagramElement element)
@@ -831,6 +836,8 @@ internal sealed class SnapshotEditor
         var top = Math.Max(bounds.Y, -Limit);
         return new DiagramRect(left, top, Math.Min(bounds.Right, Limit) - left, Math.Min(bounds.Bottom, Limit) - top);
     }
+
+    internal static bool IsInRouteRange(DiagramPoint point) => (Math.Abs(point.X) <= RouteLimit) && (Math.Abs(point.Y) <= RouteLimit);
 
     private static void CheckBounds(string id, DiagramRect bounds)
     {
@@ -871,15 +878,15 @@ internal sealed class SnapshotEditor
             return;
         }
 
-        var current = (string?)parentId;
-        for (var steps = 0; (current is not null) && (steps <= elements.Count); steps++)
+        if (sharedAbove is not { } shared || !String.Equals(shared.ParentId, parentId, StringComparison.Ordinal))
         {
-            if (string.Equals(current, box.Id, StringComparison.Ordinal))
-            {
-                throw new DiagramException($"The parents of '{box.Id}' form a cycle.");
-            }
+            shared = (parentId, Above(parentId));
+            sharedAbove = shared;
+        }
 
-            current = (elements.GetValueOrDefault(current) as DiagramBox)?.ParentId;
+        if (shared.Above.Contains(box.Id))
+        {
+            throw new DiagramException($"The parents of '{box.Id}' form a cycle.");
         }
     }
 
@@ -1009,7 +1016,7 @@ internal sealed class SnapshotEditor
     }
 
     private static DiagramLink Routed(DiagramLink link, DiagramRouteResult? result, ImmutableArray<DiagramPoint> simple) =>
-        (result is { Error: null, Points: { IsDefault: false, Length: >= 2 } points }) && points.All(static x => Double.IsFinite(x.X) && Double.IsFinite(x.Y))
+        (result is { Error: null, Points: { IsDefault: false, Length: >= 2 } points }) && points.All(IsInRouteRange)
             ? link with { Route = points, RouteState = DiagramRouteState.Routed, RouteError = null }
             : link with { Route = simple, RouteState = DiagramRouteState.Failed, RouteError = result?.Error ?? "The router returned no route." };
 
@@ -1199,10 +1206,10 @@ internal sealed class SnapshotEditor
             return false;
         }
 
-        var left = double.PositiveInfinity;
-        var top = double.PositiveInfinity;
-        var right = double.NegativeInfinity;
-        var bottom = double.NegativeInfinity;
+        var left = Double.PositiveInfinity;
+        var top = Double.PositiveInfinity;
+        var right = Double.NegativeInfinity;
+        var bottom = Double.NegativeInfinity;
         foreach (var point in route)
         {
             left = Math.Min(left, point.X);
@@ -1414,7 +1421,7 @@ internal sealed class SnapshotEditor
 
             var key = sibling(order[i]);
             var j = i + step;
-            while ((j >= 0) && (j < order.Count) && !string.Equals(sibling(order[j]), key, StringComparison.Ordinal))
+            while ((j >= 0) && (j < order.Count) && !String.Equals(sibling(order[j]), key, StringComparison.Ordinal))
             {
                 j += step;
             }
@@ -1548,6 +1555,11 @@ internal sealed class SnapshotEditor
                 break;
             case DiagramGroup group:
                 groups.Set((DiagramGroup)old, group);
+                if ((sharedAbove is { } shared) && shared.Above.Contains(group.Id) && !String.Equals(((DiagramGroup)old).ParentId, group.ParentId, StringComparison.Ordinal))
+                {
+                    sharedAbove = null;
+                }
+
                 break;
             case DiagramLink link:
                 links.Set((DiagramLink)old, link);

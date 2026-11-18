@@ -80,7 +80,7 @@ public sealed class ParityTests
         {
             foreach (var target in ends)
             {
-                if (string.Equals(source.ElementId, target.ElementId, StringComparison.Ordinal))
+                if (String.Equals(source.ElementId, target.ElementId, StringComparison.Ordinal))
                 {
                     continue;
                 }

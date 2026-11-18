@@ -38,11 +38,11 @@ public sealed partial class ViewToolbar
     [Inject]
     private IJSRuntime Runtime { get; set; } = default!;
 
-    private string ZoomText => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(Zoom * 100)}%");
+    private string ZoomText => String.Create(CultureInfo.InvariantCulture, $"{Math.Round(Zoom * 100)}%");
 
     private bool EditDisabled => (View is null) || View.ReadOnly;
 
-    private static string Percent(double level) => string.Create(CultureInfo.InvariantCulture, $"{level * 100}%");
+    private static string Percent(double level) => String.Create(CultureInfo.InvariantCulture, $"{level * 100}%");
 
     private static Color ColorOf(bool pressed) => pressed ? Color.Primary : Color.Default;
 

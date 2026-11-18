@@ -123,8 +123,8 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         var svg = XDocument.Parse(Encoding.UTF8.GetString(await DownloadAsync("SVG")));
         XNamespace ns = "http://www.w3.org/2000/svg";
         var root = svg.Root!;
-        var width = int.Parse(root.Attribute("width")!.Value, CultureInfo.InvariantCulture);
-        var height = int.Parse(root.Attribute("height")!.Value, CultureInfo.InvariantCulture);
+        var width = Int32.Parse(root.Attribute("width")!.Value, CultureInfo.InvariantCulture);
+        var height = Int32.Parse(root.Attribute("height")!.Value, CultureInfo.InvariantCulture);
         Assert.Equal($"0 0 {width} {height}", root.Attribute("viewBox")!.Value);
         Assert.Empty(root.Descendants(ns + "use"));
         Assert.Empty(root.Descendants(ns + "title"));

@@ -78,7 +78,14 @@ public sealed partial class MusselDiagramDragSource
         {
             if (attached is not null)
             {
-                await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                try
+                {
+                    await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
+                }
+                catch (JSException)
+                {
+                }
+
                 await attached.DisposeAsync().ConfigureAwait(true);
             }
 

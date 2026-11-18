@@ -403,17 +403,23 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
-    public async Task DisposingWhileTheScriptIsAttachingEndsQuietly()
+    public async Task DisposingWhileTheScriptIsAttachingReleasesWhatAttachReturns()
     {
-        var controller = module.SetupModule("attach", static _ => true);
-        var setCommands = controller.SetupVoid("setCommands", static _ => true);
+        var instance = new LateModule();
+        var runtime = new LateRuntime { Module = { Hold = "attach", Returned = instance } };
+        Services.AddSingleton<IJSRuntime>(runtime);
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await cut.WaitForAssertionAsync(() => Assert.Equal(["attach"], runtime.Module.Calls));
 
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
-        await cut.InvokeAsync(setCommands.SetVoidResult);
-        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+        await cut.InvokeAsync(runtime.Module.Resume.SetResult);
 
+        await cut.WaitForAssertionAsync(() => Assert.True(instance.Released));
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
         Assert.NotSame(Renderer.UnhandledException, ended);
+        Assert.Equal(["dispose"], instance.Calls);
+        Assert.True(runtime.Module.Released);
     }
 
     [Fact]
@@ -545,6 +551,38 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.DoesNotContain("attachSource", runtime.Module.Calls);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SourcesReleaseTheScriptEvenWhenItsDisposeFails(bool palette)
+    {
+        var instance = new LateModule { Fail = "dispose" };
+        var runtime = new LateRuntime { Module = { Hold = "attach", Returned = instance } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var view = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var dispose = palette ? RenderPalette() : RenderSource();
+        await view.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await view.WaitForAssertionAsync(() => Assert.Contains("attachSource", runtime.Module.Calls));
+
+        await dispose();
+
+        Assert.Contains("dispose", instance.Calls);
+        Assert.True(instance.Released);
+        Assert.True(runtime.Module.Released);
+
+        Func<Task> RenderPalette()
+        {
+            var cut = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, view.Instance));
+            return () => cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        }
+
+        Func<Task> RenderSource()
+        {
+            var cut = Render<MusselDiagramDragSource>(parameters => parameters.Add(p => p.View, view.Instance).Add(static p => p.Type, "service"));
+            return () => cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
+        }
+    }
+
     [Fact]
     public async Task AnExceptionInAHandlerCalledFromTheScriptReachesTheRenderer()
     {
@@ -556,6 +594,22 @@ public sealed class MusselDiagramViewTests : BunitContext
 
         Assert.Same(Renderer.UnhandledException, ended);
         Assert.Same(thrown, await Renderer.UnhandledException.ConfigureAwait(true));
+    }
+
+    [Fact]
+    public async Task CanceledHandlersAndLostConnectionsDoNotReachTheRenderer()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, CreateDiagram())
+            .Add(static p => p.SelectionChanged, static _ => throw new OperationCanceledException())
+            .Add(static p => p.Moving, static _ => throw new JSDisconnectedException("gone")));
+
+        var bridge = new DiagramScriptBridge(cut.Instance);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"])));
+        await Assert.ThrowsAsync<JSDisconnectedException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, cut.Instance.ScriptVersion, 0, null)));
+        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
+
+        Assert.NotSame(Renderer.UnhandledException, ended);
     }
 
     [Fact]

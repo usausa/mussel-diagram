@@ -30,13 +30,13 @@ internal static class LabelLayout
             var slot = slots[i];
             var text = i == 0 ? box.Label : box.Texts.GetValueOrDefault(slot.Name);
             var isDefault = false;
-            if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(slot.DefaultText))
+            if (String.IsNullOrEmpty(text) && !String.IsNullOrEmpty(slot.DefaultText))
             {
                 text = slot.DefaultText;
                 isDefault = true;
             }
 
-            if (string.IsNullOrEmpty(text) && !(editable && slot.Editable))
+            if (String.IsNullOrEmpty(text) && !(editable && slot.Editable))
             {
                 continue;
             }

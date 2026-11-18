@@ -87,7 +87,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 
 - An ID is a non-empty string, unique among the elements of the diagram. When the app gives none, the diagram makes one of 16 random hexadecimal digits. IDs never change and are looked up with `Find`. They are separate from labels
 - A type is a name in the schema. Elements of unregistered types are kept intact (Types and rules)
-- Positions and sizes are in world coordinates (CSS pixels at 100% zoom, y pointing down). Children are not relative to their parent. There is no origin or boundary
+- Positions and sizes are in world coordinates (CSS pixels at 100% zoom, y pointing down). Children are not relative to their parent. There is no origin, and boxes lie inside ±1e12 (Snapshots and changes)
 - The position is the top left corner. There is no rotation or flipping
 - Nodes and groups draw the icon of their type, or the `Icon` of the element when it has one (the ID of an imported icon, or an image URL). Importing is in Palette and AWS architecture diagrams
 - Nodes and groups can each have a `Look` (`DiagramBoxLook`) with a fill, a stroke color, a stroke width, a dash and a text color, and links a `Look` (`DiagramLinkLook`) with a color, a width, a dash, source and target markers and a line form. Items left null use the values of the type
@@ -165,6 +165,8 @@ Changing parents:
   - Boxes lie inside ±1e12 (their left, top, right and bottom edges), and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - A frame that a group takes from its contents (a growing group, a group sized to its contents, an overlay group, a new group from grouping) stops at the limits of ±1e12
+- In the view, a move, a resize or a drop that would put a box outside ±1e12 is rejected with `Permission`, and nothing is written
+- Route points lie inside ±2e12. A route with a point outside is not taken: a route read from JSON or given to `Replace` is routed again, and a router result with such a point fails
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
 | Event | When | Content |
@@ -426,7 +428,7 @@ C# and JS compute the port positions with the same formula from the type and the
 - The `Look` of an element takes priority over the look of its type, and render overrides (State overlays) take priority over the `Look`. The text color of an element takes priority over the colors of the slot formats
 - The SVG elements of an element have a class for its kind (`mussel-diagram-node` and so on) and an attribute with its type name, so CSS of the app can style each type
 - CSS draws each state: selected, hover, not allowed, connection candidate, drop target, awaiting commit, error, warning
-- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on an ancestor
+- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on an ancestor. All of these variables are declared in `:where`, so an app overrides them from any selector and in any file order
 - The selection frame, the handles, the guides, the preview lines and the marks of connection candidates keep the same size and width on screen at any zoom
 
 ### Updating
@@ -809,7 +811,7 @@ A user operation is shown by the browser first, then checked by C# and written t
 
 ### Commit flow
 
-On release (for a command, when it runs), JS sends the operation and the selection of that moment to C#, once. Except for connections (with the elements they add) and commands, it also sends the version of the element table the operation started from. The element table is the copy of the elements that C# gives JS, and its version grows by 1 each time C# sends the copy or a change. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order.
+On release (for a command, when it runs), JS sends the operation and the selection of that moment to C#, once. Except for connections (with the elements they add) and commands, it also sends the version of the element table the operation started from. The element table is the copy of the elements that C# gives JS, and its version grows by 1 each time C# sends the copy or a change. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order. An operation whose view is disposed while it waits for its turn is dropped: a commit is canceled, and a command, undo and redo do nothing.
 
 | Order | Step | Reason for rejecting |
 |---|---|---|
@@ -864,6 +866,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 
 - Until the rendering of the snapshot after the commit arrives from C#, JS keeps the provisional display (the moved elements, links with simple routes, the preview of a placed element, the written text). Each rendering carries its snapshot number, which tells JS which one has arrived
 - A rendering that arrives before the commit is sent does not undo its provisional display. Once the commit is sent, JS shows the renderings as they arrive, because the next one may be the commit's own; a rendering by another writer that arrives within that round trip can show the earlier state for a moment
+- When the answer tells the snapshot number of the commit before its rendering arrives, JS writes the provisional display back over the renderings until that one arrives. On Server the answer can come first, since renderings wait while too many are not acknowledged
 - Two overlaps within the round trip of a commit are left as they are, since the final state is right: in Wait, text committed just after another writer changed the same slot is rejected, and committing it again is rejected once more until that change reaches JS; and while a later commit of the same elements waits, the table changes of the earlier one put the selection back for a moment, so grabbing the element again in that moment starts its preview from there
 - The provisional display computes port positions and cut ends with the same formulas as C#. When the rendering arrives and replaces it, elements do not move; only the links change from the simple route to the route of C#
 - The result of an asynchronous router is applied when both ends and the nodes to avoid have not changed since the snapshot the computation started from. Otherwise it is thrown away and computed again (Link routes)
@@ -925,7 +928,7 @@ The diagram (`Diagram`) holds one undo history, which every view of the diagram 
 A `Skip` change is not undone. It is applied to the snapshots of every step in the history too, and steps that no longer change anything are removed.
 
 - An added element is added to the snapshots that have its parent and ends
-- A deleted element is removed from every snapshot, with its links and descendants
+- A deleted element is removed from every snapshot, with its links and the descendants the change deleted. A box inside it that the change did not delete moves to its parent after the change when the snapshot has that parent, or to the top
 - A changed element is changed, in what changed only, in the snapshots that have it. When a parent, an end or a member refers to an element that a snapshot does not have, that part is not applied there
 - Routes are not worked out again there. A link keeps its route while the route still meets its ends and goes around the nodes (as when it is taken from the change); otherwise it becomes provisional and is routed when undo or redo brings that snapshot back
 
@@ -961,7 +964,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 ### Keys
 
 - The view takes keys only when it has the focus (Selection and moving)
-- A key is written as modifiers (Ctrl, Alt, Shift) and a key joined with `+` (`Ctrl+Shift+Z`). On Mac, Ctrl means ⌘ and Alt means Option
+- A key is written as modifiers (Ctrl, Alt, Shift) and a key joined with `+` (`Ctrl+Shift+Z`). On Mac, Ctrl means ⌘ and Alt means Option. A key pressed with the Control key of a Mac or with the Windows key matches no command
 - A key belongs to one command only. The last assignment wins
 - JS matches the keys, and stops (`preventDefault`) and runs only the keys of enabled commands. The keys of disabled commands go to the browser
 - While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then. During a drag, the keys of all commands are stopped and do not run, and so are the keys of the commands other than the view and selection commands while a `Wait` commit awaits its answer

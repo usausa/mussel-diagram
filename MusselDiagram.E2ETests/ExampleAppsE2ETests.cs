@@ -588,7 +588,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     [Fact]
     public async Task TheErrorPageAndUnknownAddressesAnswer()
     {
-        Assert.SkipWhen(string.IsNullOrEmpty(app.BaseAddress), "Neither Edge nor Chrome was found, so the E2E test is skipped.");
+        Assert.SkipWhen(String.IsNullOrEmpty(app.BaseAddress), "Neither Edge nor Chrome was found, so the E2E test is skipped.");
         var token = Xunit.TestContext.Current.CancellationToken;
 
         using var error = await Client.GetAsync(new Uri($"{app.BaseAddress}error"), token);
@@ -677,7 +677,7 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     private static (double X, double Y) Translation(string? transform)
     {
         var match = Regex.Match(transform ?? string.Empty, @"translate\((?<x>[-0-9.e]+),(?<y>[-0-9.e]+)\)");
-        return (double.Parse(match.Groups["x"].Value, CultureInfo.InvariantCulture), double.Parse(match.Groups["y"].Value, CultureInfo.InvariantCulture));
+        return (Double.Parse(match.Groups["x"].Value, CultureInfo.InvariantCulture), Double.Parse(match.Groups["y"].Value, CultureInfo.InvariantCulture));
     }
 
     private async Task<(float X, float Y)> CenterAsync(string selector)

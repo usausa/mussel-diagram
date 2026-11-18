@@ -11,8 +11,7 @@ internal sealed class LateRuntime : IJSRuntime
     public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
         identifier == "import" ? new ValueTask<TValue>((Task<TValue>)(object)Import.Task) : default;
 
-    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
-        identifier == "import" ? new ValueTask<TValue>((Task<TValue>)(object)Import.Task) : default;
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => InvokeAsync<TValue>(identifier, args);
 }
 
 internal sealed class LateModule : IJSObjectReference
@@ -49,27 +48,13 @@ internal sealed class LateModule : IJSObjectReference
 
         if (identifier == Hold)
         {
-            return new ValueTask<TValue>(Resume.Task.ContinueWith(_ => typeof(TValue) == typeof(IJSObjectReference) ? (TValue)(object)(Returned ?? this) : default!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+            return new ValueTask<TValue>(Resume.Task.ContinueWith(_ => Result<TValue>(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
         }
 
-        return typeof(TValue) == typeof(IJSObjectReference) ? new ValueTask<TValue>((TValue)(object)(Returned ?? this)) : default;
+        return new ValueTask<TValue>(Result<TValue>());
     }
 
-    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
-    {
-        ObjectDisposedException.ThrowIf(Released, this);
-        Calls.Add(identifier);
-        Arguments.Add(args);
-        if (identifier == Fail)
-        {
-            return ValueTask.FromException<TValue>(new JSException("The call failed."));
-        }
+    public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => InvokeAsync<TValue>(identifier, args);
 
-        if (identifier == Hold)
-        {
-            return new ValueTask<TValue>(Resume.Task.ContinueWith(_ => typeof(TValue) == typeof(IJSObjectReference) ? (TValue)(object)(Returned ?? this) : default!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
-        }
-
-        return typeof(TValue) == typeof(IJSObjectReference) ? new ValueTask<TValue>((TValue)(object)(Returned ?? this)) : default;
-    }
+    private TValue Result<TValue>() => typeof(TValue) == typeof(IJSObjectReference) ? (TValue)(object)(Returned ?? this) : default!;
 }

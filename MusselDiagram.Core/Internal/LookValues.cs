@@ -33,7 +33,7 @@ internal static partial class LookValues
 
     public static bool IsColor(string value) => ColorPattern().IsMatch(value);
 
-    public static bool IsWidth(double value) => double.IsFinite(value) && (value >= 0);
+    public static bool IsWidth(double value) => Double.IsFinite(value) && (value >= 0);
 
     public static bool IsEmpty(DiagramBoxLook look) => look == EmptyBoxLook;
 
@@ -66,7 +66,7 @@ internal static partial class LookValues
     {
         foreach (var (item, text) in names)
         {
-            if (string.Equals(text, name, StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(text, name, StringComparison.OrdinalIgnoreCase))
             {
                 value = item;
                 return true;

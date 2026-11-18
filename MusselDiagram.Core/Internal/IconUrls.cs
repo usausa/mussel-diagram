@@ -26,6 +26,6 @@ internal static class IconUrls
         }
 
         var prefix = value[..colon];
-        return schema.IconSets.Any(x => string.Equals(x.Prefix, prefix, StringComparison.Ordinal));
+        return schema.IconSets.Any(x => String.Equals(x.Prefix, prefix, StringComparison.Ordinal));
     }
 }

@@ -293,6 +293,45 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         return (box.X, box.Y);
     }
 
+    [Fact]
+    public async Task ACommandThatWaitedSendsTheCurrentSelectionAfterIt()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                window.calls = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if ((name === 'ExecuteCommandAsync') || (name === 'OnSelectionChangedAsync')) {
+                        window.calls.push(name + ' ' + JSON.stringify(args[args.length - 1]));
+                    }
+                    if (name !== 'CommitMoveAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => resolve(invoke.call(this, name, ...args))));
+                };
+            }
+            """);
+
+        await DragAsync(250, 170, 60, 0, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await page.Keyboard.PressAsync("Control+L");
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 190);
+        await page.WaitForFunctionAsync("() => window.calls.some((x) => x.startsWith('OnSelectionChangedAsync') && x.includes('rect'))");
+        await page.EvaluateAsync("() => window.heldMoves[0]()");
+        await page.WaitForFunctionAsync("() => window.calls.some((x) => x.startsWith('ExecuteCommandAsync'))");
+
+        await page.WaitForFunctionAsync(
+            "() => window.calls[window.calls.length - 1].startsWith('OnSelectionChangedAsync') && window.calls[window.calls.length - 1].includes('rect')",
+            null,
+            new() { Timeout = 5000 });
+    }
+
     private async Task DragAsync(float x, float y, float dx, float dy, Func<Task>? beforeRelease)
     {
         var page = opened!.Page;

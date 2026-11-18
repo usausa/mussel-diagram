@@ -190,6 +190,68 @@ public sealed class ViewConformanceTests : BunitContext
     }
 
     [Fact]
+    public async Task ACommitThatWaitsWhileItsViewIsDisposedWritesNothing()
+    {
+        var diagram = CreateDiagram();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, diagram)
+            .Add(p => p.Moving, _ => release.Task));
+        var second = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var bounds = ((DiagramBox)diagram.Find("p3")!).Bounds;
+
+        var waiting = first.InvokeAsync(() => first.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, first.Instance.ScriptVersion, 0));
+        var queued = second.InvokeAsync(() => second.Instance.CommitMoveAsync(["p3"], new DiagramPoint(10, 0), false, null, null, second.Instance.ScriptVersion, 0));
+        await second.InvokeAsync(() => second.Instance.DisposeAsync().AsTask());
+        release.SetResult();
+
+        Assert.True((await waiting.ConfigureAwait(true)).Accepted);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+        Assert.Equal(bounds, ((DiagramBox)diagram.Find("p3")!).Bounds);
+    }
+
+    [Fact]
+    public async Task ACommandThatWaitsWhileItsViewIsDisposedDoesNothing()
+    {
+        var diagram = CreateDiagram();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, diagram)
+            .Add(p => p.Moving, _ => release.Task));
+        var second = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await second.InvokeAsync(() => second.Instance.SelectAsync(["p3"]).AsTask());
+
+        var waiting = first.InvokeAsync(() => first.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, first.Instance.ScriptVersion, 0));
+        var queued = second.InvokeAsync(() => second.Instance.Commands.ExecuteAsync(DiagramCommands.Delete));
+        await second.InvokeAsync(() => second.Instance.DisposeAsync().AsTask());
+        release.SetResult();
+        await waiting.ConfigureAwait(true);
+        await queued.ConfigureAwait(true);
+
+        Assert.True(diagram.Snapshot.Contains("p3"));
+    }
+
+    [Fact]
+    public async Task AnUndoThatWaitsWhileItsViewIsDisposedDoesNothing()
+    {
+        var diagram = CreateDiagram();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, diagram)
+            .Add(p => p.Moving, _ => release.Task));
+        var second = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+
+        var waiting = first.InvokeAsync(() => first.Instance.CommitMoveAsync(["p1"], new DiagramPoint(10, 0), false, null, null, first.Instance.ScriptVersion, 0));
+        var queued = second.InvokeAsync(() => second.Instance.Commands.ExecuteAsync(DiagramCommands.Undo));
+        await second.InvokeAsync(() => second.Instance.DisposeAsync().AsTask());
+        release.SetResult();
+        await waiting.ConfigureAwait(true);
+        await queued.ConfigureAwait(true);
+
+        Assert.Equal(new DiagramRect(10, 400, 120, 60), ((DiagramBox)diagram.Find("p1")!).Bounds);
+    }
+
+    [Fact]
     public async Task CommitsActOnTheSelectionTheUserSaw()
     {
         var diagram = CreateDiagram();

@@ -159,19 +159,61 @@ internal sealed class DiagramHistory
     private static void MoveToNewParents(SnapshotEditor editor, DiagramSnapshot target, DiagramSnapshot after, ChangeSet changes)
     {
         var deleted = changes.Deleted.ToHashSet(StringComparer.Ordinal);
-        foreach (var (id, parts) in changes.Updated)
+        var top = new List<string>();
+        var inside = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var node in target.Nodes)
         {
-            if (((parts & DiagramChangeParts.Parent) == 0) || !target.Contains(id) || (after.Find(id) is not DiagramBox moved))
-            {
-                continue;
-            }
+            Collect(node);
+        }
 
+        foreach (var group in target.Groups)
+        {
+            Collect(group);
+        }
+
+        editor.SetParent(top, null);
+        foreach (var (parent, ids) in inside)
+        {
             try
             {
-                editor.SetParent([id], (moved.ParentId is { } parent) && target.Contains(parent) && !deleted.Contains(parent) ? parent : null);
+                editor.SetParent(ids, parent);
             }
             catch (DiagramException)
             {
+                foreach (var id in ids)
+                {
+                    try
+                    {
+                        editor.SetParent([id], parent);
+                    }
+                    catch (DiagramException)
+                    {
+                        editor.SetParent([id], null);
+                    }
+                }
+            }
+        }
+
+        void Collect(DiagramBox box)
+        {
+            if ((box.ParentId is not { } former) || !deleted.Contains(former) || deleted.Contains(box.Id))
+            {
+                return;
+            }
+
+            if ((after.Find(box.Id) is DiagramBox { ParentId: { } parent }) && target.Contains(parent) && !deleted.Contains(parent))
+            {
+                if (!inside.TryGetValue(parent, out var ids))
+                {
+                    ids = [];
+                    inside[parent] = ids;
+                }
+
+                ids.Add(box.Id);
+            }
+            else
+            {
+                top.Add(box.Id);
             }
         }
     }
@@ -190,7 +232,7 @@ internal sealed class DiagramHistory
         foreach (var id in changes.Updated.Keys)
         {
             if ((target.Find(id) is DiagramLink mine) && (after.Find(id) is DiagramLink theirs) &&
-                (mine.Source == theirs.Source) && (mine.Target == theirs.Target) && string.Equals(mine.Type, theirs.Type, StringComparison.Ordinal) &&
+                (mine.Source == theirs.Source) && (mine.Target == theirs.Target) && String.Equals(mine.Type, theirs.Type, StringComparison.Ordinal) &&
                 SameForm(mine, theirs, index) && SameEnd(mine.Source.ElementId) && SameEnd(mine.Target.ElementId))
             {
                 patched[id] = mine with { Route = theirs.Route, RouteState = theirs.RouteState, RouteError = theirs.RouteError };

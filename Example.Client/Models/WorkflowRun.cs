@@ -28,7 +28,7 @@ public sealed class WorkflowRun
             steps.Add(id);
             foreach (var link in snapshot.GetLinks(id, DiagramLinkDirection.Out))
             {
-                if (string.Equals(link.Type, "ai", StringComparison.Ordinal))
+                if (String.Equals(link.Type, "ai", StringComparison.Ordinal))
                 {
                     if (!attachments.TryGetValue(id, out var list))
                     {
@@ -40,7 +40,7 @@ public sealed class WorkflowRun
                     continue;
                 }
 
-                if (string.Equals(node.Type, "branch", StringComparison.Ordinal) && !string.Equals(link.Source.PortId, "true", StringComparison.Ordinal))
+                if (String.Equals(node.Type, "branch", StringComparison.Ordinal) && !String.Equals(link.Source.PortId, "true", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -110,7 +110,7 @@ public sealed class WorkflowRun
         {
             if (steps.IndexOf(source) < Step)
             {
-                result[id] = new DiagramOverlay { States = ["flowed"], Badges = [new DiagramBadge { Text = string.Create(CultureInfo.InvariantCulture, $"{count} 件") }] };
+                result[id] = new DiagramOverlay { States = ["flowed"], Badges = [new DiagramBadge { Text = String.Create(CultureInfo.InvariantCulture, $"{count} 件") }] };
             }
         }
 

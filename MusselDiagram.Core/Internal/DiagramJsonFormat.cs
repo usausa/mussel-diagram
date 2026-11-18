@@ -74,7 +74,7 @@ internal static class DiagramJsonFormat
 
     private static DiagramJsonDocument Check(DiagramJsonDocument? document)
     {
-        if ((document is null) || !string.Equals(document.Format, FormatName, StringComparison.Ordinal))
+        if ((document is null) || !String.Equals(document.Format, FormatName, StringComparison.Ordinal))
         {
             throw new DiagramException("The JSON is not a diagram.");
         }
@@ -115,7 +115,7 @@ internal static class DiagramJsonFormat
             Width = overlay ? null : box.Bounds.Width,
             Height = overlay ? null : box.Bounds.Height,
             Parent = overlay ? null : box.ParentId,
-            Label = string.IsNullOrEmpty(box.Label) ? null : box.Label,
+            Label = String.IsNullOrEmpty(box.Label) ? null : box.Label,
             Texts = box.Texts.IsEmpty ? null : box.Texts.OrderBy(static x => x.Key, StringComparer.Ordinal).ToDictionary(static x => x.Key, static x => (string?)x.Value, StringComparer.Ordinal),
             Icon = box.Icon,
             Look = WriteLook(box.Look),
@@ -143,7 +143,7 @@ internal static class DiagramJsonFormat
     {
         Id = item.Id,
         Type = item.Type,
-        Label = string.IsNullOrEmpty(item.Label) ? null : item.Label,
+        Label = String.IsNullOrEmpty(item.Label) ? null : item.Label,
         Data = WriteData(item, index)
     };
 
@@ -333,7 +333,7 @@ internal static class DiagramJsonFormat
             {
                 foreach (var (flag, text) in PermissionNames)
                 {
-                    if (string.Equals(name, text, StringComparison.OrdinalIgnoreCase))
+                    if (String.Equals(name, text, StringComparison.OrdinalIgnoreCase))
                     {
                         value |= flag;
                     }
@@ -353,7 +353,7 @@ internal static class DiagramJsonFormat
             var builder = ImmutableArray.CreateBuilder<DiagramPoint>(route.Count);
             foreach (var point in route)
             {
-                if ((point is not { Count: 2 }) || !double.IsFinite(point[0]) || !double.IsFinite(point[1]))
+                if ((point is not { Count: 2 }) || !SnapshotEditor.IsInRouteRange(new DiagramPoint(point[0], point[1])))
                 {
                     return [];
                 }
@@ -364,7 +364,7 @@ internal static class DiagramJsonFormat
             return builder.MoveToImmutable();
         }
 
-        private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+        private static string? NullIfEmpty(string? value) => String.IsNullOrEmpty(value) ? null : value;
 
         private static string? ReadColor(string? color, ref bool invalid)
         {
@@ -454,7 +454,7 @@ internal static class DiagramJsonFormat
             return LookValues.IsEmpty(look) ? null : look;
         }
 
-        private static double Finite(double? value) => (value is { } number) && double.IsFinite(number) ? number : 0;
+        private static double Finite(double? value) => (value is { } number) && Double.IsFinite(number) ? number : 0;
 
         private static DiagramRect MoveInside(DiagramRect bounds, DiagramSize size)
         {
@@ -480,7 +480,7 @@ internal static class DiagramJsonFormat
 
         private string? Claim(string? id)
         {
-            var value = string.IsNullOrEmpty(id) ? DiagramIds.Create() : id;
+            var value = String.IsNullOrEmpty(id) ? DiagramIds.Create() : id;
             if (seen.Add(value))
             {
                 return value;
@@ -493,9 +493,9 @@ internal static class DiagramJsonFormat
         private DiagramBox ReadBox(DiagramJsonBox json, string id, bool isGroup)
         {
             var type = json.Type ?? string.Empty;
-            var kind = isGroup && string.Equals(json.Kind, "overlay", StringComparison.OrdinalIgnoreCase) ? DiagramGroupKind.Overlay : DiagramGroupKind.Tree;
+            var kind = isGroup && String.Equals(json.Kind, "overlay", StringComparison.OrdinalIgnoreCase) ? DiagramGroupKind.Overlay : DiagramGroupKind.Tree;
             DiagramBox box = isGroup
-                ? new DiagramGroup { Id = id, Type = type, Kind = kind, MemberIds = kind == DiagramGroupKind.Overlay ? [.. (json.Members ?? []).Where(static x => !string.IsNullOrEmpty(x))] : [] }
+                ? new DiagramGroup { Id = id, Type = type, Kind = kind, MemberIds = kind == DiagramGroupKind.Overlay ? [.. (json.Members ?? []).Where(static x => !String.IsNullOrEmpty(x))] : [] }
                 : new DiagramNode { Id = id, Type = type };
             if (isGroup && (index.FindGroupType(type) is { } groupType) && (groupType.Kind != kind))
             {

@@ -131,7 +131,7 @@ public static class ElectricDiagrams
     };
 
     public static double WidthOf(string type, int feeders) =>
-        feeders * (string.Equals(type, "hv-bus", StringComparison.Ordinal) ? HighVoltageSpacing : LowVoltageSpacing);
+        feeders * (String.Equals(type, "hv-bus", StringComparison.Ordinal) ? HighVoltageSpacing : LowVoltageSpacing);
 
     public static bool IsSwitch(string type) => type is "pas" or "ds" or "vcb" or "mccb";
 
@@ -224,7 +224,7 @@ public static class ElectricDiagrams
                 }
                 else if ((status == InspectionStatus.Due) && (data.NextInspection is { } next))
                 {
-                    badges.Add(new DiagramBadge { Kind = InspectionBadge, Text = string.Create(CultureInfo.InvariantCulture, $"点検 {next:M/d}"), Tone = DiagramBadgeTone.Warning });
+                    badges.Add(new DiagramBadge { Kind = InspectionBadge, Text = String.Create(CultureInfo.InvariantCulture, $"点検 {next:M/d}"), Tone = DiagramBadgeTone.Warning });
                 }
             }
 
@@ -247,7 +247,7 @@ public static class ElectricDiagrams
     {
         var issues = new List<DiagramIssue>();
         issues.AddRange(snapshot.GetUnreachable(Schema).Select(static x => new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, "受電点からつながっていません") { ElementIds = [x.Id] }));
-        foreach (var transformer in snapshot.Nodes.Where(static x => string.Equals(x.Type, "transformer", StringComparison.Ordinal)))
+        foreach (var transformer in snapshot.Nodes.Where(static x => String.Equals(x.Type, "transformer", StringComparison.Ordinal)))
         {
             if (transformer.Data is not EquipmentData { Capacity: { } capacity })
             {
@@ -257,7 +257,7 @@ public static class ElectricDiagrams
             var load = Downstream(snapshot, transformer.Id).Sum(static x => x is { Type: "motor" or "lighting", Data: EquipmentData { Capacity: { } value } } ? value : 0);
             if (load > capacity)
             {
-                issues.Add(new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, string.Create(CultureInfo.InvariantCulture, $"負荷の合計 {load} kVA が容量 {capacity} kVA を超えています")) { ElementIds = [transformer.Id] });
+                issues.Add(new DiagramIssue(DiagramIssueSeverity.Warning, DiagramIssueKind.App, String.Create(CultureInfo.InvariantCulture, $"負荷の合計 {load} kVA が容量 {capacity} kVA を超えています")) { ElementIds = [transformer.Id] });
             }
         }
 
@@ -338,7 +338,7 @@ public static class ElectricDiagrams
     private static ImmutableArray<DiagramPortDefinition> BusPorts(BusData bus, string kind) =>
         [
             In(kind) with { MaxLinks = null },
-            .. Enumerable.Range(0, bus.Feeders).Select(i => Out(kind) with { Id = string.Create(CultureInfo.InvariantCulture, $"f{i + 1}"), Ratio = (i + 0.5) / bus.Feeders })
+            .. Enumerable.Range(0, bus.Feeders).Select(i => Out(kind) with { Id = String.Create(CultureInfo.InvariantCulture, $"f{i + 1}"), Ratio = (i + 0.5) / bus.Feeders })
         ];
 
     private static DiagramPortDefinition In(string kind) =>

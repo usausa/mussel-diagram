@@ -65,8 +65,8 @@ public sealed class DiagramSnapshot
         var builder = ImmutableArray.CreateBuilder<DiagramLink>();
         foreach (var link in links)
         {
-            var outgoing = string.Equals(link.Source.ElementId, id, StringComparison.Ordinal) && ((portId is null) || string.Equals(link.Source.PortId, portId, StringComparison.Ordinal));
-            var incoming = string.Equals(link.Target.ElementId, id, StringComparison.Ordinal) && ((portId is null) || string.Equals(link.Target.PortId, portId, StringComparison.Ordinal));
+            var outgoing = String.Equals(link.Source.ElementId, id, StringComparison.Ordinal) && ((portId is null) || String.Equals(link.Source.PortId, portId, StringComparison.Ordinal));
+            var incoming = String.Equals(link.Target.ElementId, id, StringComparison.Ordinal) && ((portId is null) || String.Equals(link.Target.PortId, portId, StringComparison.Ordinal));
             var matched = direction switch
             {
                 DiagramLinkDirection.Out => outgoing,
@@ -205,7 +205,7 @@ public sealed class DiagramSnapshot
         foreach (var link in links)
         {
             var (from, to) = forward ? (link.Source.ElementId, link.Target.ElementId) : (link.Target.ElementId, link.Source.ElementId);
-            if (string.Equals(from, id, StringComparison.Ordinal) && seen.Add(to) && (Find(to) is DiagramBox box))
+            if (String.Equals(from, id, StringComparison.Ordinal) && seen.Add(to) && (Find(to) is DiagramBox box))
             {
                 builder.Add(box);
             }
@@ -256,7 +256,7 @@ public sealed class DiagramSnapshot
             foreach (var link in snapshot.Links)
             {
                 Add(LinksByElement, link.Source.ElementId, link);
-                if (!string.Equals(link.Source.ElementId, link.Target.ElementId, StringComparison.Ordinal))
+                if (!String.Equals(link.Source.ElementId, link.Target.ElementId, StringComparison.Ordinal))
                 {
                     Add(LinksByElement, link.Target.ElementId, link);
                 }

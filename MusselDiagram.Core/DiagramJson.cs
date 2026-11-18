@@ -18,14 +18,17 @@ public static class DiagramJson
         DiagramJsonFormat.WriteAsync(stream, snapshot, SchemaIndex.For(schema), cancellationToken);
 
     public static DiagramLoadResult Read(Stream stream, DiagramSchema schema) =>
-        Read(DiagramJsonFormat.Parse(stream), schema, Diagram.CanDefer);
+        Read(stream, schema, Diagram.CanDefer, Diagram.DefaultRouteLimit);
 
     public static async Task<DiagramLoadResult> ReadAsync(Stream stream, DiagramSchema schema, CancellationToken cancellationToken = default)
     {
         var defer = Diagram.CanDefer;
-        return Read(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(false), schema, defer);
+        return Read(await DiagramJsonFormat.ParseAsync(stream, cancellationToken).ConfigureAwait(false), schema, defer, Diagram.DefaultRouteLimit);
     }
 
-    private static DiagramLoadResult Read(DiagramJsonDocument document, DiagramSchema schema, bool defer) =>
-        DiagramJsonFormat.Read(document, SchemaIndex.For(schema), 0, waitForRoutes: !defer, skipAppRouter: defer);
+    internal static DiagramLoadResult Read(Stream stream, DiagramSchema schema, bool defer, TimeSpan routeLimit) =>
+        Read(DiagramJsonFormat.Parse(stream), schema, defer, routeLimit);
+
+    private static DiagramLoadResult Read(DiagramJsonDocument document, DiagramSchema schema, bool defer, TimeSpan routeLimit) =>
+        DiagramJsonFormat.Read(document, SchemaIndex.For(schema), 0, defer ? new RouteBudget(routeLimit) : null, waitForRoutes: !defer, skipAppRouter: defer);
 }

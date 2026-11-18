@@ -409,8 +409,8 @@ export function fitView(bounds, width, height, margin, minZoom, maxZoom) {
     };
 }
 
-export function roundZoom(view, point) {
-    const zoom = Math.round(view.zoom * 100) / 100;
+export function roundZoom(view, point, minZoom, maxZoom) {
+    const zoom = Math.min(maxZoom, Math.max(minZoom, Math.round(view.zoom * 100) / 100));
     return zoomAround(view, zoom / view.zoom, point);
 }
 
@@ -1121,26 +1121,27 @@ export function changedSelection(ids, sent) {
     return sent && (list.length === sent.size) && list.every((id) => sent.has(id)) ? null : list;
 }
 
-export function writeAttribute(written, element, attribute, value, saved = null) {
-    if (written) {
-        let entry = written.get(element);
-        if (!entry) {
-            entry = new Map();
-            written.set(element, entry);
-        }
-        const previous = entry.get(attribute);
-        if ((previous !== undefined) && (element.getAttribute(attribute) !== previous)) {
-            saved?.get(element)?.set(attribute, element.getAttribute(attribute));
-        }
-        entry.set(attribute, value);
+export function writeAttribute(written, element, attribute, value, saved) {
+    let entry = written.get(element);
+    if (!entry) {
+        entry = new Map();
+        written.set(element, entry);
     }
+    const previous = entry.has(attribute) ? entry.get(attribute) : saved.get(element)?.get(attribute);
+    if (previous !== undefined) {
+        const shown = element.getAttribute(attribute);
+        if (shown !== previous) {
+            saved.get(element)?.set(attribute, shown);
+        }
+    }
+    entry.set(attribute, value);
     element.setAttribute(attribute, value);
 }
 
-export function restore(saved, written = null) {
+export function restore(saved, written) {
     for (const [element, value] of saved) {
-        const current = written?.get(element);
-        if (written && (!current || changedSince(element, value, current))) {
+        const current = written.get(element);
+        if (!current || changedSince(element, value, current)) {
             continue;
         }
         for (const [attribute, old] of value) {
@@ -1153,9 +1154,9 @@ export function restore(saved, written = null) {
     }
 }
 
-export function keepWritten(entry, dragged = null) {
+export function keepWritten(entry, later) {
     for (const [element, attributes] of entry.written) {
-        if (dragged?.has(element)) {
+        if (later.has(element)) {
             continue;
         }
         let rendered = false;
@@ -1177,9 +1178,47 @@ export function keepWritten(entry, dragged = null) {
     }
     for (const pair of entry.texts ?? []) {
         const written = entry.writtenTexts.get(pair[0]);
-        if (pair[0].nodeValue !== written) {
+        if (!later.has(pair[0]) && (pair[0].nodeValue !== written)) {
             pair[1] = pair[0].nodeValue;
             pair[0].nodeValue = written;
+        }
+    }
+}
+
+export function revertSaved(saved, entry) {
+    for (const [element, attributes] of entry.written) {
+        const current = saved.get(element);
+        for (const [attribute, value] of current ? attributes : []) {
+            if (current.get(attribute) === value) {
+                current.set(attribute, entry.saved.get(element).get(attribute));
+            }
+        }
+    }
+}
+
+export function firstById(elements, key) {
+    const found = new Map();
+    for (const element of elements) {
+        const id = element.dataset[key];
+        if (!found.has(id)) {
+            found.set(id, element);
+        }
+    }
+    return found;
+}
+
+export function settleWritten(entries, dragged) {
+    const later = new Set(dragged?.keys());
+    for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (!entry.sent || (entry.version !== null)) {
+            keepWritten(entry, later);
+        }
+        for (const element of entry.written.keys()) {
+            later.add(element);
+        }
+        for (const node of entry.writtenTexts.keys()) {
+            later.add(node);
         }
     }
 }
@@ -1839,7 +1878,7 @@ class DiagramController {
         const delta = wheelDelta(event, this.size.height);
         if (action === 'zoom') {
             this.zoomBy(Math.exp(-delta.y * WHEEL_ZOOM_RATE), this.point(event));
-            if (this.drag || this.external) {
+            if (this.drag || this.press || this.pan || this.external) {
                 this.foldGesture(false);
             }
         } else {
@@ -1871,7 +1910,7 @@ class DiagramController {
         const { k, x, y, point } = this.gesture;
         this.gesture = null;
         const view = { zoom: this.view.zoom * k, x: (this.view.x * k) + x, y: (this.view.y * k) + y };
-        this.view = round ? roundZoom(view, point) : view;
+        this.view = round ? roundZoom(view, point, this.options.minZoom, this.options.maxZoom) : view;
         this.unrounded = round ? null : point;
         this.stage.style.transform = '';
         this.applyView();
@@ -1886,7 +1925,7 @@ class DiagramController {
         clearTimeout(this.settleTimer);
         this.foldGesture();
         if (this.unrounded) {
-            this.view = roundZoom(this.view, this.unrounded);
+            this.view = roundZoom(this.view, this.unrounded, this.options.minZoom, this.options.maxZoom);
             this.unrounded = null;
             this.applyView();
         }
@@ -2387,7 +2426,8 @@ class DiagramController {
         }
         if ((drag?.kind === 'move') && !drag.live) {
             const { bounds } = drag;
-            frames.push(svg('rect', { class: 'mussel-diagram-drag-frame', x: bounds.x + drag.dx, y: bounds.y + drag.dy, width: bounds.w, height: bounds.h }));
+            drag.frame = svg('rect', { class: 'mussel-diagram-drag-frame', x: bounds.x + drag.dx, y: bounds.y + drag.dy, width: bounds.w, height: bounds.h });
+            frames.push(drag.frame);
         }
         this.layers.selection.replaceChildren(...frames);
         this.layers.handles.replaceChildren(...handles);
@@ -2678,7 +2718,9 @@ class DiagramController {
         this.markSplit(drag, null);
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
-        restore(drag.saved ?? new Map(), drag.written ?? null);
+        if (drag.written) {
+            restore(drag.saved, drag.written);
+        }
         this.drag = null;
         this.endDragState(drag);
         this.clearMarks();
@@ -2844,27 +2886,28 @@ class DiagramController {
             paths: new Map(),
             target: undefined,
         };
+        const elements = firstById(this.canvas.querySelectorAll('[data-id]'), 'id');
+        const badgeSets = firstById(this.badgeLayer?.querySelectorAll(':scope > [data-for]') ?? [], 'for');
         for (const id of moving) {
-            const element = this.element(id);
+            const element = elements.get(id);
             if (element) {
                 this.drag.elements.set(id, element);
                 this.save(this.drag.saved, element, 'transform');
             }
-            const set = this.badgeSet(id);
+            const set = badgeSets.get(id);
             if (set) {
                 this.drag.badgeSets.set(id, set);
                 this.save(this.drag.saved, set, 'transform');
             }
         }
         for (const link of links) {
-            this.drag.paths.set(link.id, this.linkPaths(link.id, this.drag.saved));
+            this.drag.paths.set(link.id, this.linkPaths(link.id, this.drag.saved, elements.get(link.id) ?? null, badgeSets.get(link.id) ?? null));
         }
         return true;
     }
 
-    linkPaths(id, saved) {
-        const element = this.element(id);
-        const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line'), badges: this.badgeSet(id) };
+    linkPaths(id, saved, element = this.element(id), badges = this.badgeSet(id)) {
+        const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line'), badges };
         this.save(saved, paths.hit, 'd');
         this.save(saved, paths.line, 'd');
         this.save(saved, paths.badges, 'transform');
@@ -2902,7 +2945,12 @@ class DiagramController {
         this.updateDropTarget(drag);
         this.updateSplit(drag);
         this.drawGuides(drag, { x: drag.bounds.x + dx, y: drag.bounds.y + dy, w: drag.bounds.w, h: drag.bounds.h });
-        this.drawSelection();
+        if (drag.live || !drag.frame) {
+            this.drawSelection();
+        } else {
+            drag.frame.setAttribute('x', drag.bounds.x + dx);
+            drag.frame.setAttribute('y', drag.bounds.y + dy);
+        }
     }
 
     updateSplit(drag) {
@@ -2973,7 +3021,7 @@ class DiagramController {
         }
     }
 
-    drawLink(link, source, target, paths, written = null, saved = null) {
+    drawLink(link, source, target, paths, written, saved) {
         if (!source || !target || !paths) {
             return;
         }
@@ -3140,7 +3188,6 @@ class DiagramController {
             check,
             targets: this.connectionTargets(check),
             target: null,
-            saved: new Map(),
         };
         this.root.classList.add('mussel-diagram-connecting');
         this.revealPorts(this.drag);
@@ -3234,7 +3281,6 @@ class DiagramController {
             targets: this.connectionTargets(check),
             target: null,
             element,
-            saved: new Map(),
             startVersion: this.table.version,
         };
         this.mark(element, 'data-reconnecting');
@@ -3760,6 +3806,9 @@ class DiagramController {
         const reverted = this.pending.splice(index);
         for (const item of reverted.reverse()) {
             restore(item.saved, item.written);
+            if (this.drag?.saved) {
+                revertSaved(this.drag.saved, item);
+            }
             for (const [id, box] of item.previous) {
                 if (this.table.boxes.has(id) && (this.table.boxes.get(id) === item.boxes.get(id))) {
                     this.table.boxes.set(id, box);
@@ -3798,11 +3847,7 @@ class DiagramController {
             entry.reconnecting?.removeAttribute('data-reconnecting');
         }
         this.pending = kept;
-        for (const entry of kept) {
-            if (!entry.sent || (entry.version !== null)) {
-                keepWritten(entry, this.drag?.written ?? null);
-            }
-        }
+        settleWritten(kept, this.drag?.written);
     }
 
     showReason(text, point, sticky) {
@@ -3968,6 +4013,10 @@ class DiagramController {
             await this.whenIdle();
             if (this.commandFor(command.name)?.enabled) {
                 await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
+                const current = this.selectionArgument([...this.selection, ...(this.awaitedSelection ?? [])]);
+                if (current) {
+                    await this.dotnet?.invokeMethodAsync('OnSelectionChangedAsync', current);
+                }
             }
         }).catch(() => { });
         this.commandChain = run;

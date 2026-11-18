@@ -22,5 +22,5 @@ public static class SettingEndpoints
         Results.LocalRedirect(IsLocal(redirect) ? redirect : "/");
 
     private static bool IsLocal([NotNullWhen(true)] string? url) =>
-        (url is ['/'] or ['/', not ('/' or '\\'), ..]) && !url.Any(char.IsControl);
+        (url is ['/'] or ['/', not ('/' or '\\'), ..]) && !url.Any(Char.IsControl);
 }

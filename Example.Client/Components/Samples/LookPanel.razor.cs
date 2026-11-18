@@ -92,21 +92,21 @@ public sealed partial class LookPanel : IDisposable
 
     private static T? ValueOf<T>(string? code, (T Value, string Text)[] items)
         where T : struct =>
-        int.TryParse(code, NumberStyles.None, CultureInfo.InvariantCulture, out var index) && (index < items.Length) ? items[index].Value : null;
+        Int32.TryParse(code, NumberStyles.None, CultureInfo.InvariantCulture, out var index) && (index < items.Length) ? items[index].Value : null;
 
     private static string WidthOf(double? width) => width?.ToString(CultureInfo.InvariantCulture) ?? Keep;
 
     private static double? ReadWidth(string? value) =>
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var width) ? width : null;
+        Double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var width) ? width : null;
 
-    private static string? ReadColor(string? value) => string.IsNullOrEmpty(value) ? null : value;
+    private static string? ReadColor(string? value) => String.IsNullOrEmpty(value) ? null : value;
 
     private static string? ColorOf(string? fill) => HasAlpha(fill) ? fill[..7] : fill;
 
     private static string AlphaOf(string? fill) => HasAlpha(fill) ? fill[7..].ToUpperInvariant() : Keep;
 
     private static string? WithAlpha(string? color, string? alpha) =>
-        (color is ['#', _, _, _, _, _, _]) && !string.IsNullOrEmpty(alpha) ? color + alpha : color;
+        (color is ['#', _, _, _, _, _, _]) && !String.IsNullOrEmpty(alpha) ? color + alpha : color;
 
     private static bool HasAlpha([NotNullWhen(true)] string? fill) => fill is ['#', _, _, _, _, _, _, _, _];
 
