@@ -1,5 +1,4 @@
 @using Microsoft.AspNetCore.Components.Web.Virtualization
-@implements IAsyncDisposable
 
 <div @ref="root" @attributes="AdditionalAttributes" class="@RootClass">
     <input class="mussel-diagram-palette-search" type="search" placeholder="@View.Options.SearchPlaceholder" aria-label="@View.Options.SearchPlaceholder" value="@query" @oninput="OnSearch" />

@@ -165,7 +165,7 @@ Changing parents:
   - Boxes lie inside ±1e12 (their left, top, right and bottom edges), and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - A frame that a group takes from its contents (a growing group, a group sized to its contents, an overlay group, a new group from grouping) stops at the limits of ±1e12
-- In the view, a move, a resize or a drop that would put a box outside ±1e12 is rejected with `Permission`, and nothing is written
+- In the view, a move, a resize, a drop, adding a connected element or a paste that would put a box outside ±1e12 is rejected with `Nesting`, as other rejections of a position are, and nothing is written
 - Route points lie inside ±2e12. A route with a point outside is not taken: a route read from JSON or given to `Replace` is routed again, and a router result with such a point fails
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
@@ -360,7 +360,7 @@ From back to front:
 | Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. The whole diagram includes the labels and badges drawn outside the elements. An element can also be brought to the center |
 
 - `WheelMode` makes the plain wheel zoom instead
-- The zoom goes from `MinZoom` (default 0.05) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid
+- The zoom goes from `MinZoom` (default 0.05, greater than 0) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid. A zoom below 5%, which a smaller `MinZoom` allows, is not rounded to a grid
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
 - The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
 - The position and zoom of the view are not in the diagram. To keep them, the app saves the values of `ViewportChanged`
@@ -428,7 +428,7 @@ C# and JS compute the port positions with the same formula from the type and the
 - The `Look` of an element takes priority over the look of its type, and render overrides (State overlays) take priority over the `Look`. The text color of an element takes priority over the colors of the slot formats
 - The SVG elements of an element have a class for its kind (`mussel-diagram-node` and so on) and an attribute with its type name, so CSS of the app can style each type
 - CSS draws each state: selected, hover, not allowed, connection candidate, drop target, awaiting commit, error, warning
-- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on an ancestor. All of these variables are declared in `:where`, so an app overrides them from any selector and in any file order
+- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on a container or on the view itself. All of these variables are declared in `:where`, so an app overrides them from any selector and in any file order
 - The selection frame, the handles, the guides, the preview lines and the marks of connection candidates keep the same size and width on screen at any zoom
 
 ### Updating
@@ -470,6 +470,7 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click on the background, Esc outside an operation, and passing another diagram to the view clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment, unless it is the selection JS sent last; then C# uses the selection it received last. Even when the selection known to C# is behind, they act on the selection the user saw
+- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. After a command, JS sends its selection again only when the user selected while the command was on its way
 
 ### Moving
 
@@ -867,6 +868,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 - Until the rendering of the snapshot after the commit arrives from C#, JS keeps the provisional display (the moved elements, links with simple routes, the preview of a placed element, the written text). Each rendering carries its snapshot number, which tells JS which one has arrived
 - A rendering that arrives before the commit is sent does not undo its provisional display. Once the commit is sent, JS shows the renderings as they arrive, because the next one may be the commit's own; a rendering by another writer that arrives within that round trip can show the earlier state for a moment
 - When the answer tells the snapshot number of the commit before its rendering arrives, JS writes the provisional display back over the renderings until that one arrives. On Server the answer can come first, since renderings wait while too many are not acknowledged
+- An element that two commits, or a commit and the current drag, wrote follows the later writer: while the later commit waits for its answer, the renderings show as they arrive, even when the earlier one has its answer
 - Two overlaps within the round trip of a commit are left as they are, since the final state is right: in Wait, text committed just after another writer changed the same slot is rejected, and committing it again is rejected once more until that change reaches JS; and while a later commit of the same elements waits, the table changes of the earlier one put the selection back for a moment, so grabbing the element again in that moment starts its preview from there
 - The provisional display computes port positions and cut ends with the same formulas as C#. When the rendering arrives and replaces it, elements do not move; only the links change from the simple route to the route of C#
 - The result of an asynchronous router is applied when both ends and the nodes to avoid have not changed since the snapshot the computation started from. Otherwise it is thrown away and computed again (Link routes)
@@ -1099,7 +1101,7 @@ When the text is not JSON, the `format` differs, or the version is newer than th
 ### Saving routes
 
 - Computed routes are saved, only when they are results of the router. Provisional routes, and the fact that a route could not be made, are not written
-- Loading computes again only the links without a route, and the links whose route end points no longer match the end positions computed from the elements
+- Loading computes again only the links without a route, the links with a point beyond ±2e12, and the links whose route end points no longer match the end positions computed from the elements
 - With an asynchronous router, where routes can be computed afterwards, the diagram loads with simple routes, and the results replace them when they arrive. The replacements are not recorded for undo
 
 ### Modified flag

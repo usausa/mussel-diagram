@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 
 using Microsoft.JSInterop;
 
+using MusselDiagram.Internal;
+
 public sealed partial class ScriptBridgeTests
 {
     [Fact]
@@ -23,8 +25,7 @@ public sealed partial class ScriptBridgeTests
     {
         var script = File.ReadAllText(Path.Combine(TestPaths.Root, "MusselDiagram", "wwwroot", "MusselDiagram.js"));
         var names = Calls().Matches(script).Select(static x => x.Groups["name"].Value).Distinct().ToList();
-        var entryPoints = typeof(MusselDiagramView).Assembly.GetTypes()
-            .SelectMany(static x => x.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        var entryPoints = typeof(DiagramScriptBridge).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(static x => x.IsDefined(typeof(JSInvokableAttribute), false))
             .Select(static x => x.Name)
             .ToList();

@@ -75,7 +75,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
         var star = opened.View.Locator("g.mussel-diagram-node[data-id='star2']");
         await ClickAsync(380, 190);
         await page.Keyboard.PressAsync("Control+L");
-        await Expect(rect).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-locked"));
+        await Expect(rect).ToHaveClassAsync(new Regex("mussel-diagram-locked"));
         await page.Keyboard.DownAsync("Shift");
         await ClickAsync(250, 300);
         await page.Keyboard.UpAsync("Shift");
@@ -154,7 +154,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 
         await DragAsync(226, 170, 374, 60, false, null);
 
-        await Expect(hit).ToHaveAttributeAsync("d", new System.Text.RegularExpressions.Regex("L576,230$"));
+        await Expect(hit).ToHaveAttributeAsync("d", new Regex("L576,230$"));
     }
 
     [Theory]
@@ -232,7 +232,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     public async Task ThePanToolPansFromNodesAndPorts(string mode)
     {
         opened = await app.OpenAsync("?pan=true", mode);
-        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-pan-tool"));
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-tool"));
 
         await DragAsync(250, 170, 100, 0, false, null);
         await DragAsync(530, 190, 0, 50, false, null);
@@ -249,7 +249,7 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     {
         opened = await app.OpenAsync("?backgroundPan=true", mode);
         var star = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
-        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("mussel-diagram-pan-drag"));
+        await Expect(opened.View.Locator("svg.mussel-diagram-canvas")).ToHaveClassAsync(new Regex("mussel-diagram-pan-drag"));
 
         await DragAsync(700, 470, -100, 0, false, null);
         await DragAsync(150, 170, 60, 40, true, null);

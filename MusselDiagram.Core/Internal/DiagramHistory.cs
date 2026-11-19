@@ -201,7 +201,7 @@ internal sealed class DiagramHistory
                 return;
             }
 
-            if ((after.Find(box.Id) is DiagramBox { ParentId: { } parent }) && target.Contains(parent) && !deleted.Contains(parent))
+            if ((after.Find(box.Id) is DiagramBox { ParentId: { } parent }) && target.Contains(parent))
             {
                 if (!inside.TryGetValue(parent, out var ids))
                 {

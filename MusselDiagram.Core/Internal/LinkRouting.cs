@@ -171,7 +171,7 @@ internal static class LinkRouting
         var dx = end.Position.X - start.Position.X;
         var dy = end.Position.Y - start.Position.Y;
         var distance = Math.Sqrt((dx * dx) + (dy * dy));
-        var reach = Math.Max(stub, distance / 2);
+        var reach = Math.Min(Math.Max(stub, distance / 2), SnapshotEditor.Limit);
         return [start.Position, Step(start.Position, start.Side, reach), Step(end.Position, end.Side, reach), end.Position];
     }
 

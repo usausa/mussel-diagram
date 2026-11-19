@@ -574,44 +574,13 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         HostSearch = SearchNormalizer is not null
     };
 
-    private async Task ReleaseAsync()
+    private Task ReleaseAsync()
     {
-        var currentController = controller;
-        var currentModule = module;
+        var attached = controller;
+        var loaded = module;
         controller = null;
         module = null;
-        try
-        {
-            if (currentController is not null)
-            {
-                try
-                {
-                    await currentController.InvokeVoidAsync("dispose").ConfigureAwait(true);
-                }
-                catch (JSException)
-                {
-                }
-
-                await currentController.DisposeAsync().ConfigureAwait(true);
-            }
-
-            if (currentModule is not null)
-            {
-                await currentModule.DisposeAsync().ConfigureAwait(true);
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-        catch (JSException)
-        {
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        return ScriptCalls.ReleaseAsync(attached, loaded);
     }
 
     private sealed record ShownSet(DiagramSnapshot Snapshot, IReadOnlyList<string> Selection, HashSet<string> Ids);

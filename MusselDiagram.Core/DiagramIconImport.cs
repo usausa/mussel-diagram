@@ -94,7 +94,6 @@ public static class DiagramIconImport
                 AliasChain? Resolve(string name, JsonElement value)
                 {
                     walk.Clear();
-                    walking.Clear();
                     walking.Add(name);
                     AliasChain? result = null;
                     while (true)
@@ -118,7 +117,7 @@ public static class DiagramIconImport
                             break;
                         }
 
-                        if (!walking.Add(name) || !aliasesByName.TryGetValue(name, out value))
+                        if (!aliasesByName.TryGetValue(name, out value) || !walking.Add(name))
                         {
                             break;
                         }
@@ -126,6 +125,7 @@ public static class DiagramIconImport
 
                     for (var i = walk.Count - 1; i >= 0; i--)
                     {
+                        walking.Remove(walk[i].Name);
                         result = result?.For(walk[i].Value);
                         resolved.TryAdd(walk[i].Name, result);
                     }

@@ -1,5 +1,7 @@
 namespace MusselDiagram.E2ETests;
 
+using System.Text.RegularExpressions;
+
 using static Microsoft.Playwright.Assertions;
 
 public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
@@ -493,9 +495,9 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await ClickAsync(700, 470);
         await opened.Page.Keyboard.PressAsync("Control+Equal");
 
-        await Expect(opened.View.Locator(".mussel-diagram-canvas > .mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new System.Text.RegularExpressions.Regex(@"scale\(1\.2\)"));
+        await Expect(opened.View.Locator(".mussel-diagram-canvas > .mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\.2\)"));
         await opened.Page.Keyboard.PressAsync("Control+0");
-        await Expect(opened.View.Locator(".mussel-diagram-canvas > .mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new System.Text.RegularExpressions.Regex(@"scale\(1\)"));
+        await Expect(opened.View.Locator(".mussel-diagram-canvas > .mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\)"));
     }
 
     private async Task<(double X, double Y)> OriginAsync()
@@ -510,7 +512,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await opened!.Page.Mouse.ClickAsync((float)left + x, (float)top + y).ConfigureAwait(true);
     }
 
-    private async Task DragInAsync(Microsoft.Playwright.ILocator source, float x, float y)
+    private async Task DragInAsync(ILocator source, float x, float y)
     {
         var page = opened!.Page;
         var from = await source.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The source is not shown.");

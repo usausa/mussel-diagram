@@ -169,6 +169,18 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void ACurveReachesOutAtMostTheRangeOfBoxesFromItsEnds()
+    {
+        var diagram = new Diagram(Schema with { LinkTypes = [.. Schema.LinkTypes, new DiagramLinkType { Name = "curve", Form = DiagramLineForm.Curved, TargetMarker = DiagramMarker.None }] });
+        diagram.Add(Node("a", 1e12 - 100, 0, type: "service"));
+        diagram.Add(Node("b", -1e12, 1e12 - 50, type: "service"));
+
+        diagram.Connect(Link("ab", "a", "b", "out", "in", "curve"));
+
+        Assert.Equal([new DiagramPoint(1e12, 25), new DiagramPoint(2e12, 25), new DiagramPoint(-2e12, 1e12 - 25), new DiagramPoint(-1e12, 1e12 - 25)], Route(diagram, "ab"));
+    }
+
+    [Fact]
     public void SynchronousRoutersGiveTheRouteAtOnce()
     {
         var router = new FixedRouter();
@@ -223,6 +235,20 @@ public sealed class RoutingTests
         }
 
         Assert.Equal(["Broken", "Broken"], errors[..2]);
+    }
+
+    [Theory]
+    [InlineData(2e12, DiagramRouteState.Routed)]
+    [InlineData(2.000001e12, DiagramRouteState.Failed)]
+    public void ARouterPointIsKeptUpToTheEdgeOfTheRouteRange(double x, DiagramRouteState expected)
+    {
+        var diagram = new Diagram(Schema with { Router = new AnsweringRouter(() => ValueTask.FromResult(new DiagramRouteResult { Points = [new DiagramPoint(100, 25), new DiagramPoint(x, 25), new DiagramPoint(400, 25)] })) });
+        diagram.Add(Node("a", 0, 0));
+        diagram.Add(Node("b", 400, 0));
+
+        diagram.Connect(Link("ab", "a", "b"));
+
+        Assert.Equal(expected, LinkOf(diagram).RouteState);
     }
 
     [Fact]

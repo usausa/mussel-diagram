@@ -22,7 +22,7 @@
                     <dt>@metric.Name</dt>
                     <dd data-value>@MonitorSimulation.Format(reading.Value, metric)</dd>
                     <dt>履歴</dt>
-                    <dd>@string.Join(" / ", reading.History.Select(static x => x.ToString("0", CultureInfo.InvariantCulture)))</dd>
+                    <dd>@String.Join(" / ", reading.History.Select(static x => x.ToString("0", CultureInfo.InvariantCulture)))</dd>
                 </dl>
             </div>
         }

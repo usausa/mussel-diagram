@@ -332,6 +332,85 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
             new() { Timeout = 5000 });
     }
 
+    [Fact]
+    public async Task ACommandThatChangesTheSelectionSendsNoSelectionBack()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.calls = [];
+                window.commandsDone = 0;
+                proto.invokeMethodAsync = function (name, ...args) {
+                    window.calls.push(name);
+                    const result = invoke.call(this, name, ...args);
+                    if (name === 'ExecuteCommandAsync') {
+                        result.then(() => setTimeout(() => window.commandsDone++, 0), () => { });
+                    }
+                    return result;
+                };
+            }
+            """);
+        var start = await star1.GetAttributeAsync("transform") ?? throw new InvalidOperationException("The node has no position.");
+        await DragAsync(250, 170, 60, 0, null);
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", start);
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 190);
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.EvaluateAsync("() => { window.calls = []; }");
+
+        await page.Keyboard.PressAsync("Control+Z");
+        await Expect(star1).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.WaitForFunctionAsync("() => window.commandsDone === 1");
+
+        var calls = await page.EvaluateAsync<string[]>("() => window.calls");
+        Assert.Contains("ExecuteCommandAsync", calls);
+        Assert.DoesNotContain("OnSelectionChangedAsync", calls);
+    }
+
+    [Fact]
+    public async Task AResizeStartedOnARejectedMoveResizesTheBoxWhereItWentBack()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var shape = opened.View.Locator("g.mussel-diagram-node[data-id='rect'] > rect.mussel-diagram-shape");
+        var start = await rect.GetAttributeAsync("transform") ?? throw new InvalidOperationException("The node has no position.");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name !== 'CommitMoveAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => resolve(invoke.call(this, name, args[0], 2e12, ...args.slice(2)))));
+                };
+            }
+            """);
+
+        await DragAsync(380, 190, 60, 0, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await Expect(rect).Not.ToHaveAttributeAsync("transform", start);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay [data-handle]")).ToHaveCountAsync(8);
+        await DragAsync(490, 220, 30, 70, async () =>
+        {
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await Expect(rect).ToHaveAttributeAsync("transform", start).ConfigureAwait(true);
+        });
+
+        await Expect(shape).ToHaveAttributeAsync("width", "130");
+        await Expect(rect).ToHaveAttributeAsync("transform", start);
+        await Expect(shape).ToHaveAttributeAsync("height", "130");
+    }
+
     private async Task DragAsync(float x, float y, float dx, float dy, Func<Task>? beforeRelease)
     {
         var page = opened!.Page;

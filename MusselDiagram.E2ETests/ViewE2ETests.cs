@@ -35,6 +35,49 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] text tspan").First).ToHaveTextAsync("星 1");
     }
 
+    [Fact]
+    public async Task CallsThatFailLeaveNoUnhandledRejections()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var star = opened.View.Locator("g.mussel-diagram-node[data-id='star1'] use");
+        await opened.RejectCallsAsync("OnSelectionChangedAsync", "CommitMoveAsync", "OnViewportChanged");
+
+        await star.ClickAsync();
+        await DragAsync(page, star, 40, 0);
+        await page.Mouse.MoveAsync(600, 400);
+        await page.Mouse.WheelAsync(0, 120);
+
+        Assert.Equal(0, await opened.UnhandledRejectionsAsync(3));
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task TheRootsLoseTheirMarkWhenTheirScriptsAreDisposed(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var count = await opened.Page.EvaluateAsync<int>(
+            """
+            () => {
+                window.lostMarks = 0;
+                const roots = document.querySelectorAll('.mussel-diagram, .mussel-diagram-palette, .mussel-diagram-drag-source');
+                for (const root of roots) {
+                    new MutationObserver(() => {
+                        if (!root.hasAttribute('data-attached')) {
+                            window.lostMarks++;
+                        }
+                    }).observe(root, { attributes: true, attributeFilter: ['data-attached'] });
+                }
+                return roots.length;
+            }
+            """);
+
+        await opened.Page.Locator(".page-switch a[href='large']").ClickAsync();
+
+        Assert.Equal(3, count);
+        await opened.Page.WaitForFunctionAsync("count => window.lostMarks === count", count);
+    }
+
     [Theory]
     [MemberData(nameof(Modes))]
     public async Task TheContentShowsOnlyAfterTheFirstViewIsApplied(string mode)
@@ -158,6 +201,39 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport")).Not.ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
     }
 
+    [Fact]
+    public async Task ANextPressRoundsTheZoomThatAWheelDuringAPressLeftUnrounded()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        await Expect(viewport).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const later = window.setTimeout;
+                window.heldSettles = 0;
+                window.setTimeout = (callback, delay, ...args) => (delay === 180 ? (window.heldSettles++, 0) : later(callback, delay, ...args));
+            }
+            """);
+
+        await page.Mouse.MoveAsync(600, 400);
+        await page.Mouse.DownAsync();
+        await page.Keyboard.DownAsync("Control");
+        await page.Mouse.WheelAsync(0, -10);
+        await page.Mouse.WheelAsync(0, -10);
+        await page.Keyboard.UpAsync("Control");
+        await page.WaitForFunctionAsync("() => window.heldSettles > 0");
+        await page.Mouse.UpAsync();
+        var folded = Scale(await viewport.GetAttributeAsync("transform"));
+        await page.Mouse.DownAsync();
+        var pressed = Scale(await viewport.GetAttributeAsync("transform"));
+        await page.Mouse.UpAsync();
+
+        Assert.True(Math.Abs((folded * 100) - Math.Round(folded * 100)) > 1e-6, $"{folded}");
+        Assert.Equal(Math.Round(pressed * 100), pressed * 100, 6);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -167,7 +243,6 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
         var page = opened.Page;
         var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
         await Expect(viewport).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
-        await page.Locator(".mussel-diagram-palette[data-attached]").WaitForAsync(new() { State = WaitForSelectorState.Attached });
         await page.EvaluateAsync(
             """
             () => {
@@ -196,7 +271,7 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
 
         Assert.True(folded > 1, $"{folded}");
         Assert.True(Math.Abs((folded * 100) - Math.Round(folded * 100)) > 1e-6, $"{folded}");
-        Assert.Equal(Math.Round(settled * 100), settled * 100, 6);
+        Assert.Equal(Math.Round(folded * 100) / 100, settled, 6);
     }
 
     [Fact]

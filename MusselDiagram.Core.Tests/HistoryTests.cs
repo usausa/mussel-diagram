@@ -376,6 +376,71 @@ public sealed class HistoryTests
     }
 
     [Fact]
+    public void OnlyTheGroupThatCannotGoIntoItsNewParentGoesToTheTop()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("g", 0, 0, 900, 700));
+        diagram.Add(Group("a", 20, 20, 400, 300, "g"));
+        diagram.Add(Group("p", 40, 40, 200, 150, "a"));
+        diagram.Add(Node("c", 600, 50, "g"));
+        diagram.ClearHistory();
+        using (diagram.BeginUpdate())
+        {
+            diagram.SetParent(["p"], null);
+            diagram.SetParent(["a", "c"], "p");
+        }
+
+        diagram.Delete(["g"], Skip);
+        diagram.Undo();
+
+        Assert.Null(Assert.IsType<DiagramGroup>(diagram.Find("a")).ParentId);
+        Assert.Equal("a", Assert.IsType<DiagramGroup>(diagram.Find("p")).ParentId);
+        Assert.Equal("p", Assert.IsType<DiagramNode>(diagram.Find("c")).ParentId);
+    }
+
+    [Fact]
+    public void AnUndoAfterASkippedBatchThatMovesAnAncestorAwayKeepsTheNewParents()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("r", 0, 0, 900, 700));
+        diagram.Add(Group("q", 20, 20, 800, 600, "r"));
+        diagram.Add(Group("p", 40, 40, 600, 400, "q"));
+        diagram.Add(Group("b", 1000, 0, 200, 150));
+        diagram.ClearHistory();
+        diagram.Move(["b"], new DiagramPoint(10, 0));
+        using (diagram.BeginUpdate(Skip))
+        {
+            diagram.SetParent(["b"], "p");
+            diagram.SetParent(["q"], null);
+            diagram.SetParent(["r"], "p");
+        }
+
+        diagram.Undo();
+
+        Assert.Equal("p", Assert.IsType<DiagramGroup>(diagram.Find("r")).ParentId);
+        Assert.Null(Assert.IsType<DiagramGroup>(diagram.Find("q")).ParentId);
+    }
+
+    [Fact]
+    public void ASetParentAfterAnAncestorMovedAwayInTheSameWriteSeesTheNewAncestors()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Group("r", 0, 0, 900, 700));
+        diagram.Add(Group("q", 20, 20, 800, 600, "r"));
+        diagram.Add(Group("p", 40, 40, 600, 400, "q"));
+        diagram.Add(Group("b", 1000, 0, 200, 150));
+
+        diagram.Write(null, DiagramChangeOrigin.User, static editor =>
+        {
+            editor.SetParent(["b"], "p");
+            editor.SetParent(["q"], null);
+            editor.SetParent(["r"], "p");
+        });
+
+        Assert.Equal("p", Assert.IsType<DiagramGroup>(diagram.Find("r")).ParentId);
+    }
+
+    [Fact]
     public void AReorderThatChangesNothingWithoutHistoryKeepsTheStepOfTheUser()
     {
         var diagram = new Diagram(Schema);

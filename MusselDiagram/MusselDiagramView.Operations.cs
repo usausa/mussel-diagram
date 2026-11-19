@@ -326,14 +326,15 @@ public sealed partial class MusselDiagramView
 
             foreach (var start in box is DiagramGroup { Kind: DiagramGroupKind.Overlay } overlay ? overlay.MemberIds : [id])
             {
-                if (stamps.BoxChanged(start, startVersion) || current.GetDescendants(start).Any(x => stamps.BoxChanged(x.Id, startVersion)))
+                var descendants = current.GetDescendants(start);
+                if (stamps.BoxChanged(start, startVersion) || descendants.Any(x => stamps.BoxChanged(x.Id, startVersion)))
                 {
                     return Reason(DiagramReasonKind.Changed);
                 }
 
-                if (((current.Find(start) is DiagramBox moved) && !Fits(moved)) || !current.GetDescendants(start).All(Fits))
+                if (((current.Find(start) is DiagramBox moved) && !Fits(moved)) || !descendants.All(Fits))
                 {
-                    return Reason(DiagramReasonKind.Permission);
+                    return Reason(DiagramReasonKind.Nesting);
                 }
             }
         }
@@ -393,13 +394,13 @@ public sealed partial class MusselDiagramView
         }
 
         var minimum = Diagram.Index.FindBoxType(box)?.MinSize;
-        if (!ScriptTables.CanResize(box, Diagram.Index) || !SnapshotEditor.IsInside(bounds) ||
+        if (!ScriptTables.CanResize(box, Diagram.Index) ||
             ((minimum is { } min) && ((bounds.Width < min.Width - 0.001) || (bounds.Height < min.Height - 0.001))))
         {
             return Reason(DiagramReasonKind.Permission);
         }
 
-        return null;
+        return SnapshotEditor.IsInside(bounds) ? null : Reason(DiagramReasonKind.Nesting);
     }
 
     private DiagramReason? CheckConnect(DiagramLinkEnd source, DiagramLinkEnd target, string linkType)

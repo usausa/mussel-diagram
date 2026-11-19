@@ -7,8 +7,6 @@ using static Microsoft.Playwright.Assertions;
 
 public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixture>, IAsyncDisposable
 {
-    private static readonly HttpClient Client = new();
-
     private SamplePage? opened;
 
     public static TheoryData<string> Modes => ["server", "wasm"];
@@ -586,18 +584,38 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
     }
 
     [Fact]
-    public async Task TheErrorPageAndUnknownAddressesAnswer()
+    public async Task UnknownAddressShowsTheNotFoundPage()
     {
-        Assert.SkipWhen(String.IsNullOrEmpty(app.BaseAddress), "Neither Edge nor Chrome was found, so the E2E test is skipped.");
-        var token = Xunit.TestContext.Current.CancellationToken;
+        var sample = opened = await app.OpenBlankAsync();
 
-        using var error = await Client.GetAsync(new Uri($"{app.BaseAddress}error"), token);
-        using var missing = await Client.GetAsync(new Uri($"{app.BaseAddress}no-such"), token);
-        using var outside = await Client.GetAsync(new Uri($"{app.BaseAddress}render-mode/server?redirect=%2F%5Cexample.com"), token);
+        var response = await sample.Page.GotoAsync($"{app.BaseAddress}no-such-page");
+        Assert.Equal(404, response?.Status);
+        await Expect(sample.Page.Locator("h1")).ToHaveTextAsync("見つかりません");
+        await Expect(sample.Page.Locator(".page-switch")).ToHaveCountAsync(0);
 
-        Assert.Equal(System.Net.HttpStatusCode.OK, error.StatusCode);
-        Assert.Equal(System.Net.HttpStatusCode.NotFound, missing.StatusCode);
-        Assert.Equal(new Uri(app.BaseAddress), outside.RequestMessage?.RequestUri);
+        await sample.Page.GetByRole(AriaRole.Link, new() { Name = "ホーム" }).ClickAsync();
+        await sample.WaitForDiagramAsync();
+    }
+
+    [Fact]
+    public async Task TheErrorPageOpens()
+    {
+        var sample = opened = await app.OpenBlankAsync();
+
+        var response = await sample.Page.GotoAsync($"{app.BaseAddress}error");
+        Assert.Equal(200, response?.Status);
+        await Expect(sample.Page.Locator("h1")).ToHaveTextAsync("エラー");
+    }
+
+    [Theory]
+    [InlineData("render-mode/server")]
+    public async Task RedirectsOutsideTheAppGoHome(string path)
+    {
+        var sample = opened = await app.OpenBlankAsync();
+
+        var response = await sample.Page.GotoAsync($"{app.BaseAddress}{path}?redirect=%2F%5Cexample.com");
+        Assert.Equal(200, response?.Status);
+        Assert.Equal(app.BaseAddress, sample.Page.Url);
     }
 
     [Theory]

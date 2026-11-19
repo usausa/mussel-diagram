@@ -163,8 +163,35 @@ public sealed class DeepTreeTests
                 diagram.Move(["g0"], new DiagramPoint(10, 0));
 
                 diagram.SetParent(Enumerable.Range(0, Leaves).Select(static i => $"t{i}"), $"g{Depth - 1}", new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+                Assert.All(diagram.Snapshot.Groups.Where(static x => x.Id.StartsWith('t', StringComparison.Ordinal)), static x => Assert.Equal($"g{Depth - 1}", x.ParentId));
+                diagram.Undo();
 
                 Assert.All(diagram.Snapshot.Groups.Where(static x => x.Id.StartsWith('t', StringComparison.Ordinal)), static x => Assert.Equal($"g{Depth - 1}", x.ParentId));
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task ASkippedDeleteOfTheGroupThatHeldGroupsMovedBelowTheirOwnChainRunsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var diagram = new Diagram(Schema);
+                diagram.LoadJson(Chain(0, Leaves));
+                var tops = Enumerable.Range(0, Leaves).Select(static i => $"t{i}").ToList();
+                diagram.SetParent(tops, "g0", new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+                diagram.Write(null, DiagramChangeOrigin.User, editor =>
+                {
+                    editor.SetParent(["g2"], null);
+                    editor.SetParent(["g1", .. tops], $"g{Depth - 1}");
+                });
+
+                diagram.Delete(["g0"], new DiagramWriteOptions { History = DiagramHistoryMode.Skip });
+                diagram.Undo();
+
+                Assert.Equal("g1", diagram.Snapshot.GetParent("g2")!.Id);
+                Assert.All(tops, x => Assert.Equal($"g{Depth - 1}", diagram.Snapshot.GetParent(x)!.Id));
             },
             TestContext.Current.CancellationToken);
     }

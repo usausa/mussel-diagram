@@ -26,6 +26,32 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
             null,
             new() { Timeout = 30_000 });
 
+    public Task RejectCallsAsync(params string[] names) =>
+        page.EvaluateAsync(
+            """
+            names => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.rejected = [];
+                window.unhandled = 0;
+                window.addEventListener('unhandledrejection', () => { window.unhandled++; });
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (names.includes(name)) {
+                        window.rejected.push(name);
+                        return Promise.reject(new Error(name));
+                    }
+                    return invoke.call(this, name, ...args);
+                };
+            }
+            """,
+            names);
+
+    public async Task<int> UnhandledRejectionsAsync(int calls)
+    {
+        await page.WaitForFunctionAsync("calls => window.rejected.length >= calls", calls).ConfigureAwait(true);
+        return await page.EvaluateAsync<int>("() => new Promise(resolve => setTimeout(() => resolve(window.unhandled), 300))").ConfigureAwait(true);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if ((TestContext.Current.TestState?.Result == TestResult.Failed) && (Environment.GetEnvironmentVariable("MUSSELDIAGRAM_E2E_DUMP") is { Length: > 0 } folder))

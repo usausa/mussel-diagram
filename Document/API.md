@@ -6,7 +6,7 @@ The behaviour is in the [specification](SPEC.md). Coordinates and sizes are in w
 
 ## 📋 MusselDiagramView
 
-The view component. `Diagram` is required, and other attributes such as `class` and `id` go to the root element. Templates go in the child content. The root gets `data-attached` once its script is attached and the calls made before are applied, and loses it when the script is disposed. The roots of `MusselDiagramPalette` and `MusselDiagramDragSource` get it once their scripts are attached.
+The view component. `Diagram` is required, and other attributes such as `class` and `id` go to the root element. Templates go in the child content. The root gets `data-attached` once its script is attached and the calls made before are applied, and loses it when the script is disposed. The roots of `MusselDiagramPalette` and `MusselDiagramDragSource` get it once their scripts are attached, and lose it when their scripts are disposed.
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -18,7 +18,7 @@ The view component. `Diagram` is required, and other attributes such as `class` 
 | `WheelMode` | `DiagramWheelMode` | `Pan` | What the plain wheel does: `Pan` or `Zoom` |
 | `BackgroundDragMode` | `DiagramBackgroundDragMode` | `BoxSelect` | What a left drag on the background does with a mouse or a pen: `BoxSelect`, `Pan` or `None`. Touch keeps its gestures |
 | `Tool` | `DiagramTool` | `Select` | `Pan` pans with a left drag or a one-finger drag from anywhere, and clicks neither select nor edit. `BackgroundDragMode` is then not used |
-| `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits |
+| `MinZoom`, `MaxZoom` | `double` | `0.05`, `8` | Zoom limits; `MinZoom` is greater than 0 |
 | `GridVisible` | `bool` | `false` | Shows the grid |
 | `GridStyle` | `DiagramGridStyle` | `Dots` | `Dots` or `Lines` |
 | `GridMajorInterval` | `int` | `4` | Every how many grid lines (and dots in both directions) a major line is drawn. `0` draws none |
@@ -255,7 +255,7 @@ An immutable record.
 ### Routing
 
 `IDiagramRouter.RouteAsync(request, cancellationToken)` returns a `ValueTask<DiagramRouteResult>`. A router that finishes synchronously gives the route at commit; one that does not gives a simple route first. The token is canceled when the result is no longer needed.  
-`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason. The points start at the position of `Source` and end at that of `Target`; loading and undo or redo compute other routes again. When the router throws or is canceled, or the result is `null`, has fewer than two points or has a point that is not finite, the link keeps the simple route as `Failed`.  
+`DiagramRouteRequest`: `Source` and `Target` (`DiagramRouteEnd` with `Position` and `Direction`), `Obstacles` (rectangles), `LinkType`, `Form` (of the link, after its `Look`) and `GridSize` (of the schema). `DiagramRouteResult`: `Points`, or `Error` with a reason. The points start at the position of `Source` and end at that of `Target`; loading and undo or redo compute other routes again. When the router throws or is canceled, or the result is `null`, has fewer than two points or has a point that is not finite or lies beyond ±2e12, the link keeps the simple route as `Failed`.  
 
 ## 🖼️ Icons
 
@@ -358,7 +358,7 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTe
 
 ## 🎨 Theme
 
-Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container or on the view itself switches to the dark values, the same class as the other Mussel libraries. A value an app sets is used in both themes, so include `.mussel-dark` in the selector to change a dark value.  
+Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container or on the view itself switches to the dark values, the same class as the other Mussel libraries. A value an app sets on the element with `mussel-dark`, or on an element inside it, is used in both themes, so include `.mussel-dark` in the selector to change a dark value. A shared value set above that element, such as on `:root`, gives way to the dark values.  
 
 These are shared with the other Mussel libraries. Their light defaults follow the look of each library, so set them on a container to give several libraries the same colors.  
 
@@ -405,7 +405,8 @@ These are for the diagram only. Set them on `.mussel-diagram` or on a `class` gi
 | `mussel-diagram-badge` and `data-tone` | Badges and their tones |
 | `mussel-diagram-nodrag`, `mussel-diagram-nowheel` | Set by the app on elements in templates |
 | `mussel-diagram-cursor` | An element that covers the view and shows the cursor while an operation runs |
-| `mussel-diagram-space`, `mussel-diagram-panning`, `mussel-diagram-dragging`, `mussel-diagram-connecting`, `mussel-diagram-resizing-<n, s, e, w, ne, nw, se or sw>`, `mussel-diagram-selecting`, `mussel-diagram-not-allowed`, `mussel-diagram-dropping` | States of the root of the view while Space is held, while panning, moving, connecting, resizing and selecting with a box, where the operation is not allowed, and while an item of a palette or a drag source is over the view; CSS sets the cursor of `mussel-diagram-cursor` under them |
+| `mussel-diagram-space`, `mussel-diagram-panning`, `mussel-diagram-dragging`, `mussel-diagram-connecting`, `mussel-diagram-resizing-<n, s, e, w, ne, nw, se or sw>`, `mussel-diagram-selecting`, `mussel-diagram-not-allowed` | States of the root of the view while Space is held, while panning, moving, connecting, resizing and selecting with a box, and where the operation is not allowed; CSS sets the cursor of `mussel-diagram-cursor` under them |
+| `mussel-diagram-dropping` | State of the root of the view while an item is dragged to it from a palette or a drag source |
 
 ## ⚠️ Limits
 

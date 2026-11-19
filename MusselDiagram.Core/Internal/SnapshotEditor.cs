@@ -8,7 +8,7 @@ internal sealed class SnapshotEditor
 {
     internal const double Limit = 1e12;
 
-    internal const double RouteLimit = 2 * Limit;
+    internal const double RouteRange = 2 * Limit;
 
     private const double Tolerance = 1e-6;
 
@@ -499,7 +499,6 @@ internal sealed class SnapshotEditor
 
     public void SetParent(IEnumerable<string> ids, string? parentId, bool checkCycle = true)
     {
-        HashSet<string>? above = null;
         foreach (var id in ids)
         {
             if (elements.GetValueOrDefault(id) is not DiagramBox box)
@@ -514,9 +513,9 @@ internal sealed class SnapshotEditor
 
             var moved = box with { ParentId = parentId };
             ValidateBox(moved);
-            if (checkCycle && !SkipCycleCheck && (box is DiagramGroup) && (parentId is not null) && (above ??= Above(parentId)).Contains(id))
+            if (checkCycle && (box is DiagramGroup))
             {
-                throw new DiagramException($"The parents of '{id}' form a cycle.");
+                CheckCycle(moved);
             }
 
             if (box.ParentId is { } formerParent)
@@ -837,7 +836,7 @@ internal sealed class SnapshotEditor
         return new DiagramRect(left, top, Math.Min(bounds.Right, Limit) - left, Math.Min(bounds.Bottom, Limit) - top);
     }
 
-    internal static bool IsInRouteRange(DiagramPoint point) => (Math.Abs(point.X) <= RouteLimit) && (Math.Abs(point.Y) <= RouteLimit);
+    internal static bool IsInRouteRange(DiagramPoint point) => (Math.Abs(point.X) <= RouteRange) && (Math.Abs(point.Y) <= RouteRange);
 
     private static void CheckBounds(string id, DiagramRect bounds)
     {
@@ -878,7 +877,7 @@ internal sealed class SnapshotEditor
             return;
         }
 
-        if (sharedAbove is not { } shared || !String.Equals(shared.ParentId, parentId, StringComparison.Ordinal))
+        if ((sharedAbove is not { } shared) || !String.Equals(shared.ParentId, parentId, StringComparison.Ordinal))
         {
             shared = (parentId, Above(parentId));
             sharedAbove = shared;

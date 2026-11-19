@@ -30,14 +30,14 @@
 }
 
 :where(.mussel-dark) {
-    --mussel-primary-text: #F0EFEC;
-    --mussel-secondary-text: #C3C2B7;
-    --mussel-muted-text: #8E8C86;
-    --mussel-grid-line: #2C2C2A;
-    --mussel-tooltip-background: #1F1F1D;
+    --mussel-primary-text: #f0efec;
+    --mussel-secondary-text: #c3c2b7;
+    --mussel-muted-text: #8e8c86;
+    --mussel-grid-line: #2c2c2a;
+    --mussel-tooltip-background: #1f1f1d;
     --mussel-tooltip-border: rgba(240, 239, 236, 0.1);
-    --mussel-tooltip-text: #F0EFEC;
-    --mussel-critical: #F2495C;
+    --mussel-tooltip-text: #f0efec;
+    --mussel-critical: #f2495c;
 }
 
 :where(.mussel-dark) :where(.mussel-diagram),

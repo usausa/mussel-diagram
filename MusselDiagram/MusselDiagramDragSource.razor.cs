@@ -3,7 +3,9 @@ namespace MusselDiagram;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
-public sealed partial class MusselDiagramDragSource
+using MusselDiagram.Internal;
+
+public sealed partial class MusselDiagramDragSource : IAsyncDisposable
 {
     private ElementReference root;
 
@@ -68,43 +70,12 @@ public sealed partial class MusselDiagramDragSource
         }
     }
 
-    private async Task ReleaseAsync()
+    private Task ReleaseAsync()
     {
         var attached = source;
         var loaded = module;
         source = null;
         module = null;
-        try
-        {
-            if (attached is not null)
-            {
-                try
-                {
-                    await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
-                }
-                catch (JSException)
-                {
-                }
-
-                await attached.DisposeAsync().ConfigureAwait(true);
-            }
-
-            if (loaded is not null)
-            {
-                await loaded.DisposeAsync().ConfigureAwait(true);
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-        catch (JSException)
-        {
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        return ScriptCalls.ReleaseAsync(attached, loaded);
     }
 }

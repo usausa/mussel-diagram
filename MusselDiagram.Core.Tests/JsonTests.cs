@@ -121,6 +121,33 @@ public sealed class JsonTests
     }
 
     [Fact]
+    public void OverlayGroupsThatShareMembersEachKeepThemOnce()
+    {
+        var diagram = new Diagram(JsonSchema);
+
+        var issues = diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "groups": [
+                { "id": "a", "type": "scaling", "kind": "overlay", "members": ["n1", "n2", "n1"] },
+                { "id": "b", "type": "scaling", "kind": "overlay", "members": ["n2", "n1"] }
+              ],
+              "nodes": [
+                { "id": "n1", "type": "server", "x": 0, "y": 0, "width": 100, "height": 50 },
+                { "id": "n2", "type": "server", "x": 200, "y": 0, "width": 100, "height": 50 }
+              ],
+              "links": []
+            }
+            """);
+
+        Assert.Empty(issues);
+        Assert.Equal(["n1", "n2"], ((DiagramGroup)diagram.Snapshot.Find("a")!).MemberIds);
+        Assert.Equal(["n2", "n1"], ((DiagramGroup)diagram.Snapshot.Find("b")!).MemberIds);
+    }
+
+    [Fact]
     public void BoxesOutsideTheLimitsMoveInside()
     {
         var diagram = new Diagram(JsonSchema);
@@ -395,8 +422,36 @@ public sealed class JsonTests
             """u8.ToArray());
 
         var result = DiagramJson.Read(stream, JsonSchema, defer: true, TimeSpan.Zero);
+        stream.Position = 0;
+        var routed = DiagramJson.Read(stream, JsonSchema, defer: true, TimeSpan.FromMinutes(1));
 
         Assert.Equal(DiagramRouteState.Provisional, Assert.Single(result.Snapshot.Links).RouteState);
+        Assert.Equal(DiagramRouteState.Routed, Assert.Single(routed.Snapshot.Links).RouteState);
+    }
+
+    [Theory]
+    [InlineData("2000000000000", true)]
+    [InlineData("2000001000000", false)]
+    public void ASavedRouteIsKeptUpToTheEdgeOfTheRouteRange(string x, bool kept)
+    {
+        var diagram = new Diagram(JsonSchema);
+
+        diagram.LoadJson(
+            $$"""
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "nodes": [
+                { "id": "a", "type": "server", "x": 0, "y": 0, "width": 100, "height": 50 },
+                { "id": "b", "type": "server", "x": 300, "y": 0, "width": 100, "height": 50 }
+              ],
+              "links": [
+                { "id": "far", "type": "arrow", "source": { "element": "a" }, "target": { "element": "b" }, "route": [[100, 25], [{{x}}, 25], [300, 25]] }
+              ]
+            }
+            """);
+
+        Assert.Equal(kept, ((DiagramLink)diagram.Find("far")!).Route.Length == 3);
     }
 
     private static async Task<ImmutableArray<DiagramIssue>> LoadLateAsync(Diagram target, byte[] json)

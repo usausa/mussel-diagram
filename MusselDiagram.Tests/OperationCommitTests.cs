@@ -1,5 +1,7 @@
 namespace MusselDiagram;
 
+using MusselDiagram.Internal;
+
 public sealed class OperationCommitTests : BunitContext
 {
     private static readonly DiagramSchema Schema = new()
@@ -94,20 +96,44 @@ public sealed class OperationCommitTests : BunitContext
         diagram.Add(new DiagramNode { Id = "edge", Type = "server", Bounds = edge });
         diagram.Add(new DiagramGroup { Id = "vpc", Type = "vpc", Bounds = new DiagramRect(-1e12, 0, 400, 300) });
         diagram.Add(new DiagramNode { Id = "inner", Type = "server", Bounds = new DiagramRect(-1e12, 80, 100, 50), ParentId = "vpc" });
-        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        var rejected = new List<DiagramCommitRejectedEventArgs>();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram).Add(p => p.CommitRejected, rejected.Add));
 
         var moved = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["edge"], new DiagramPoint(1, 0), false, null, null, cut.Instance.ScriptVersion, 0));
         var group = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["vpc"], new DiagramPoint(-1, 0), false, null, null, cut.Instance.ScriptVersion, moved.Rejections));
         var resized = await cut.InvokeAsync(() => cut.Instance.CommitResizeAsync("edge", edge with { Width = 101 }, cut.Instance.ScriptVersion, group.Rejections));
         var dropped = await cut.InvokeAsync(() => cut.Instance.CommitDropAsync("server", new DiagramRect(1e12, 0, 100, 50), null, null, null, cut.Instance.ScriptVersion, resized.Rejections));
+        var placed = await cut.InvokeAsync(() => cut.Instance.CommitPlaceAsync("server", new DiagramRect(1e12, 100, 100, 50), null, new DiagramLinkEnd("edge"), "arrow", dropped.Rejections));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["edge"]).AsTask());
+        await cut.InvokeAsync(() => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Copy));
+        await cut.InvokeAsync(() => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Paste));
 
         Assert.False(moved.Accepted);
         Assert.False(group.Accepted);
         Assert.False(resized.Accepted);
         Assert.False(dropped.Accepted);
+        Assert.False(placed.Accepted);
+        Assert.Equal(
+            [DiagramOperation.Move, DiagramOperation.Move, DiagramOperation.Resize, DiagramOperation.Drop, DiagramOperation.Connect, DiagramOperation.Paste],
+            rejected.Select(static x => x.Operation));
+        Assert.All(rejected, static x => Assert.Equal(DiagramReasonKind.Nesting, x.Reason.Kind));
         Assert.Equal(edge, ((DiagramBox)diagram.Find("edge")!).Bounds);
         Assert.Equal(-1e12, ((DiagramBox)diagram.Find("inner")!).Bounds.X);
         Assert.Equal(2, diagram.Snapshot.Nodes.Length);
+    }
+
+    [Fact]
+    public async Task MovingAnOverlayGroupOutOfTheRangeIsRejected()
+    {
+        var diagram = new Diagram(Schema with { GroupTypes = [.. Schema.GroupTypes, new DiagramGroupType { Name = "scaling", Kind = DiagramGroupKind.Overlay }] });
+        diagram.Add(new DiagramNode { Id = "member", Type = "server", Bounds = new DiagramRect(-1e12, 400, 100, 50) });
+        diagram.Add(new DiagramGroup { Id = "asg", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["member"] });
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+
+        var moved = await cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["asg"], new DiagramPoint(-1, 0), false, null, null, cut.Instance.ScriptVersion, 0));
+
+        Assert.Equal((false, "The element cannot be placed here."), (moved.Accepted, moved.Reason));
+        Assert.Equal(-1e12, ((DiagramBox)diagram.Find("member")!).Bounds.X);
     }
 
     [Fact]
@@ -199,7 +225,7 @@ public sealed class OperationCommitTests : BunitContext
         var diagram = CreateDiagram();
         DiagramViewport? reported = null;
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram).Add(p => p.ViewportChanged, x => reported = x));
-        var bridge = new MusselDiagram.Internal.DiagramScriptBridge(cut.Instance);
+        var bridge = new DiagramScriptBridge(cut.Instance);
         var version = diagram.Snapshot.Version;
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
 

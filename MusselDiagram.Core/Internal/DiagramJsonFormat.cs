@@ -664,7 +664,6 @@ internal static class DiagramJsonFormat
                 }
 
                 var members = new List<string>();
-                added.Clear();
                 foreach (var memberId in group.MemberIds)
                 {
                     if (byId.GetValueOrDefault(memberId) is DiagramNode or DiagramGroup { Kind: DiagramGroupKind.Tree })
@@ -678,6 +677,11 @@ internal static class DiagramJsonFormat
                     {
                         Report(DiagramIssueSeverity.Error, DiagramIssueKind.InvalidMember, group.Id, memberId);
                     }
+                }
+
+                foreach (var member in members)
+                {
+                    added.Remove(member);
                 }
 
                 if (members.Count == 0)

@@ -5,7 +5,7 @@ using Microsoft.JSInterop;
 
 using MusselDiagram.Internal;
 
-public sealed partial class MusselDiagramPalette
+public sealed partial class MusselDiagramPalette : IAsyncDisposable
 {
     private const float RowHeight = 32;
 
@@ -82,44 +82,13 @@ public sealed partial class MusselDiagramPalette
         }
     }
 
-    private async Task ReleaseAsync()
+    private Task ReleaseAsync()
     {
         var attached = source;
         var loaded = module;
         source = null;
         module = null;
-        try
-        {
-            if (attached is not null)
-            {
-                try
-                {
-                    await attached.InvokeVoidAsync("dispose").ConfigureAwait(true);
-                }
-                catch (JSException)
-                {
-                }
-
-                await attached.DisposeAsync().ConfigureAwait(true);
-            }
-
-            if (loaded is not null)
-            {
-                await loaded.DisposeAsync().ConfigureAwait(true);
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-        catch (JSException)
-        {
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
+        return ScriptCalls.ReleaseAsync(attached, loaded);
     }
 
     private RenderFragment PaletteIconOf(string icon) => builder =>

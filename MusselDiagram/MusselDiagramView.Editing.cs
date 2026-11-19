@@ -201,9 +201,14 @@ public sealed partial class MusselDiagramView
 
     private DiagramReason? CheckDrop(DiagramBox? element)
     {
-        if (ReadOnly || !DropEnabled || (element is null) || !SnapshotEditor.IsInside(element.Bounds))
+        if (ReadOnly || !DropEnabled || (element is null))
         {
             return Reason(DiagramReasonKind.Permission);
+        }
+
+        if (!SnapshotEditor.IsInside(element.Bounds))
+        {
+            return Reason(DiagramReasonKind.Nesting);
         }
 
         var current = Snapshot;

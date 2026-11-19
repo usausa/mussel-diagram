@@ -124,6 +124,34 @@ public sealed class IconImportTests
         Assert.Equal(2, result.Issues.Length);
     }
 
+    [Fact]
+    public void AnAliasOfAnAliasTakesTheNearestSizeAndOffsetAndFlipsBothWays()
+    {
+        const string json = """
+            {
+              "prefix": "demo",
+              "width": 24,
+              "height": 24,
+              "icons": { "home": { "body": "<path d='M0 0h1v1z'/>" } },
+              "aliases": {
+                "outer": { "parent": "home", "width": 32, "height": 20, "left": 2, "top": 3, "vFlip": true },
+                "inner": { "parent": "outer", "width": 16, "vFlip": true }
+              }
+            }
+            """;
+
+        var icons = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json))).IconSet.Icons;
+
+        var outer = icons.Single(static x => x.Id == "outer");
+        var inner = icons.Single(static x => x.Id == "inner");
+        Assert.Equal((32d, 20d), (outer.Width, outer.Height));
+        Assert.Equal((16d, 20d), (inner.Width, inner.Height));
+        Assert.Contains("scale(1 -1)", outer.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("scale(1 -1)", inner.Body, StringComparison.Ordinal);
+        Assert.Contains("translate(-2 -3)", outer.Body, StringComparison.Ordinal);
+        Assert.Contains("translate(-2 -3)", inner.Body, StringComparison.Ordinal);
+    }
+
     [Fact(Timeout = 30_000)]
     public Task ALongCycleOfAliasesEndsQuickly()
     {
@@ -156,6 +184,24 @@ public sealed class IconImportTests
                 Assert.Empty(result.Issues);
                 Assert.DoesNotContain("rotate(", result.IconSet.Icons.Single(static x => x.Id == "a0").Body, StringComparison.Ordinal);
                 Assert.Contains("rotate(90", result.IconSet.Icons.Single(static x => x.Id == "a29999").Body, StringComparison.Ordinal);
+                Assert.Contains("rotate(180", result.IconSet.Icons.Single(static x => x.Id == "a29998").Body, StringComparison.Ordinal);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public Task AVeryLongChainOfAliasesEndsQuickly()
+    {
+        return Task.Run(
+            static () =>
+            {
+                var aliases = String.Join(", ", Enumerable.Range(0, 1000000).Select(static i => $"\"a{i}\": {{ \"parent\": \"a{i + 1}\" }}"));
+                var json = $$"""{ "prefix": "demo", "icons": { "home": { "body": "<path d='M0 0'/>" } }, "aliases": { {{aliases}} } }""";
+
+                var result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+
+                Assert.Equal(["home"], result.IconSet.Icons.Select(static x => x.Id));
+                Assert.Equal(1000000, result.Issues.Length);
             },
             TestContext.Current.CancellationToken);
     }

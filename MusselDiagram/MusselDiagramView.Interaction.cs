@@ -67,7 +67,7 @@ public sealed partial class MusselDiagramView
 
         try
         {
-            await controller.InvokeVoidAsync("select", [list]).ConfigureAwait(true);
+            await controller.InvokeVoidAsync("select", SelectedIds).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {

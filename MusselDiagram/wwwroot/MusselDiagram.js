@@ -317,6 +317,7 @@ const EDGE_ZONE = 40;
 const EDGE_SPEED = 16;
 const GRID_MINIMUM = 8;
 const MIN_SIZE = 10;
+const MAX_CURVE_REACH = 1e12;
 const GUIDE_EPSILON = 0.01;
 const ELEMENT_SELECTOR = '.mussel-diagram-node, .mussel-diagram-group, .mussel-diagram-link';
 const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .mussel-diagram-nodrag';
@@ -325,6 +326,7 @@ const SIDES = ['top', 'right', 'bottom', 'left'];
 const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: true, form: 'orthogonal', stub: 20, sourceCut: 0, targetCut: 10 };
 const TYPING_KEYS = new Set(['Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+A', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V']);
 const ZOOM_STEP = 1.2;
+const MIN_GRID_ZOOM = 0.05;
 const controllers = new WeakMap();
 
 export function keyName(event, mac) {
@@ -373,9 +375,11 @@ export function commandKey(name) {
 
 export function nextZoom(zoom, direction, minZoom, maxZoom) {
     let next = direction > 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
-    next = Math.round(next * 20) / 20;
-    if (next === zoom) {
-        next = zoom + (direction * 0.05);
+    if (next >= MIN_GRID_ZOOM) {
+        next = Math.round(next * 20) / 20;
+        if (direction > 0 ? next <= zoom : next >= zoom) {
+            next = (Math.round(zoom * 20) + direction) / 20;
+        }
     }
     if (((zoom < 1) && (next > 1)) || ((zoom > 1) && (next < 1))) {
         next = 1;
@@ -401,7 +405,7 @@ export function fitView(bounds, width, height, margin, minZoom, maxZoom) {
         return { zoom: 1, x: margin - bounds.x, y: margin - bounds.y };
     }
     const fit = Math.min((width - (margin * 2)) / bounds.width, (height - (margin * 2)) / bounds.height);
-    const zoom = Math.min(maxZoom, Math.max(minZoom, Math.floor(fit * 100) / 100));
+    const zoom = Math.min(maxZoom, Math.max(minZoom, fit < MIN_GRID_ZOOM ? fit : Math.floor(fit * 100) / 100));
     return {
         zoom,
         x: ((width - (bounds.width * zoom)) / 2) - (bounds.x * zoom),
@@ -410,7 +414,8 @@ export function fitView(bounds, width, height, margin, minZoom, maxZoom) {
 }
 
 export function roundZoom(view, point, minZoom, maxZoom) {
-    const zoom = Math.min(maxZoom, Math.max(minZoom, Math.round(view.zoom * 100) / 100));
+    const rounded = view.zoom < MIN_GRID_ZOOM ? view.zoom : Math.round(view.zoom * 100) / 100;
+    const zoom = Math.min(maxZoom, Math.max(minZoom, rounded));
     return zoomAround(view, zoom / view.zoom, point);
 }
 
@@ -551,7 +556,7 @@ export function orthogonalRoute(start, end, stub, grid = 0) {
 export function curveRoute(start, end, stub) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    const reach = Math.max(stub, Math.sqrt((dx * dx) + (dy * dy)) / 2);
+    const reach = Math.min(Math.max(stub, Math.sqrt((dx * dx) + (dy * dy)) / 2), MAX_CURVE_REACH);
     return [{ x: start.x, y: start.y }, stepOut(start, start.side, reach), stepOut(end, end.side, reach), { x: end.x, y: end.y }];
 }
 
@@ -1154,6 +1159,14 @@ export function restore(saved, written) {
     }
 }
 
+export function restoreTexts(texts, written) {
+    for (const [node, text] of texts ?? []) {
+        if (node.nodeValue === written.get(node)) {
+            node.nodeValue = text;
+        }
+    }
+}
+
 export function keepWritten(entry, later) {
     for (const [element, attributes] of entry.written) {
         if (later.has(element)) {
@@ -1585,6 +1598,7 @@ class DiagramController {
         this.pending = [];
         this.rejections = 0;
         this.sentSelection = null;
+        this.selectionSends = 0;
         this.waiting = false;
         this.reason = null;
         this.spaceDown = false;
@@ -1905,6 +1919,11 @@ class DiagramController {
 
     foldGesture(round = true) {
         if (!this.gesture) {
+            if (round && this.unrounded) {
+                this.view = roundZoom(this.view, this.unrounded, this.options.minZoom, this.options.maxZoom);
+                this.unrounded = null;
+                this.applyView();
+            }
             return;
         }
         const { k, x, y, point } = this.gesture;
@@ -1924,11 +1943,6 @@ class DiagramController {
     settle() {
         clearTimeout(this.settleTimer);
         this.foldGesture();
-        if (this.unrounded) {
-            this.view = roundZoom(this.view, this.unrounded, this.options.minZoom, this.options.maxZoom);
-            this.unrounded = null;
-            this.applyView();
-        }
         this.notifyViewport();
     }
 
@@ -2357,6 +2371,7 @@ class DiagramController {
         this.drawSelection();
         if (this.dotnet) {
             this.sentSelection = new Set(next);
+            this.selectionSends++;
             this.track(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', [...next]).catch(() => { }));
         }
     }
@@ -2718,10 +2733,10 @@ class DiagramController {
         this.markSplit(drag, null);
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
-        if (drag.written) {
-            restore(drag.saved, drag.written);
-        }
         this.drag = null;
+        if (drag.written) {
+            this.restoreDrag(drag);
+        }
         this.endDragState(drag);
         this.clearMarks();
         this.layers.guides.replaceChildren();
@@ -2901,12 +2916,12 @@ class DiagramController {
             }
         }
         for (const link of links) {
-            this.drag.paths.set(link.id, this.linkPaths(link.id, this.drag.saved, elements.get(link.id) ?? null, badgeSets.get(link.id) ?? null));
+            this.drag.paths.set(link.id, this.linkPaths(this.drag.saved, elements.get(link.id) ?? null, badgeSets.get(link.id) ?? null));
         }
         return true;
     }
 
-    linkPaths(id, saved, element = this.element(id), badges = this.badgeSet(id)) {
+    linkPaths(saved, element, badges) {
         const paths = { hit: element?.querySelector('.mussel-diagram-link-hit'), line: element?.querySelector('.mussel-diagram-link-line'), badges };
         this.save(saved, paths.hit, 'd');
         this.save(saved, paths.line, 'd');
@@ -3042,11 +3057,11 @@ class DiagramController {
         const splitLinkId = drag.split?.linkId ?? null;
         this.markSplit(drag, null);
         if ((drag.dx === 0) && (drag.dy === 0)) {
-            restore(drag.saved, drag.written);
+            this.restoreDrag(drag);
             return;
         }
         if (drag.nestBlocked) {
-            restore(drag.saved, drag.written);
+            this.restoreDrag(drag);
             this.showReason(this.reasonText('nesting'), drag.point);
             return;
         }
@@ -3073,20 +3088,12 @@ class DiagramController {
         if (!box?.resizable || !this.options.resizeEnabled) {
             return false;
         }
-        const type = this.schema.types.get(box.type);
-        const excluded = new Set([box.id, ...this.table.ancestors(box.id), ...this.table.descendants(box.id)]);
         const links = this.table.linksOf([box.id]);
         const drag = {
             kind: 'resize',
             id: box.id,
-            box,
+            ...this.resizeBasis(box),
             handle: press.hit.handle,
-            limits: {
-                minW: type?.minW ?? MIN_SIZE,
-                minH: type?.minH ?? MIN_SIZE,
-                inner: box.kind === 'group' ? this.table.innerBounds(box.id, type?.padding) : null,
-            },
-            lines: this.snapLines(excluded),
             links,
             paths: new Map(),
             saved: new Map(),
@@ -3096,10 +3103,34 @@ class DiagramController {
             startVersion: this.table.version,
         };
         for (const link of links) {
-            drag.paths.set(link.id, this.linkPaths(link.id, drag.saved));
+            drag.paths.set(link.id, this.linkPaths(drag.saved, this.element(link.id), this.badgeSet(link.id)));
         }
         this.drag = drag;
         return true;
+    }
+
+    resizeBasis(box) {
+        const type = this.schema.types.get(box.type);
+        const excluded = new Set([box.id, ...this.table.ancestors(box.id), ...this.table.descendants(box.id)]);
+        return {
+            box,
+            limits: {
+                minW: type?.minW ?? MIN_SIZE,
+                minH: type?.minH ?? MIN_SIZE,
+                inner: box.kind === 'group' ? this.table.innerBounds(box.id, type?.padding) : null,
+            },
+            lines: this.snapLines(excluded),
+        };
+    }
+
+    rebaseResize(drag) {
+        const box = this.table.boxes.get(drag.id);
+        if (!box) {
+            this.cancelDrag();
+            return;
+        }
+        Object.assign(drag, this.resizeBasis(box));
+        this.requestFrame();
     }
 
     updateResize(drag) {
@@ -3135,12 +3166,12 @@ class DiagramController {
         const { rect, box } = drag;
         this.layers.preview.replaceChildren();
         if ((rect.x === box.x) && (rect.y === box.y) && (rect.w === box.w) && (rect.h === box.h)) {
-            restore(drag.saved, drag.written);
+            this.restoreDrag(drag);
             return;
         }
         const previous = applyEntry(this.table.boxes, box.id, rect);
         if (previous === null) {
-            restore(drag.saved, drag.written);
+            this.restoreDrag(drag);
             return;
         }
         const frame = svg('rect', { class: 'mussel-diagram-resize-frame', x: rect.x, y: rect.y, width: rect.w, height: rect.h });
@@ -3734,7 +3765,7 @@ class DiagramController {
         this.layers.preview.replaceChildren();
     }
 
-    selectionArgument(ids = this.selection) {
+    selectionArgument(ids = [...this.selection, ...(this.awaitedSelection ?? [])]) {
         const changed = changedSelection(ids, this.sentSelection);
         if (changed) {
             this.sentSelection = new Set(changed);
@@ -3822,15 +3853,20 @@ class DiagramController {
             for (const overlay of item.overlays) {
                 overlay.remove();
             }
-            for (const [node, text] of item.texts ?? []) {
-                if (node.nodeValue === item.writtenTexts.get(node)) {
-                    node.nodeValue = text;
-                }
-            }
+            restoreTexts(item.texts, item.writtenTexts);
             item.reconnecting?.removeAttribute('data-reconnecting');
         }
+        this.settlePending();
         this.table.index();
         this.drawSelection();
+        if (this.drag?.kind === 'resize') {
+            this.rebaseResize(this.drag);
+        }
+    }
+
+    restoreDrag(drag) {
+        restore(drag.saved, drag.written);
+        this.settlePending();
     }
 
     settlePending() {
@@ -4009,11 +4045,12 @@ class DiagramController {
             }
         }
         const selection = [...this.selection, ...(this.awaitedSelection ?? [])];
+        const sends = this.selectionSends;
         const run = this.commandChain.then(async () => {
             await this.whenIdle();
             if (this.commandFor(command.name)?.enabled) {
                 await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
-                const current = this.selectionArgument([...this.selection, ...(this.awaitedSelection ?? [])]);
+                const current = this.selectionSends === sends ? null : this.selectionArgument();
                 if (current) {
                     await this.dotnet?.invokeMethodAsync('OnSelectionChangedAsync', current);
                 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
-    keyName, nextZoom, stackOffsets, restore, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, settleWritten, revertSaved, firstById, commandKey,
+    keyName, nextZoom, stackOffsets, restore, restoreTexts, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, settleWritten, revertSaved, firstById, commandKey,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -87,9 +87,20 @@ test('wheel zoom ends on a 1% grid around the pointer', () => {
 
 test('rounding the zoom stays inside the limits', () => {
     const point = { x: 0, y: 0 };
-    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 0.003 }, point, 0.001, 8).zoom - 0.001) < 1e-12);
     assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 1 / 3 }, point, 1 / 3, 8).zoom - (1 / 3)) < 1e-12);
     assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 7.996 }, point, 0.05, 7.995).zoom - 7.995) < 1e-12);
+});
+
+test('zooms below 5% are not rounded to a grid', () => {
+    const point = { x: 0, y: 0 };
+    const tick = Math.exp(0.15);
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 0.03 * tick }, point, 0.001, 8).zoom - (0.03 * tick)) < 1e-12);
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 0.003 }, point, 0.001, 8).zoom - 0.003) < 1e-12);
+    assert.ok(Math.abs(roundZoom({ x: 0, y: 0, zoom: 0.004 }, point, 0, 8).zoom - 0.004) < 1e-12);
+    assert.ok(Math.abs(nextZoom(0.05, -1, 0.001, 8) - (0.05 / 1.2)) < 1e-12);
+    assert.ok(Math.abs(nextZoom(0.02, 1, 0.001, 8) - 0.024) < 1e-12);
+    assert.equal(nextZoom(0.045, 1, 0.001, 8), 0.05);
+    assert.ok(Math.abs(fitView({ x: 0, y: 0, width: 304000, height: 100000 }, 800, 600, 20, 0.001, 8).zoom - 0.0025) < 1e-12);
 });
 
 test('wheel deltas in lines and pages become pixels', () => {
@@ -125,6 +136,12 @@ test('links are routed the same way as in C#', () => {
     assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 300, 0)), 'orthogonal', 10, 10), 'M110,25L290,25');
     assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 403, 100), 10)), 'M100,25L250,25L250,125L403,125');
     assert.equal(toPath(routeLink(link('a', 'b'), box('a', 0, 0), box('b', 403, 100))), 'M100,25L251.5,25L251.5,125L403,125');
+});
+
+test('a curve reaches out at most the range of boxes from its ends', () => {
+    const link = { source: 'a', target: 'b', sourcePort: 'out', targetPort: 'in', stub: 20, form: 'curved' };
+    const points = routeLink(link, service('a', 1e12 - 100, 0), service('b', -1e12, 1e12 - 50));
+    assert.deepEqual(points.map((point) => [point.x, point.y]), [[1e12, 25], [2e12, 25], [-2e12, 1e12 - 25], [-1e12, 1e12 - 25]]);
 });
 
 test('bends go to the grid line nearest the middle between the stubs', () => {
@@ -313,6 +330,8 @@ test('command zoom moves in steps on a 5% grid and passes 100%', () => {
     assert.equal(nextZoom(0.9, 1, 0.05, 8), 1);
     assert.equal(nextZoom(7.5, 1, 0.05, 8), 8);
     assert.equal(nextZoom(0.05, -1, 0.05, 8), 0.05);
+    assert.equal(nextZoom(0.06, 1, 0.05, 8), 0.1);
+    assert.equal(nextZoom(0.09, -1, 0.05, 8), 0.05);
 });
 
 test('quick add places the element beside the connection point', () => {
@@ -491,15 +510,58 @@ test('a commit still waiting leaves alone what a later commit has written, so bo
     const kept = [element.getAttribute('transform'), node.nodeValue];
     for (const item of [second, first]) {
         restore(item.saved, item.written);
-        for (const [text, value] of item.texts) {
-            if (text.nodeValue === item.writtenTexts.get(text)) {
-                text.nodeValue = value;
-            }
-        }
+        restoreTexts(item.texts, item.writtenTexts);
     }
 
     assert.deepEqual(kept, ['translate(10,10)', 'Second']);
     assert.deepEqual([element.getAttribute('transform'), node.nodeValue], ['translate(0,0)', 'Start']);
+});
+
+test('a text that a rendering changed after the commit wrote it is not put back', () => {
+    const node = { nodeValue: 'Rendered' };
+
+    restoreTexts([[node, 'Start']], new Map([[node, 'Typed']]));
+
+    assert.equal(node.nodeValue, 'Rendered');
+});
+
+test('a commit waiting for its answer leaves its elements to the renderings, even over an earlier answered one', () => {
+    const element = fakeElement([['transform', 'translate(5,0)']]);
+    const entry = (version, before, after) => ({
+        sent: true,
+        version,
+        saved: new Map([[element, new Map([['transform', before]])]]),
+        written: new Map([[element, new Map([['transform', after]])]]),
+        texts: [],
+        writtenTexts: new Map(),
+    });
+
+    settleWritten([entry(1, 'translate(0,0)', 'translate(10,0)'), entry(null, 'translate(10,0)', 'translate(20,0)')], null);
+
+    assert.equal(element.getAttribute('transform'), 'translate(5,0)');
+});
+
+test('the commits that stay write their values back after a later one is reverted', () => {
+    const element = fakeElement([['transform', 'translate(20,0)']]);
+    const entry = (sent, version, before, after) => ({
+        sent,
+        version,
+        saved: new Map([[element, new Map([['transform', before]])]]),
+        written: new Map([[element, new Map([['transform', after]])]]),
+        texts: [],
+        writtenTexts: new Map(),
+    });
+    const first = entry(true, 1, 'translate(0,0)', 'translate(10,0)');
+    const second = entry(false, null, 'translate(10,0)', 'translate(20,0)');
+    element.setAttribute('transform', 'translate(5,0)');
+
+    settleWritten([first, second], null);
+    const kept = element.getAttribute('transform');
+    restore(second.saved, second.written);
+    const restored = element.getAttribute('transform');
+    settleWritten([first], null);
+
+    assert.deepEqual([kept, restored, element.getAttribute('transform')], ['translate(20,0)', 'translate(5,0)', 'translate(10,0)']);
 });
 
 test('a selection that the view already has is not sent again', () => {
