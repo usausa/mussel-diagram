@@ -54,9 +54,6 @@ public sealed partial class ElectricPage : IDisposable
 
     private static string? DateText(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    private static DateOnly? ParseDate(string? text) =>
-        DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
-
     private static string NextText(DiagramNode node) => node.Data is EquipmentData { NextInspection: { } next } ? DateText(next)! : "—";
 
     private void Refresh()
@@ -89,6 +86,18 @@ public sealed partial class ElectricPage : IDisposable
         diagram.Replace(node with { Label = String.IsNullOrWhiteSpace(name) ? null : name });
 
     private void Update(DiagramNode node, EquipmentData data) => diagram.Replace(node with { Data = data });
+
+    private void UpdateInspection(DiagramNode node, EquipmentData data, string? text)
+    {
+        if (String.IsNullOrWhiteSpace(text))
+        {
+            Update(node, data with { NextInspection = null });
+        }
+        else if (DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            Update(node, data with { NextInspection = date });
+        }
+    }
 
     private void SetFeeders(DiagramNode node, int feeders) =>
         diagram.Replace(node with { Data = new BusData(feeders), Bounds = node.Bounds with { Width = ElectricDiagrams.WidthOf(node.Type, feeders) } });

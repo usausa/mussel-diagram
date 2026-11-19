@@ -249,6 +249,27 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(view.Locator("g.mussel-diagram-node[data-id='m2']")).Not.ToHaveAttributeAsync("style", new Regex("override-opacity"));
     }
 
+    [Fact]
+    public async Task AnInspectionDateInAnotherFormatKeepsTheDate()
+    {
+        opened = await app.OpenAsync("electric", "server");
+        var page = opened.Page;
+        var transformer = opened.View.Locator("g.mussel-diagram-node[data-id='tr2']");
+        var ledger = page.Locator(".ledger-item[data-device='tr2']");
+        await Expect(ledger).ToHaveAttributeAsync("data-status", "expired");
+        await ClickAsync("g.mussel-diagram-node[data-id='tr2'] > .mussel-diagram-shape");
+
+        var inspection = page.Locator("[data-panel='ledger'] input[data-field='inspection']");
+        await inspection.FillAsync("2026/12/1");
+        await inspection.PressAsync("Tab");
+        var capacity = page.Locator("[data-panel='ledger'] input[data-field='capacity']");
+        await capacity.FillAsync("100");
+        await capacity.PressAsync("Tab");
+        await Expect(transformer).Not.ToHaveClassAsync(new Regex("mussel-diagram-warning"));
+
+        await Expect(opened.View.Locator(".mussel-diagram-badge-set[data-for='tr2'] .mussel-diagram-badge[data-tone='error'] text")).ToHaveTextAsync("点検期限切れ");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -571,16 +592,29 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(line).Not.ToHaveAttributeAsync("d", new Regex("C"));
     }
 
-    [Theory]
-    [MemberData(nameof(Modes))]
-    public async Task TheRenderModeSwitchFollowsThePage(string mode)
+    [Fact]
+    public async Task RenderModeSwitchKeepsThePage()
     {
-        opened = await app.OpenAsync(string.Empty, mode);
+        var sample = opened = await app.OpenAsync("workflow", "server");
+        var active = sample.Page.Locator(".mode-switch a.active");
+        await Expect(active).ToHaveTextAsync("Server");
 
-        await opened.Page.Locator(".page-switch a[href='large']").ClickAsync();
+        await sample.Page.Locator(".mode-switch").GetByText("WebAssembly").ClickAsync();
+        await Expect(active).ToHaveTextAsync("WebAssembly");
+        await Expect(sample.Page.Locator(".page-switch a.active")).ToHaveTextAsync("ワークフロー");
+        await sample.WaitForDiagramAsync();
+        Assert.EndsWith("/workflow", sample.Page.Url, StringComparison.Ordinal);
 
-        await Expect(opened.Page.Locator(".mode-switch a").First).ToHaveAttributeAsync("href", new Regex("redirect=%2Flarge$"));
-        await Expect(opened.Page.Locator(".mode-switch a.active")).ToHaveTextAsync(mode == "server" ? "Server" : "WebAssembly");
+        await Expect(sample.View.Locator("g.mussel-diagram-grid pattern")).ToHaveCountAsync(1);
+        await sample.Page.Locator("button[aria-label='グリッド']").ClickAsync();
+        await Expect(sample.View.Locator("g.mussel-diagram-grid pattern")).ToHaveCountAsync(0);
+
+        await sample.Page.Locator(".page-switch").GetByText("ER 図").ClickAsync();
+        await Expect(sample.Page.Locator(".mode-switch a").First).ToHaveAttributeAsync("href", new Regex("redirect=%2Fer$"));
+        await Expect(active).ToHaveTextAsync("WebAssembly");
+        await sample.Page.Locator(".mode-switch").GetByText("Server").ClickAsync();
+        await Expect(active).ToHaveTextAsync("Server");
+        Assert.EndsWith("/er", sample.Page.Url, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -607,13 +641,12 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(sample.Page.Locator("h1")).ToHaveTextAsync("エラー");
     }
 
-    [Theory]
-    [InlineData("render-mode/server")]
-    public async Task RedirectsOutsideTheAppGoHome(string path)
+    [Fact]
+    public async Task RedirectsOutsideTheAppGoHome()
     {
         var sample = opened = await app.OpenBlankAsync();
 
-        var response = await sample.Page.GotoAsync($"{app.BaseAddress}{path}?redirect=%2F%5Cexample.com");
+        var response = await sample.Page.GotoAsync($"{app.BaseAddress}render-mode/server?redirect=%2F%5Cexample.com");
         Assert.Equal(200, response?.Status);
         Assert.Equal(app.BaseAddress, sample.Page.Url);
     }

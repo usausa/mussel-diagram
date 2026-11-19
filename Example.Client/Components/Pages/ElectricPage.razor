@@ -38,7 +38,7 @@
                     {
                         <MudNumericField T="double?" Label="@label" Value="@data.Capacity" ValueChanged="@(v => Update(node, data with { Capacity = v }))" data-field="capacity" />
                     }
-                    <MudTextField T="string" Label="次の点検日" Value="@DateText(data.NextInspection)" ValueChanged="@(v => Update(node, data with { NextInspection = ParseDate(v) }))" Placeholder="2026-12-01" data-field="inspection" />
+                    <MudTextField T="string" Label="次の点検日" Value="@DateText(data.NextInspection)" ValueChanged="@(v => UpdateInspection(node, data, v))" Placeholder="2026-12-01" data-field="inspection" />
                     break;
             }
         }

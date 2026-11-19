@@ -422,6 +422,25 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
+    public async Task ACommandFromTheScriptActsOnTheSelectionItBrought()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters
+            .Add(static p => p.Diagram, diagram)
+            .Add(p => p.SelectionChanged, ids => ids is ["b"] ? release.Task : Task.CompletedTask));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        var deleting = cut.InvokeAsync(() => bridge.ExecuteCommandAsync(DiagramCommands.Delete, ["b"]));
+        await cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["vpc"]));
+        release.SetResult();
+        await deleting.ConfigureAwait(true);
+
+        Assert.False(diagram.Snapshot.Contains("b"));
+        Assert.True(diagram.Snapshot.Contains("vpc"));
+    }
+
+    [Fact]
     public async Task DisposingWhileTheScriptIsAttachingReleasesWhatAttachReturns()
     {
         var instance = new LateModule();
@@ -441,19 +460,19 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
-    public async Task DisposingWhileTheCommandsAreSentEndsQuietly()
+    public async Task DisposingWhileTheCommandsAreSentStopsTheRest()
     {
         var runtime = new LateRuntime { Module = { Hold = "setCommands" } };
         Services.AddSingleton<IJSRuntime>(runtime);
         var diagram = new Diagram(Schema with { Rules = new DiagramAppRules { InPalette = static _ => true } });
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
-
         await cut.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await cut.WaitForAssertionAsync(() => Assert.Contains("setCommands", runtime.Module.Calls));
+
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
         await cut.InvokeAsync(runtime.Module.Resume.SetResult);
-        var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
 
-        Assert.NotSame(Renderer.UnhandledException, ended);
+        Assert.False(Renderer.UnhandledException.IsCompleted);
     }
 
     [Fact]
@@ -636,7 +655,9 @@ public sealed class MusselDiagramViewTests : BunitContext
         await view.InvokeAsync(runtime.Module.Resume.SetResult);
 
         await view.WaitForAssertionAsync(() => Assert.True(instance.Released));
+        Assert.False(Renderer.UnhandledException.IsCompleted);
         Assert.Contains("dispose", instance.Calls);
+        Assert.True(runtime.Module.Released);
 
         Func<Task> RenderPalette()
         {

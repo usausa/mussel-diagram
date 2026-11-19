@@ -206,11 +206,6 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Permission);
         }
 
-        if (!SnapshotEditor.IsInside(element.Bounds))
-        {
-            return Reason(DiagramReasonKind.Nesting);
-        }
-
         var current = Snapshot;
         var index = Diagram.Index;
         var type = index.FindBoxType(element)!;
@@ -224,7 +219,8 @@ public sealed partial class MusselDiagramView
             return Reason(DiagramReasonKind.Nesting);
         }
 
-        return DiagramRules.CheckNesting(current, index, null, element.Type, element.ParentId);
+        return DiagramRules.CheckNesting(current, index, null, element.Type, element.ParentId) ??
+            (SnapshotEditor.IsInside(element.Bounds) ? null : Reason(DiagramReasonKind.Nesting));
     }
 
     private DiagramReason? CheckSplit(string? splitLinkId, long startVersion) =>

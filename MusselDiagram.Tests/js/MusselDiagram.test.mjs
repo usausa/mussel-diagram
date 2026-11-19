@@ -144,6 +144,16 @@ test('a curve reaches out at most the range of boxes from its ends', () => {
     assert.deepEqual(points.map((point) => [point.x, point.y]), [[1e12, 25], [2e12, 25], [-2e12, 1e12 - 25], [-1e12, 1e12 - 25]]);
 });
 
+test('a curve from ports that stand out stays inside the route range', () => {
+    const link = { source: 'a', target: 'b', sourcePort: 'out', targetPort: 'in', stub: 20, form: 'curved' };
+    const outward = (id, x, y) => box(id, x, y, [
+        { id: 'in', side: 'left', ratio: 0.5, offset: 10 },
+        { id: 'out', side: 'right', ratio: 0.5, offset: 10 },
+    ]);
+    const points = routeLink(link, outward('a', 1e12 - 100, 0), outward('b', -1e12, 1e12 - 50));
+    assert.deepEqual(points.map((point) => [point.x, point.y]), [[1e12 + 10, 25], [2e12, 25], [-2e12, 1e12 - 25], [-1e12 - 10, 1e12 - 25]]);
+});
+
 test('bends go to the grid line nearest the middle between the stubs', () => {
     assert.equal(gridMiddle(120, 383, 10), 250);
     assert.equal(gridMiddle(383, 120, 10), 250);
@@ -298,6 +308,16 @@ test('the type list is searched by words and ranked by the label', () => {
     assert.equal(searchTypes(types, ' ').length, 3);
 });
 
+test('the type list is searched in capitals one letter at a time and split at the spaces of .NET', () => {
+    const types = [{ name: 'street', label: 'ΟΔΟΣ' }, { name: 'size', label: 'GROẞ' }, { name: 'temperature', label: '\u212A' }, { name: 'server', label: 'Server' }, { name: 'road', label: 'Straße' }];
+    assert.deepEqual(searchTypes(types, 'οδοσ').map((t) => t.name), ['street']);
+    assert.deepEqual(searchTypes(types, 'groß').map((t) => t.name), []);
+    assert.deepEqual(searchTypes(types, 'strasse').map((t) => t.name), []);
+    assert.deepEqual(searchTypes(types, 'k').map((t) => t.name), []);
+    assert.deepEqual(searchTypes(types, 'server\u0085').map((t) => t.name), ['server']);
+    assert.deepEqual(searchTypes(types, '\uFEFFserver').map((t) => t.name), []);
+});
+
 test('keys are named with the modifiers in a fixed order', () => {
     const key = (k, extra = {}) => keyName({ key: k, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra }, false);
     assert.equal(key('z', { ctrlKey: true }), 'Ctrl+Z');
@@ -310,6 +330,9 @@ test('keys are named with the modifiers in a fixed order', () => {
     assert.equal(key('f', { ctrlKey: true, altKey: true, shiftKey: true, code: 'KeyF' }), 'Ctrl+Alt+Shift+F');
     assert.equal(key('Control', { ctrlKey: true }), null);
     assert.equal(keyName({ key: 'c', code: 'KeyC', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, true), 'Ctrl+C');
+    assert.equal(key('ä', { ctrlKey: true }), 'Ctrl+Ä');
+    assert.equal(key('ß', { ctrlKey: true }), 'Ctrl+ß');
+    assert.equal(key('\u0131', { ctrlKey: true }), 'Ctrl+I');
 });
 
 test('with Alt, a letter or a digit is the key pressed and Shift is written', () => {
@@ -322,6 +345,8 @@ test('with Alt, a letter or a digit is the key pressed and Shift is written', ()
 test('key names of commands match in any case', () => {
     const pressed = keyName({ key: 'Pause', code: 'Pause', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, false);
     assert.equal(commandKey('Ctrl+pause'), commandKey(pressed));
+    const sharp = keyName({ key: 'ß', code: 'Minus', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, false);
+    assert.equal(commandKey('Ctrl+ß'), commandKey(sharp));
 });
 
 test('command zoom moves in steps on a 5% grid and passes 100%', () => {
@@ -332,6 +357,8 @@ test('command zoom moves in steps on a 5% grid and passes 100%', () => {
     assert.equal(nextZoom(0.05, -1, 0.05, 8), 0.05);
     assert.equal(nextZoom(0.06, 1, 0.05, 8), 0.1);
     assert.equal(nextZoom(0.09, -1, 0.05, 8), 0.05);
+    assert.equal(nextZoom(0.05, 1, 0.05, 8), 0.1);
+    assert.equal(nextZoom(0.1, -1, 0.05, 8), 0.05);
 });
 
 test('quick add places the element beside the connection point', () => {

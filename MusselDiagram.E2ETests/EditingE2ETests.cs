@@ -32,6 +32,73 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected] > text.mussel-diagram-label[data-label='星 3']")).ToHaveCountAsync(1);
     }
 
+    [Fact]
+    public async Task APlacedNodeLeavesASelectionMadeBeforeTheAnswer()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        await Expect(nodes).ToHaveCountAsync(9);
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldDrops = [];
+                window.selected = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name === 'CommitDropAsync') {
+                        window.view = this;
+                        return new Promise((resolve) => window.heldDrops.push(() => resolve(invoke.call(this, name, ...args))));
+                    }
+                    const result = invoke.call(this, name, ...args);
+                    if (name === 'OnSelectionChangedAsync') {
+                        result.then(() => window.selected.push(JSON.stringify(args[0])), () => { });
+                    }
+                    return result;
+                };
+            }
+            """);
+
+        await DragInAsync(page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']"), 120, 500);
+        await page.WaitForFunctionAsync("() => window.heldDrops.length === 1");
+        await rect.ClickAsync();
+        await page.WaitForFunctionAsync("() => window.selected.includes(JSON.stringify(['rect']))");
+        await page.EvaluateAsync("() => window.heldDrops[0]()");
+        await Expect(nodes).ToHaveCountAsync(10);
+        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', '', []); await new Promise((resolve) => setTimeout(resolve, 0)); }");
+
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task ThePaletteDragShowsTheColorsOfTheItem()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var item = page.Locator(".mussel-diagram-palette-item[data-mussel-type='rectangle']");
+        var from = await item.BoundingBoxAsync() ?? throw new InvalidOperationException("The item is not shown.");
+        await page.Mouse.MoveAsync(from.X + (from.Width / 2), from.Y + (from.Height / 2));
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(from.X + (from.Width / 2) + 20, from.Y + (from.Height / 2) + 5, new() { Steps = 4 });
+        await Expect(page.Locator(".mussel-diagram-drag-ghost .mussel-diagram-palette-shape")).ToHaveCountAsync(1);
+
+        var colors = await page.EvaluateAsync<string[]>(
+            """
+            () => {
+                const item = getComputedStyle(document.querySelector(".mussel-diagram-palette-item[data-mussel-type='rectangle'] .mussel-diagram-palette-shape"));
+                const ghost = getComputedStyle(document.querySelector('.mussel-diagram-drag-ghost .mussel-diagram-palette-shape'));
+                return [item.fill, ghost.fill, item.stroke, ghost.stroke];
+            }
+            """);
+        await page.Mouse.UpAsync();
+
+        Assert.Equal(colors[0], colors[1]);
+        Assert.Equal(colors[2], colors[3]);
+    }
+
     [Theory]
     [MemberData(nameof(Modes))]
     public async Task DragSourcesGiveTheirValue(string mode)

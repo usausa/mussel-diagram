@@ -120,12 +120,20 @@ public sealed partial class MusselDiagramView
             snapshot => Moved.InvokeAsync(new DiagramMovedEventArgs(ids, offset, reparent, reparent ? parentId : null, snapshot)));
     }
 
-    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramRect bounds, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null) =>
-        CommitAsync(
+    internal Task<ScriptCommitResult> CommitResizeAsync(string id, DiagramThickness edges, long startVersion, int rejectionsSeen, IReadOnlyList<string>? selection = null)
+    {
+        var bounds = default(DiagramRect);
+        return CommitAsync(
             DiagramOperation.Resize,
             rejectionsSeen,
             selection,
-            () => CheckResize(id, bounds, startVersion),
+            () =>
+            {
+                bounds = Snapshot.Find(id) is DiagramBox { Bounds: var current }
+                    ? new DiagramRect(current.X + edges.Left, current.Y + edges.Top, current.Width - edges.Left + edges.Right, current.Height - edges.Top + edges.Bottom)
+                    : default;
+                return CheckResize(id, bounds, startVersion);
+            },
             async () =>
             {
                 var args = new DiagramResizingEventArgs(id, bounds);
@@ -134,6 +142,7 @@ public sealed partial class MusselDiagramView
             },
             () => Diagram.Resize(id, bounds, null, DiagramChangeOrigin.User),
             snapshot => Resized.InvokeAsync(new DiagramResizedEventArgs(id, bounds, snapshot)));
+    }
 
     internal Task<ScriptCommitResult> CommitConnectAsync(DiagramLinkEnd source, DiagramLinkEnd target, string linkType, int rejectionsSeen, IReadOnlyList<string>? selection = null)
     {

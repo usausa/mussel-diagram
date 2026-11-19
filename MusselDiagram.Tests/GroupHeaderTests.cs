@@ -32,7 +32,6 @@ public sealed class GroupHeaderTests : BunitContext
     public GroupHeaderTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        JSInterop.SetupModule(MusselDiagramView.ModulePath);
     }
 
     [Fact]

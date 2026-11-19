@@ -181,6 +181,31 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void ACurveFromPortsThatStandOutStaysInsideTheRouteRange()
+    {
+        var outward = new DiagramNodeType
+        {
+            Name = "outward",
+            Ports =
+            [
+                new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Side = DiagramSide.Left, Offset = 10 },
+                new DiagramPortDefinition { Id = "out", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Offset = 10 }
+            ]
+        };
+        var diagram = new Diagram(Schema with
+        {
+            NodeTypes = [.. Schema.NodeTypes, outward],
+            LinkTypes = [.. Schema.LinkTypes, new DiagramLinkType { Name = "curve", Form = DiagramLineForm.Curved, TargetMarker = DiagramMarker.None }]
+        });
+        diagram.Add(Node("a", 1e12 - 100, 0, type: "outward"));
+        diagram.Add(Node("b", -1e12, 1e12 - 50, type: "outward"));
+
+        diagram.Connect(Link("ab", "a", "b", "out", "in", "curve"));
+
+        Assert.Equal([new DiagramPoint(1e12 + 10, 25), new DiagramPoint(2e12, 25), new DiagramPoint(-2e12, 1e12 - 25), new DiagramPoint(-1e12 - 10, 1e12 - 25)], Route(diagram, "ab"));
+    }
+
+    [Fact]
     public void SynchronousRoutersGiveTheRouteAtOnce()
     {
         var router = new FixedRouter();

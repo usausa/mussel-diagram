@@ -120,7 +120,7 @@ Wraps HTML of the app so that a drag into the view starts from it. Other attribu
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
 Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command.  
-The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
 
@@ -142,7 +142,7 @@ The model. It works without a view. Writing is not thread-safe.
 | `CanUndo`, `CanRedo`, `Undo()`, `Redo()`, `UndoLimit`, `ClearHistory()` | Undo; `UndoLimit` is 100 by default |
 | `Validate()` | The issues (`DiagramIssue`) of the current snapshot |
 | `Save(stream)`, `SaveAsync(stream)`, `ToJson()` | Writes the current snapshot as JSON |
-| `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed. Throws `DiagramException` when the text is not a diagram or its version is newer |
+| `Load(stream)`, `LoadAsync(stream)`, `LoadJson(json)` | Replaces the contents with JSON, and returns the issues of what was fixed. Throws `DiagramException` when the text is not a diagram, or its version is missing, less than 1 or newer |
 | `IsModified`, `MarkSaved()` | Whether the contents changed since `MarkSaved`; routes the router gives later do not set it while nothing else changed |
 | `GetPorts(id)` | The ports of an element (`DiagramPort`) with their positions |
 | `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, `SourceAngle` and `TargetAngle` (the direction each end marker points, in degrees: 0 right, 90 down), and `Path` (shortened at ends with markers) |
@@ -213,7 +213,7 @@ An immutable record.
 | `IconSets` | `DiagramIconSet`; see Icons |
 | `Presets` | `DiagramPreset`: a `Name` and a `DiagramLook` that types refer to |
 | `DefaultLinkType`, `DefaultGroupType` | Type names |
-| `GridSize` | Grid spacing (default 10): the grid of the view, snapping, and the bends of orthogonal routes. `0` turns the rounding off |
+| `GridSize` | Grid spacing (default 10): the grid of the view, snapping, and the bends of orthogonal routes. `0` turns the rounding off and hides the grid |
 | `Router` | `IDiagramRouter?`; the built-in router when `null` |
 | `Rules` | `DiagramAppRules`; see App rules |
 
@@ -281,7 +281,7 @@ An immutable record.
 
 | Group | Values |
 |---|---|
-| Whole-diagram check | `ConnectionRule`, `NestingRule`, `MaxCount`, `RequiredType`, `RequiredPort`, `MissingPort`, `MissingSharedItem`, `UnregisteredType`, `App` |
+| Whole-diagram check | `ConnectionRule`, `NestingRule`, `MaxCount`, `RequiredType`, `RequiredPort`, `MissingPort`, `MissingSharedItem`, `UnregisteredType`, `RejectedUrl`, `App` |
 | Loading | `DuplicateId`, `MissingEnd`, `InvalidParent`, `InvalidMember`, `NoMembers`, `KindMismatch`, `InvalidSize`, `UnreadableData`, `InvalidLook` |
 | Sanitizing | `RemovedSvgContent`, `RejectedUrl`, `UnreadableIcon` |
 | Export | `ImageNotEmbedded` |
@@ -293,7 +293,7 @@ An immutable record.
 | Type | Members |
 |---|---|
 | `DiagramOverlay` | `States` (names), `Style` (`DiagramRenderOverride`), `Badges` (`DiagramBadge` list) |
-| `DiagramRenderOverride` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `Opacity`; `null` keeps the look of the type |
+| `DiagramRenderOverride` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `Opacity`; `null` keeps the look of the element |
 | `DiagramBadge` | `Kind`, `Text`, `Icon`, `Tone` (`DiagramBadgeTone`: `Default`, `Info`, `Success`, `Warning` or `Error`), `Tooltip` |
 | `DiagramBadgeKind` | `Name`, `Corner` (`DiagramCorner`: `TopLeft`, `TopRight`, `BottomLeft` or `BottomRight`), `Order`, `Clickable` |
 
@@ -306,7 +306,7 @@ On links, badges line up at the middle of the route and the corner is not used.
   "format": "mussel-diagram",
   "version": 1,
   "groups": [{ "id": "vpc", "type": "aws:vpc", "kind": "tree", "x": 0, "y": 0, "width": 600, "height": 400, "label": "VPC" }],
-  "nodes": [{ "id": "web", "type": "aws:Arch_Amazon-EC2", "x": 120, "y": 100, "width": 80, "height": 80, "parent": "vpc", "label": "Web" }],
+  "nodes": [{ "id": "web", "type": "aws:Arch_Amazon-EC2", "x": 120, "y": 100, "width": 80, "height": 80, "parent": "vpc", "label": "Web" }, { "id": "db", "type": "aws:Arch_Amazon-RDS", "x": 320, "y": 100, "width": 80, "height": 80, "parent": "vpc", "label": "DB" }],
   "links": [{ "id": "l1", "type": "arrow", "source": { "element": "web" }, "target": { "element": "db", "port": "in" }, "route": [[200, 140], [320, 140]] }],
   "sharedItems": []
 }
@@ -358,13 +358,13 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTe
 
 ## 🎨 Theme
 
-Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container or on the view itself switches to the dark values, the same class as the other Mussel libraries. A value an app sets on the element with `mussel-dark`, or on an element inside it, is used in both themes, so include `.mussel-dark` in the selector to change a dark value. A shared value set above that element, such as on `:root`, gives way to the dark values.  
+Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container, or on the view or the palette itself, switches to the dark values, the same class as the other Mussel libraries. A value an app sets on the element with `mussel-dark`, or on an element inside it, is used in both themes, so include `.mussel-dark` in the selector to change a dark value. A shared color set above that element, such as on `:root`, gives way to the dark values.  
 
 These are shared with the other Mussel libraries. Their light defaults follow the look of each library, so set them on a container to give several libraries the same colors.  
 
 | Variable | Use |
 |---|---|
-| `--mussel-primary-text`, `--mussel-secondary-text`, `--mussel-muted-text` | Labels; headers and the palette; placeholders and disabled items |
+| `--mussel-primary-text`, `--mussel-secondary-text`, `--mussel-muted-text` | Labels and the headers of the palette; the items of the palette; placeholders and the text of empty lists |
 | `--mussel-grid-line` | The grid |
 | `--mussel-tooltip-background`, `--mussel-tooltip-border`, `--mussel-tooltip-text` | The type picker, rejection reasons and the text editor |
 | `--mussel-critical` | Errors |
@@ -393,9 +393,10 @@ These are for the diagram only. Set them on `.mussel-diagram` or on a `class` gi
 | `mussel-diagram`, `mussel-diagram-palette`, `mussel-diagram-drag-source` | The roots of the view, the palette and the drag source |
 | `data-attached` | Set on the root of the view when JS is attached and the first view calls are applied, and on the roots of the palette and the drag source. The content of the view is hidden until then |
 | `mussel-diagram-node`, `mussel-diagram-group`, `mussel-diagram-link`, `mussel-diagram-port`, and `data-type` | Elements and their type names |
+| `mussel-diagram-shape`, `mussel-diagram-link-line`, `mussel-diagram-icon`, `mussel-diagram-palette-icon` | The shape of a node or a group, the line of a link, and the icons in the view and in the palette |
 | `data-template` | Nodes drawn by a template |
 | `data-selected`, `data-not-allowed`, `data-candidate`, `data-drop-target`, `data-pending`, `data-split-target`, `data-reconnecting`, `data-editing` | Built-in states that the view sets while editing, also on a link that a dropped node splits, a link whose end moves and a label being written; hover is `:hover` |
-| `mussel-diagram-error`, `mussel-diagram-warning`, `mussel-diagram-locked`, `mussel-diagram-unregistered` | Built-in states from issues, locks and unregistered types |
+| `mussel-diagram-error`, `mussel-diagram-warning`, `mussel-diagram-locked`, `mussel-diagram-unregistered` | Built-in states from issues, locks of nodes and groups, and unregistered types |
 | `mussel-diagram-fixed`, `mussel-diagram-unconnectable`, `mussel-diagram-fill-hit` | Elements that cannot move or connect, and groups whose fill is hit-tested |
 | `data-direction` (`in`, `out` or `both`) and `data-kind` on ports | Ports by direction and kind |
 | `data-hidden` and `data-revealed` on ports | Hidden ports, and those shown while a link end looks for a target |

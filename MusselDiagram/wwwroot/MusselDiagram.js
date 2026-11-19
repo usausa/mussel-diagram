@@ -318,6 +318,7 @@ const EDGE_SPEED = 16;
 const GRID_MINIMUM = 8;
 const MIN_SIZE = 10;
 const MAX_CURVE_REACH = 1e12;
+const ROUTE_RANGE = 2e12;
 const GUIDE_EPSILON = 0.01;
 const ELEMENT_SELECTOR = '.mussel-diagram-node, .mussel-diagram-group, .mussel-diagram-link';
 const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .mussel-diagram-nodrag';
@@ -327,7 +328,31 @@ const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossP
 const TYPING_KEYS = new Set(['Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+A', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V']);
 const ZOOM_STEP = 1.2;
 const MIN_GRID_ZOOM = 0.05;
+const ASCII_TEXT = /^[\x00-\x7F]*$/;
+const WHITE_SPACE = /[\t-\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
 const controllers = new WeakMap();
+
+function upperText(text) {
+    if (ASCII_TEXT.test(text)) {
+        return text.toUpperCase();
+    }
+    return Array.from(text, (letter) => {
+        const upper = letter.toUpperCase();
+        return upper.length === letter.length ? upper : letter;
+    }).join('');
+}
+
+function trimText(text) {
+    let start = 0;
+    let end = text.length;
+    while ((start < end) && WHITE_SPACE.test(text[start])) {
+        start++;
+    }
+    while ((end > start) && WHITE_SPACE.test(text[end - 1])) {
+        end--;
+    }
+    return text.slice(start, end);
+}
 
 export function keyName(event, mac) {
     let key = event.key;
@@ -352,7 +377,7 @@ export function keyName(event, mac) {
             key = event.code.slice(5);
             pressed = true;
         } else {
-            key = key.toUpperCase();
+            key = upperText(key);
         }
     }
     const parts = [];
@@ -557,7 +582,12 @@ export function curveRoute(start, end, stub) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const reach = Math.min(Math.max(stub, Math.sqrt((dx * dx) + (dy * dy)) / 2), MAX_CURVE_REACH);
-    return [{ x: start.x, y: start.y }, stepOut(start, start.side, reach), stepOut(end, end.side, reach), { x: end.x, y: end.y }];
+    return [{ x: start.x, y: start.y }, curveReach(start, reach), curveReach(end, reach), { x: end.x, y: end.y }];
+}
+
+function curveReach(point, reach) {
+    const along = (point.side === 'top') || (point.side === 'bottom') ? point.y : point.x;
+    return stepOut(point, point.side, Math.min(Math.max(ROUTE_RANGE - Math.abs(along), 0), reach));
 }
 
 export function routeBetween(start, end, form, stub, grid = 0) {
@@ -852,16 +882,16 @@ export function canNest(schema, typeName, parent) {
 }
 
 export function searchTypes(types, query) {
-    const text = query.trim().toLowerCase();
-    const words = text.split(/\s+/).filter((w) => w.length > 0);
+    const text = upperText(trimText(query));
+    const words = text.split(WHITE_SPACE).filter((w) => w.length > 0);
     if (words.length === 0) {
         return types;
     }
     const ranked = [];
     types.forEach((type, order) => {
-        const haystack = [type.label, type.name, type.categoryLabel ?? type.category ?? '', ...(type.search ?? [])].join('\u0001').toLowerCase();
+        const haystack = upperText([type.label, type.name, type.categoryLabel ?? type.category ?? '', ...(type.search ?? [])].join('\u0001'));
         if (words.every((word) => haystack.includes(word))) {
-            const label = type.label.toLowerCase();
+            const label = upperText(type.label);
             ranked.push({ type, order, rank: label === text ? 0 : (label.startsWith(text) ? 1 : 2) });
         }
     });
@@ -1760,10 +1790,10 @@ class DiagramController {
                 this.drawSelection();
             }
         }
-        const id = this.selectWhenAdded;
-        if (id && (this.table.boxes.has(id) || this.table.links.has(id))) {
+        const added = this.selectWhenAdded;
+        if (added && (this.table.boxes.has(added.id) || this.table.links.has(added.id))) {
             this.selectWhenAdded = null;
-            this.setSelection([id]);
+            this.selectNew(added.id, added.sends);
         }
     }
 
@@ -2358,13 +2388,15 @@ class DiagramController {
         const known = (id) => this.table.boxes.has(id) || this.table.links.has(id);
         this.selection = new Set(ids.filter(known));
         this.awaitedSelection = new Set(ids.filter((id) => !known(id)));
+        this.selectWhenAdded = null;
         this.drawSelection();
     }
 
     setSelection(ids) {
+        const awaiting = Boolean(this.awaitedSelection?.size);
         this.awaitedSelection = null;
         const next = new Set(ids);
-        if ((next.size === this.selection.size) && [...next].every((id) => this.selection.has(id))) {
+        if (!awaiting && (next.size === this.selection.size) && [...next].every((id) => this.selection.has(id))) {
             return;
         }
         this.selection = next;
@@ -2858,38 +2890,18 @@ class DiagramController {
         const moving = this.table.movingSet(roots);
         const live = moving.size <= this.options.livePreviewLimit;
         const links = this.table.linksOf(moving);
-        const boxes = [...moving].map((id) => this.table.boxes.get(id)).filter((b) => b && (b.kind !== 'overlay'));
-        if (boxes.length === 0) {
+        const basis = this.moveBasis(roots, moving, press.hit.id);
+        if (!basis) {
             return false;
         }
-        const left = Math.min(...boxes.map((b) => b.x));
-        const top = Math.min(...boxes.map((b) => b.y));
-        const bounds = { x: left, y: top, w: Math.max(...boxes.map((b) => b.x + b.w)) - left, h: Math.max(...boxes.map((b) => b.y + b.h)) - top };
-        const pressed = this.table.boxes.get(press.hit.id);
-        const representative = pressed && moving.has(pressed.id) ? pressed : roots.map((id) => this.table.boxes.get(id)).find((b) => b.kind !== 'overlay');
-        const anchor = representative ? gridAnchor(representative, representative.kind === 'node') : gridAnchor(bounds, false);
-        const excluded = new Set(moving);
-        for (const ancestor of this.table.ancestorsOf(roots)) {
-            excluded.add(ancestor);
-        }
-        const rootBoxes = roots.map((id) => this.table.boxes.get(id));
-        const parents = new Set(rootBoxes.map((b) => b.parent ?? null));
-        const types = rootBoxes.map((b) => this.schema.types.get(b.type));
-        const canReparent = (parents.size === 1) && rootBoxes.every((b, i) => (b.kind !== 'overlay') && b.registered && !types[i]?.stay);
-        const stays = rootBoxes.filter((b, i) => types[i]?.stay && b.parent).map((b) => ({ box: b, parent: this.table.boxes.get(b.parent) })).filter((x) => x.parent && !this.schema.types.get(x.parent.type)?.content);
         this.drag = {
             kind: 'move',
             roots,
             moving,
             live,
             links,
-            bounds,
-            anchor,
-            lines: this.snapLines(excluded),
-            canReparent,
-            parent: canReparent ? [...parents][0] : undefined,
-            rootTypes: rootBoxes.map((b) => b.type),
-            stays,
+            pressed: press.hit.id,
+            ...basis,
             startWorld: press.world,
             dx: 0,
             dy: 0,
@@ -2919,6 +2931,46 @@ class DiagramController {
             this.drag.paths.set(link.id, this.linkPaths(this.drag.saved, elements.get(link.id) ?? null, badgeSets.get(link.id) ?? null));
         }
         return true;
+    }
+
+    moveBasis(roots, moving, pressedId) {
+        const boxes = [...moving].map((id) => this.table.boxes.get(id)).filter((b) => b && (b.kind !== 'overlay'));
+        if (boxes.length === 0) {
+            return null;
+        }
+        const left = Math.min(...boxes.map((b) => b.x));
+        const top = Math.min(...boxes.map((b) => b.y));
+        const bounds = { x: left, y: top, w: Math.max(...boxes.map((b) => b.x + b.w)) - left, h: Math.max(...boxes.map((b) => b.y + b.h)) - top };
+        const pressed = this.table.boxes.get(pressedId);
+        const representative = pressed && moving.has(pressed.id) ? pressed : roots.map((id) => this.table.boxes.get(id)).find((b) => b.kind !== 'overlay');
+        const anchor = representative ? gridAnchor(representative, representative.kind === 'node') : gridAnchor(bounds, false);
+        const excluded = new Set(moving);
+        for (const ancestor of this.table.ancestorsOf(roots)) {
+            excluded.add(ancestor);
+        }
+        const rootBoxes = roots.map((id) => this.table.boxes.get(id));
+        const parents = new Set(rootBoxes.map((b) => b.parent ?? null));
+        const types = rootBoxes.map((b) => this.schema.types.get(b.type));
+        const canReparent = (parents.size === 1) && rootBoxes.every((b, i) => (b.kind !== 'overlay') && b.registered && !types[i]?.stay);
+        return {
+            bounds,
+            anchor,
+            lines: this.snapLines(excluded),
+            canReparent,
+            parent: canReparent ? [...parents][0] : undefined,
+            rootTypes: rootBoxes.map((b) => b.type),
+            stays: rootBoxes.filter((b, i) => types[i]?.stay && b.parent).map((b) => ({ box: b, parent: this.table.boxes.get(b.parent) })).filter((x) => x.parent && !this.schema.types.get(x.parent.type)?.content),
+        };
+    }
+
+    rebaseMove(drag) {
+        const basis = drag.roots.every((id) => this.table.boxes.has(id)) ? this.moveBasis(drag.roots, drag.moving, drag.pressed) : null;
+        if (!basis) {
+            this.cancelDrag();
+            return;
+        }
+        Object.assign(drag, basis);
+        this.requestFrame();
     }
 
     linkPaths(saved, element, badges) {
@@ -3176,7 +3228,9 @@ class DiagramController {
         }
         const frame = svg('rect', { class: 'mussel-diagram-resize-frame', x: rect.x, y: rect.y, width: rect.w, height: rect.h });
         this.layers.pending.append(frame);
-        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, rect.x, rect.y, rect.w, rect.h, drag.startVersion, this.rejections, this.selectionArgument()));
+        const left = rect.x - box.x;
+        const top = rect.y - box.y;
+        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, left, top, left + (rect.w - box.w), top + (rect.h - box.h), drag.startVersion, this.rejections, this.selectionArgument()));
     }
 
     connectionTargets(check) {
@@ -3765,7 +3819,11 @@ class DiagramController {
         this.layers.preview.replaceChildren();
     }
 
-    selectionArgument(ids = [...this.selection, ...(this.awaitedSelection ?? [])]) {
+    currentSelection() {
+        return [...this.selection, ...(this.awaitedSelection ?? [])];
+    }
+
+    selectionArgument(ids = this.currentSelection()) {
         const changed = changedSelection(ids, this.sentSelection);
         if (changed) {
             this.sentSelection = new Set(changed);
@@ -3775,6 +3833,7 @@ class DiagramController {
 
     commit(operation, entry, call) {
         entry.version = null;
+        entry.sends = this.selectionSends;
         entry.overlays = entry.overlays ?? [];
         entry.elements = [...entry.saved.keys()];
         entry.written = new Map(entry.elements.map((element) => [element, new Map([...entry.saved.get(element).keys()].map((attribute) => [attribute, element.getAttribute(attribute)]))]));
@@ -3817,7 +3876,7 @@ class DiagramController {
             entry.version = result.version;
             this.settlePending();
             if (entry.selectNew && result.elementId) {
-                this.selectNew(result.elementId);
+                this.selectNew(result.elementId, entry.sends);
             }
             entry.accepted?.();
             return;
@@ -3859,9 +3918,19 @@ class DiagramController {
         this.settlePending();
         this.table.index();
         this.drawSelection();
-        if (this.drag?.kind === 'resize') {
-            this.rebaseResize(this.drag);
+        const drag = this.drag;
+        if (((drag?.kind === 'resize') || ((drag?.kind === 'move') && drag.live)) && this.dragLinksChanged(drag)) {
+            this.cancelDrag();
+        } else if (drag?.kind === 'resize') {
+            this.rebaseResize(drag);
+        } else if (drag?.kind === 'move') {
+            this.rebaseMove(drag);
         }
+    }
+
+    dragLinksChanged(drag) {
+        const links = this.table.linksOf(drag.kind === 'resize' ? [drag.id] : drag.moving);
+        return (links.size !== drag.links.size) || [...links].some((link) => !drag.links.has(link));
     }
 
     restoreDrag(drag) {
@@ -3978,12 +4047,15 @@ class DiagramController {
         this.notifyViewport();
     }
 
-    selectNew(id) {
-        if (this.table.boxes.has(id) || this.table.links.has(id)) {
-            this.setSelection([id]);
-        } else {
-            this.selectWhenAdded = id;
+    selectNew(id, sends) {
+        if (this.selectionSends !== sends) {
+            return;
         }
+        if (!this.table.boxes.has(id) && !this.table.links.has(id)) {
+            this.selectWhenAdded = { id, sends };
+            return;
+        }
+        this.setSelection([id]);
         this.root.focus({ preventScroll: true });
     }
 
@@ -4044,13 +4116,14 @@ class DiagramController {
                     break;
             }
         }
-        const selection = [...this.selection, ...(this.awaitedSelection ?? [])];
+        const selection = this.currentSelection();
         const sends = this.selectionSends;
         const run = this.commandChain.then(async () => {
             await this.whenIdle();
             if (this.commandFor(command.name)?.enabled) {
+                const replaced = changedSelection(this.currentSelection(), new Set(selection)) !== null;
                 await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
-                const current = this.selectionSends === sends ? null : this.selectionArgument();
+                const current = (this.selectionSends === sends) && !replaced ? null : this.selectionArgument();
                 if (current) {
                     await this.dotnet?.invokeMethodAsync('OnSelectionChangedAsync', current);
                 }
@@ -4507,8 +4580,15 @@ class DiagramController {
         }
         const ghost = document.createElement('div');
         ghost.className = 'mussel-diagram-drag-ghost';
-        const icon = item?.querySelector('svg')?.cloneNode(true);
+        const source = item?.querySelector('svg');
+        const icon = source?.cloneNode(true);
         if (icon) {
+            const copies = icon.querySelectorAll('.mussel-diagram-palette-shape');
+            for (const [i, shape] of [...source.querySelectorAll('.mussel-diagram-palette-shape')].entries()) {
+                const style = getComputedStyle(shape);
+                copies[i].style.fill = style.fill;
+                copies[i].style.stroke = style.stroke;
+            }
             ghost.append(icon);
         }
         document.body.append(ghost);

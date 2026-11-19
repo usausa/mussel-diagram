@@ -126,7 +126,7 @@ A diagram (`Diagram`) holds a schema (Types and rules) and the current snapshot.
 Changing parents:
 
 - Operations decide the parent, and positions never decide it again. A child that sticks out of its frame or overlaps a crossing group keeps its parent
-- When elements moved in the view are released (the selected elements whose ancestors are not selected) and all of them have the same parent, the new parent is the innermost tree group under the pointer that accepts all of them (by the nesting rules). When no group accepts them, they go to the top level
+- When elements moved in the view are released (the selected elements whose ancestors are not selected) and all of them have the same parent, the new parent is the innermost tree group under the pointer that accepts all of them (by the nesting rules). When no group accepts them, they go to the top level, and when one of them cannot be at the top level, the move is rejected with `Nesting`
 - Moving elements with different parents together, or moving an overlay group, does not change parents
 - Overlay groups are never parents or drop targets. Their members change through commands (Commands and keys) and the API
 - `Move` in the API does not change the parent. `SetParent` changes the parent, and `SetMembers` the members
@@ -165,7 +165,7 @@ Changing parents:
   - Boxes lie inside ±1e12 (their left, top, right and bottom edges), and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - A frame that a group takes from its contents (a growing group, a group sized to its contents, an overlay group, a new group from grouping) stops at the limits of ±1e12
-- In the view, a move, a resize, a drop, adding a connected element or a paste that would put a box outside ±1e12 is rejected with `Nesting`, as other rejections of a position are, and nothing is written
+- In the view, an operation that would put a box outside ±1e12 (a move, a resize, a drop, adding a connected element, a paste, distributing) is rejected with `Nesting`, as other rejections of a position are, and nothing is written
 - Route points lie inside ±2e12. A route with a point outside is not taken: a route read from JSON or given to `Replace` is routed again, and a router result with such a point fails
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
@@ -284,7 +284,7 @@ When reconnecting, the link being moved does not count for limits, duplicates or
 | Allowed member types | Overlay groups | Any node or tree group when not declared |
 | Allowed parent types | Nodes, groups | Any tree group when not declared |
 | Top level | Nodes, groups | Whether it can be at the top level. Yes by default |
-| Stay inside parent | Nodes, groups | The parent does not change, and the element cannot leave the frame of a manually sized parent (a node in a loop) |
+| Stay inside parent | Nodes, groups | The parent does not change, and the element cannot leave a manually sized parent, inside its frame minus the padding of the type (a node in a loop) |
 
 - An element enters a parent only when the declarations of both the parent and the child allow it. This decides drops and the parent after a move (Model)
 - Allowed member types are used by the commands that change the members of an overlay group
@@ -428,7 +428,7 @@ C# and JS compute the port positions with the same formula from the type and the
 - The `Look` of an element takes priority over the look of its type, and render overrides (State overlays) take priority over the `Look`. The text color of an element takes priority over the colors of the slot formats
 - The SVG elements of an element have a class for its kind (`mussel-diagram-node` and so on) and an attribute with its type name, so CSS of the app can style each type
 - CSS draws each state: selected, hover, not allowed, connection candidate, drop target, awaiting commit, error, warning
-- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on a container or on the view itself. All of these variables are declared in `:where`, so an app overrides them from any selector and in any file order
+- Colors are `--mussel-diagram-…` CSS variables, which default to the shared `--mussel-…` variables. Dark mode is `.mussel-dark` on a container, or on the view or the palette itself. All of these variables are declared in `:where`, so an app overrides them from any selector and in any file order
 - The selection frame, the handles, the guides, the preview lines and the marks of connection candidates keep the same size and width on screen at any zoom
 
 ### Updating
@@ -470,13 +470,13 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click on the background, Esc outside an operation, and passing another diagram to the view clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment, unless it is the selection JS sent last; then C# uses the selection it received last. Even when the selection known to C# is behind, they act on the selection the user saw
-- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. After a command, JS sends its selection again only when the user selected while the command was on its way
+- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. After a command, JS sends its selection again when the user selected while the command was on its way, or when its selection changed between the press and the send, as when C# selected for an earlier command
 
 ### Moving
 
 - Dragging a selected element moves the whole selection. Dragging an unselected element selects only it and moves it
 - The descendants of tree groups and the members of overlay groups move with the group (Model). Links follow their end elements; dragging a link alone does not move it
-- Elements that cannot move (lock, permissions) stay even when selected. An element that stays inside its parent moves only inside the frame of a manually sized parent (Types and rules)
+- Elements that cannot move (lock, permissions) stay even when selected. An element that stays inside its parent moves only inside a manually sized parent, within its frame minus the padding of the type (Types and rules)
 - Snapping and guides work while moving (Snapping and guides). On release, the parent is decided again (Model) and the move is committed as one change (Commit and validation)
 - When the release will give a new parent, that group shows the drop target look while moving
 - Releasing a single node without links on a link splices it into the link (Palette)
@@ -486,7 +486,7 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 ### Resizing
 
 - A resizable element shows handles at its corners and the middle of its sides when selected (on each selected element). Only the element of the handle changes
-- An element never gets smaller than the minimum size of its type. A tree group never gets smaller than the bounds of its children plus its padding. The children neither move nor change size
+- An element never gets smaller than the minimum size of its type, or 10 when the type has none. A tree group never gets smaller than the bounds of its children plus its padding. The children neither move nor change size
 - Groups sized to their contents and overlay groups show no handles
 - Ports follow by ratio. While resizing, the edges snap to the grid and the guides
 - Keeping the aspect ratio and locking an axis are planned for the next version
@@ -670,7 +670,7 @@ The link type declares the form, and the `Look` of a link can change it for that
 - The later results join the change without a new undo step. They are written together when all are done, or when the oldest has waited a second. A result that crosses a node added or moved in the meantime is computed again, and so are such links after undoing a step that moved nodes
 - Computing afterwards needs the browser (WebAssembly) or a `SynchronizationContext` (Blazor Server). Elsewhere, such as in a console or on a server without a view, every route is computed in the change, and the change waits for asynchronous routers
 - While dragging, JS draws a simple route that does not avoid nodes (the same form, with 1 or 2 bends), and the route of C# replaces it after the commit
-- Computed routes are saved, and loading computes again only the links whose ends no longer match (Saving and export)
+- Computed routes are saved, and loading computes again only the links without a route, with a point beyond ±2e12, or whose ends no longer match (Saving and export)
 
 ### Replacing the router and reading routes
 
@@ -721,7 +721,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 - Matching is partial and case-insensitive. With words separated by spaces, only the items that contain all of them appear
 - While searching, only the categories with matches show, open. Within a category, exact matches of the display name come first, then prefix matches, then the rest, each in the order of the schema. Without matches, a message says so (the texts are in Languages)
 - The app can pass a function that normalizes text before comparing (full-width and half-width, hiragana and katakana and so on)
-- The type picker uses the same search
+- The type picker uses the same search. Without `SearchNormalizer` it runs in JS with the same capitals and spaces as C#, so only a few letters, such as ı and Greek letters with a subscript iota, can match differently
 
 ### Placing
 
@@ -734,7 +734,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 | Release | Where the element can be placed, it is added. Outside the view, over the palette, and where it cannot be placed, nothing happens |
 
 - The new element is placed at the position of the preview, with the default size of the type. Its label and data are the defaults of the type. When the type registers a function, the function makes them from the diagram and the value of an external drag source (External drag sources), for example a numbered name
-- The new element is selected, and the view gets the focus
+- The new element is selected, and the view gets the focus, unless the user selected while the drop was on its way
 - Adding is one change, which includes splicing into a link. `Dropping` and `Dropped` report the type, the position, the parent, the value and the link spliced into, before and after. Before, `Cancel` stops it and a reason can be returned (Commit and validation)
 - A placed group does not take the elements under it as children
 - Auto-scrolling at the edges, Esc and a second finger work as for moving (Selection and moving). Auto-scrolling starts once the pointer has been inside the view away from its edges
@@ -749,7 +749,8 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 |---|---|---|
 | 1 | The type is below its maximum count | Count |
 | 2 | A group accepts it, or it can be at the top level | Nesting |
-| 3 | The app rules (at commit only) | The reason of the app |
+| 3 | The box lies inside ±1e12 (at commit only) | Nesting |
+| 4 | The app rules (at commit only) | The reason of the app |
 
 - The reason has a kind and a text. While dragging, it shows next to the pointer. A rejection at commit is in Commit and validation (the texts are in Languages)
 - Placing from the type picker runs the same checks. The parent when placing from an arrow or a port is in Adding a connected element
@@ -812,7 +813,7 @@ A user operation is shown by the browser first, then checked by C# and written t
 
 ### Commit flow
 
-On release (for a command, when it runs), JS sends the operation and the selection of that moment to C#, once. Except for connections (with the elements they add) and commands, it also sends the version of the element table the operation started from. The element table is the copy of the elements that C# gives JS, and its version grows by 1 each time C# sends the copy or a change. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order. An operation whose view is disposed while it waits for its turn is dropped: a commit is canceled, and a command, undo and redo do nothing.
+On release (for a command, when it runs), JS sends the operation and the selection of that moment to C#, once. Except for connections (with the elements they add) and commands, it also sends the version of the element table the operation started from. A move sends how far the elements moved, and a resize how far each edge moved, and C# adds them to the bounds of that time. The element table is the copy of the elements that C# gives JS, and its version grows by 1 each time C# sends the copy or a change. C# takes them one at a time, in the order they arrive for each diagram, and checks and writes in this order. An operation whose view is disposed while it waits for its turn, or that comes after, is dropped: a commit is canceled, and a command, undo and redo do nothing.
 
 | Order | Step | Reason for rejecting |
 |---|---|---|
@@ -860,6 +861,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 ### On rejection
 
 - JS removes the provisional display and returns to the current snapshot
+- A drag under way takes its start again from what went back: the position, the snapping and the limits of staying inside the parent. A resize, or a move that draws its links, is canceled when the links of its elements changed
 - The reason shows next to where the operation happened, until the next operation starts or for 3 seconds. CSS can change its look (the texts are in Languages)
 - `CommitRejected` reports the operation and the reason (for notifications of the app, for example)
 
@@ -1077,7 +1079,7 @@ The core saves and loads diagrams as JSON. The view exports SVG, PNG and JPEG.
 
 ### What loading fixes
 
-When the text is not JSON, the `format` differs, or the version is newer than the current one, loading throws and the diagram does not change. Otherwise, the parts that break the rules of the model (Model) are fixed as follows, and the fixes come back as issues (Commit and validation).
+When the text is not JSON, the `format` differs, or the version is missing, less than 1 or newer than the current one, loading throws and the diagram does not change. Otherwise, the parts that break the rules of the model (Model) are fixed as follows, and the fixes come back as issues (Commit and validation).
 
 | Problem | Fix |
 |---|---|

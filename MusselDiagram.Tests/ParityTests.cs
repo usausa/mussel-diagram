@@ -17,6 +17,10 @@ public sealed class ParityTests
         [
             new DiagramNodeType { Name = "box", DisplayName = "Web server", Category = "compute", SearchWords = ["ec2", "instance"] },
             new DiagramNodeType { Name = "locked", DisplayName = "Server" },
+            new DiagramNodeType { Name = "street", DisplayName = "ΟΔΟΣ" },
+            new DiagramNodeType { Name = "size", DisplayName = "GROẞ" },
+            new DiagramNodeType { Name = "road", DisplayName = "Straße" },
+            new DiagramNodeType { Name = "temperature", DisplayName = "\u212A" },
             new DiagramNodeType
             {
                 Name = "svc",
@@ -119,7 +123,7 @@ public sealed class ParityTests
 
         var searches = new JsonArray();
         var boxTypes = Schema.NodeTypes.Cast<DiagramBoxType>().Concat(Schema.GroupTypes).ToList();
-        foreach (var query in new[] { "server", "SERVER", "ec2", "comp", "net zone", "web serv", "db", " ", "x" })
+        foreach (var query in new[] { "server", "SERVER", "ec2", "comp", "net zone", "web serv", "db", " ", "x", "οδοσ", "groß", "strasse", "k", "server\u0085", "\uFEFFserver" })
         {
             searches.Add(new JsonObject
             {

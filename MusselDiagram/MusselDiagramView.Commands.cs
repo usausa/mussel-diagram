@@ -34,18 +34,23 @@ public sealed partial class MusselDiagramView
             scriptSelection = [.. selection];
         }
 
-        if (scriptSelection is not null)
+        if (scriptSelection is null)
         {
-            await SetSelectionAsync([.. scriptSelection.Where(Snapshot.Contains)]).ConfigureAwait(true);
+            await Commands.ExecuteAsync(name).ConfigureAwait(true);
+        }
+        else
+        {
+            string[] applied = [.. scriptSelection.Where(Snapshot.Contains)];
+            await SetSelectionAsync(applied).ConfigureAwait(true);
+            await Commands.ExecuteForSelectionAsync(name, [.. applied.Where(Snapshot.Contains)]).ConfigureAwait(true);
         }
 
-        await Commands.ExecuteAsync(name).ConfigureAwait(true);
         await RefreshCommandsAsync().ConfigureAwait(true);
     }
 
     private DiagramCommandRegistry CreateCommands()
     {
-        commands = new DiagramCommandRegistry(argument => new DiagramCommandContext(this, SelectedIds, argument));
+        commands = new DiagramCommandRegistry((selection, argument) => new DiagramCommandContext(this, selection ?? SelectedIds, argument));
         Register(DiagramCommands.Undo, ["Ctrl+Z"], _ => Editable && Diagram.CanUndo, _ => RestoreAsync(true));
         Register(DiagramCommands.Redo, ["Ctrl+Y", "Ctrl+Shift+Z"], _ => Editable && Diagram.CanRedo, _ => RestoreAsync(false));
         Register(DiagramCommands.Delete, ["Delete", "Backspace"], c => Editable && Deletion.Any(Snapshot, Diagram.Index, c.SelectedIds), c => DeleteAsync(c.SelectedIds, false));
@@ -283,6 +288,25 @@ public sealed partial class MusselDiagramView
             null);
     }
 
+    private bool StaysInRange(List<(string Id, DiagramPoint Offset)> moves)
+    {
+        try
+        {
+            var editor = new SnapshotEditor(Snapshot, Diagram.Index) { SkipRoutes = true };
+            foreach (var (id, offset) in moves)
+            {
+                editor.Move([id], offset);
+            }
+
+            editor.Complete();
+            return true;
+        }
+        catch (DiagramException)
+        {
+            return false;
+        }
+    }
+
     private Task<bool> ArrangeAsync(Func<List<(string Id, DiagramPoint Offset)>> arrange)
     {
         List<(string Id, DiagramPoint Offset)> moves = [];
@@ -291,7 +315,7 @@ public sealed partial class MusselDiagramView
             () =>
             {
                 moves = arrange();
-                return null;
+                return StaysInRange(moves) ? null : Reason(DiagramReasonKind.Nesting);
             },
             null,
             () =>

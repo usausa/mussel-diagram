@@ -26,7 +26,6 @@ public sealed class CommandTests : BunitContext
     public CommandTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        JSInterop.SetupModule(MusselDiagramView.ModulePath);
     }
 
     [Fact]
@@ -55,6 +54,17 @@ public sealed class CommandTests : BunitContext
         commands.Add(new DiagramCommand { Name = "Mine", Keys = ["control+s", "Cmd+Shift+y", "meta+k", "Hyper+b"], Execute = static _ => Task.CompletedTask });
 
         Assert.Equal(["Ctrl+S", "Ctrl+Shift+Y", "Ctrl+K", "Hyper+B"], commands["Mine"].Keys);
+    }
+
+    [Fact]
+    public void ALetterWhoseCapitalIsLongerStaysAsItIs()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var commands = cut.Instance.Commands;
+
+        commands.Add(new DiagramCommand { Name = "Mine", Keys = ["ctrl+ä", "ctrl+ß"], Execute = static _ => Task.CompletedTask });
+
+        Assert.Equal(["Ctrl+Ä", "Ctrl+ß"], commands["Mine"].Keys);
     }
 
     [Fact]

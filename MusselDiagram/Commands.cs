@@ -143,9 +143,9 @@ public sealed class DiagramCommandRegistry
 
     private readonly List<DiagramCommand> commands = [];
 
-    private readonly Func<object?, DiagramCommandContext> createContext;
+    private readonly Func<IReadOnlyList<string>?, object?, DiagramCommandContext> createContext;
 
-    internal DiagramCommandRegistry(Func<object?, DiagramCommandContext> createContext)
+    internal DiagramCommandRegistry(Func<IReadOnlyList<string>?, object?, DiagramCommandContext> createContext)
     {
         this.createContext = createContext;
     }
@@ -216,14 +216,18 @@ public sealed class DiagramCommandRegistry
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public async Task ExecuteAsync(string name, object? argument = null)
+    public Task ExecuteAsync(string name, object? argument = null) => ExecuteCoreAsync(name, null, argument);
+
+    internal Task ExecuteForSelectionAsync(string name, IReadOnlyList<string> selection) => ExecuteCoreAsync(name, selection, null);
+
+    private async Task ExecuteCoreAsync(string name, IReadOnlyList<string>? selection, object? argument)
     {
         if (!TryGet(name, out var command))
         {
             return;
         }
 
-        var context = createContext(argument);
+        var context = createContext(selection, argument);
         if (command.Evaluate(context))
         {
             await command.RunAsync(context).ConfigureAwait(true);
@@ -242,7 +246,7 @@ public sealed class DiagramCommandRegistry
 
     internal void Refresh()
     {
-        var context = createContext(null);
+        var context = createContext(null, null);
         var changed = false;
         foreach (var command in commands)
         {

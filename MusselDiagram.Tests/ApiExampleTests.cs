@@ -27,7 +27,6 @@ public sealed class ApiExampleTests : BunitContext
     public ApiExampleTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        JSInterop.SetupModule(MusselDiagramView.ModulePath);
     }
 
     [Fact]

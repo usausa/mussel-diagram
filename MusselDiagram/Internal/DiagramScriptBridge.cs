@@ -53,8 +53,8 @@ internal sealed class DiagramScriptBridge(MusselDiagramView view)
     }
 
     [JSInvokable]
-    public async Task<JsonElement> CommitResizeAsync(string id, double x, double y, double width, double height, long startVersion, int rejectionsSeen, string[]? selection) =>
-        ScriptJson.ToElement(await RunAsync(() => view.CommitResizeAsync(id, new DiagramRect(x, y, width, height), startVersion, rejectionsSeen, selection)).ConfigureAwait(true));
+    public async Task<JsonElement> CommitResizeAsync(string id, double left, double top, double right, double bottom, long startVersion, int rejectionsSeen, string[]? selection) =>
+        ScriptJson.ToElement(await RunAsync(() => view.CommitResizeAsync(id, new DiagramThickness(left, top, right, bottom), startVersion, rejectionsSeen, selection)).ConfigureAwait(true));
 
     [JSInvokable]
     public async Task<JsonElement> CommitConnectAsync(string source, string? sourcePort, string target, string? targetPort, string linkType, int rejectionsSeen, string[]? selection) =>

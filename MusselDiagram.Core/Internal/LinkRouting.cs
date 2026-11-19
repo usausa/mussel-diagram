@@ -172,7 +172,13 @@ internal static class LinkRouting
         var dy = end.Position.Y - start.Position.Y;
         var distance = Math.Sqrt((dx * dx) + (dy * dy));
         var reach = Math.Min(Math.Max(stub, distance / 2), SnapshotEditor.Limit);
-        return [start.Position, Step(start.Position, start.Side, reach), Step(end.Position, end.Side, reach), end.Position];
+        return [start.Position, Reach(start, reach), Reach(end, reach), end.Position];
+    }
+
+    private static DiagramPoint Reach(LinkAnchor anchor, double reach)
+    {
+        var along = IsHorizontal(anchor.Side) ? anchor.Position.X : anchor.Position.Y;
+        return Step(anchor.Position, anchor.Side, Math.Clamp(SnapshotEditor.RouteRange - Math.Abs(along), 0, reach));
     }
 
     public static ImmutableArray<DiagramPoint> Orthogonal(LinkAnchor start, LinkAnchor end, double stub, double grid)
