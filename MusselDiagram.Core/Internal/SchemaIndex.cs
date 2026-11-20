@@ -115,16 +115,39 @@ internal sealed class SchemaIndex
     public ImmutableArray<PortPlacement> PortsOf(DiagramBox box)
     {
         var type = FindBoxType(box);
-        if (type?.GetPorts is not { } getPorts)
+        if (type is null)
         {
-            return (type is not null) && typePorts.TryGetValue(type, out var placements) ? placements : [];
+            return [];
         }
 
-        return elementPorts.GetValue(box, x => new StrongBox<ImmutableArray<PortPlacement>>(LinkRouting.Place(getPorts(x), type))).Value;
+        if (type.GetPorts is null)
+        {
+            return typePorts.TryGetValue(type, out var placements) ? placements : [];
+        }
+
+        return elementPorts.GetOrAdd(
+            box,
+            static (x, t) => new StrongBox<ImmutableArray<PortPlacement>>(LinkRouting.Place(t.GetPorts?.Invoke(x) ?? [], t)),
+            type).Value;
     }
 
-    public PortPlacement? FindPort(DiagramBox box, string? portId) =>
-        portId is null ? null : PortsOf(box).FirstOrDefault(x => String.Equals(x.Id, portId, StringComparison.Ordinal));
+    public PortPlacement? FindPort(DiagramBox box, string? portId)
+    {
+        if (portId is null)
+        {
+            return null;
+        }
+
+        foreach (var port in PortsOf(box))
+        {
+            if (String.Equals(port.Id, portId, StringComparison.Ordinal))
+            {
+                return port;
+            }
+        }
+
+        return null;
+    }
 
     private DiagramLook Resolve(DiagramLook look) => looks.GetValueOrDefault(look) ?? look;
 

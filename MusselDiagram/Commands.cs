@@ -276,7 +276,7 @@ public sealed class DiagramCommandRegistry
 
         var (ctrl, alt, shift) = (false, false, false);
         var others = new List<string>();
-        foreach (var modifier in parts[..^1])
+        foreach (var modifier in parts.AsSpan(0, parts.Length - 1))
         {
             switch (modifier.ToUpperInvariant())
             {

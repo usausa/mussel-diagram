@@ -1,5 +1,7 @@
 namespace MusselDiagram;
 
+using MusselDiagram.Internal;
+
 using static MusselDiagram.TestDiagrams;
 
 public sealed class GeometryTests
@@ -84,6 +86,27 @@ public sealed class GeometryTests
     }
 
     [Fact]
+    public void LookingUpPortsAllocatesNothing()
+    {
+        var schema = Schema with
+        {
+            NodeTypes = [.. Schema.NodeTypes, new DiagramNodeType { Name = "computed", GetPorts = static _ => [new DiagramPortDefinition { Id = "a", Side = DiagramSide.Right }] }]
+        };
+        var diagram = new Diagram(schema);
+        diagram.Add(Node("s", 0, 0, type: "service"));
+        diagram.Add(Node("c", 0, 100, type: "computed"));
+        var index = SchemaIndex.For(schema);
+        DiagramBox[] boxes = [(DiagramBox)diagram.Find("s")!, (DiagramBox)diagram.Find("c")!];
+        LookUpPorts(index, boxes);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        LookUpPorts(index, boxes);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
     public void TypesHaveADefaultSize()
     {
         var size = new DiagramNodeType { Name = "plain" }.Size;
@@ -110,5 +133,18 @@ public sealed class GeometryTests
         Assert.Equal(26.57, geometry.TargetAngle);
         Assert.Equal(-153.43, geometry.SourceAngle);
         Assert.Null(diagram.GetLinkGeometry("a"));
+    }
+
+    private static void LookUpPorts(SchemaIndex index, DiagramBox[] boxes)
+    {
+        for (var i = 0; i < 1000; i++)
+        {
+            foreach (var box in boxes)
+            {
+                _ = index.PortsOf(box);
+                _ = index.FindPort(box, null);
+                _ = index.FindPort(box, "a");
+            }
+        }
     }
 }
