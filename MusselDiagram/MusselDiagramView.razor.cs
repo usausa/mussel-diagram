@@ -274,7 +274,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
                 if (SelectedIds.Count > 0)
                 {
-                    await controller.InvokeVoidAsync("select", SelectedIds).ConfigureAwait(true);
+                    await controller.InvokeVoidAsync("select", SelectedIds, selectionMessages).ConfigureAwait(true);
                 }
 
                 while (!IsDisposed && pendingViews.TryDequeue(out var view))
@@ -503,7 +503,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         {
             SelectedIds = [];
             _ = NotifyAsync(SelectionChanged, SelectedIds);
-            _ = RunViewAsync("select", [Array.Empty<string>()]).AsTask();
+            _ = RunViewAsync("select", Array.Empty<string>(), selectionMessages).AsTask();
         }
 
         if (!ReferenceEquals(previous.EffectiveOptions, diagram.EffectiveOptions))

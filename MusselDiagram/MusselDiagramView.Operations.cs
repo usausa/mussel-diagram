@@ -226,6 +226,7 @@ public sealed partial class MusselDiagramView
         Func<DiagramSnapshot, Task> after,
         string? elementId = null)
     {
+        selectionMessages++;
         if (selection is not null)
         {
             scriptSelection = selection;

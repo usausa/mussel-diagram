@@ -8,8 +8,6 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
 
     public IPage Page => page;
 
-    public string InitialHtml { get; set; } = string.Empty;
-
     public ILocator View => page.Locator(".mussel-diagram");
 
     public void Watch()
@@ -52,14 +50,21 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
         return await page.EvaluateAsync<int>("() => new Promise(resolve => setTimeout(() => resolve(window.unhandled), 300))").ConfigureAwait(true);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        if ((TestContext.Current.TestState?.Result == TestResult.Failed) && (Environment.GetEnvironmentVariable("MUSSELDIAGRAM_E2E_DUMP") is { Length: > 0 } folder))
-        {
-            await DumpAsync(folder).ConfigureAwait(false);
-        }
+    public ValueTask DisposeAsync() => CloseAsync(TestContext.Current.TestState?.Result == TestResult.Failed);
 
-        await context.DisposeAsync().ConfigureAwait(false);
+    public async ValueTask CloseAsync(bool failed)
+    {
+        try
+        {
+            if (failed && (Environment.GetEnvironmentVariable("MUSSELDIAGRAM_E2E_DUMP") is { Length: > 0 } folder))
+            {
+                await DumpAsync(folder).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await context.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private async Task DumpAsync(string folder)
@@ -88,15 +93,23 @@ public sealed class SamplePage(IBrowserContext context, IPage page, Func<string>
                         errorUi: error ? getComputedStyle(error).display : null,
                         running: document.querySelectorAll('.mussel-diagram-state-running').length,
                         runDisabled: run ? run.disabled : null,
-                        reconnect: document.querySelector('#components-reconnect-modal, .components-reconnect-show')?.outerHTML?.slice(0, 200) ?? null
+                        reconnect: document.querySelector('#components-reconnect-modal')?.outerHTML?.slice(0, 200) ?? null
                     });
                 }
                 """).ConfigureAwait(false);
-            await page.ScreenshotAsync(new() { Path = Path.Combine(folder, name + ".png") }).ConfigureAwait(false);
         }
         catch (PlaywrightException e)
         {
             state = e.Message;
+        }
+
+        try
+        {
+            await page.ScreenshotAsync(new() { Path = Path.Combine(folder, name + ".png") }).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is PlaywrightException or TimeoutException)
+        {
+            state += $"{Environment.NewLine}screenshot: {e.Message}";
         }
 
         await File.WriteAllTextAsync(Path.Combine(folder, name + ".txt"), $"{state}{Environment.NewLine}{String.Join(Environment.NewLine, events)}{Environment.NewLine}--- app{Environment.NewLine}{appLog()}").ConfigureAwait(false);

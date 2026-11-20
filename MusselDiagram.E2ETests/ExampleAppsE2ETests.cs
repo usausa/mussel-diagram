@@ -617,6 +617,21 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         Assert.EndsWith("/er", sample.Page.Url, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task PagesArePrerendered(string mode)
+    {
+        var sample = opened = await app.OpenBlankAsync(javaScriptEnabled: false);
+
+        await sample.Page.GotoAsync($"{app.BaseAddress}render-mode/{mode}?redirect=%2F");
+        await Expect(sample.Page.Locator(".page-switch a.active")).ToHaveTextAsync("基本");
+        await Expect(sample.View.Locator("g.mussel-diagram-node")).ToHaveCountAsync(9);
+        await Expect(sample.View.Locator("g.mussel-diagram-link")).ToHaveCountAsync(7);
+        await Expect(sample.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label[data-label='星 1']")).ToHaveCountAsync(1);
+        await Expect(sample.Page.Locator("[data-attached]")).ToHaveCountAsync(0);
+        await Expect(sample.Page.Locator(".mode-switch a.active")).ToHaveTextAsync(mode == "wasm" ? "WebAssembly" : "Server");
+    }
+
     [Fact]
     public async Task UnknownAddressShowsTheNotFoundPage()
     {

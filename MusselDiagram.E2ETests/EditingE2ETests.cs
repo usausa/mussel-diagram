@@ -74,6 +74,76 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Fact]
+    public async Task TheLaterOfTwoPlacedNodesIsSelectedWhenTheFirstArrivesBeforeItsAnswer()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var star = page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']");
+        await Expect(nodes).ToHaveCountAsync(9);
+        await HoldDropsAsync();
+        await DragInAsync(star, 120, 500);
+        await DragInAsync(star, 300, 520);
+        await page.WaitForFunctionAsync("() => window.heldDrops.length === 1");
+
+        await page.EvaluateAsync("() => window.heldDrops[0]()");
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected] > text.mussel-diagram-label[data-label='星 3']")).ToHaveCountAsync(1);
+        await page.WaitForFunctionAsync("() => window.heldDrops.length === 2");
+        await page.EvaluateAsync("() => window.heldDrops[1]()");
+
+        await Expect(nodes).ToHaveCountAsync(11);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected] > text.mussel-diagram-label[data-label='星 4']")).ToHaveCountAsync(1);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task APlacedNodeLeavesASelectionThatCSharpMadeBeforeTheAnswer()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var nodes = opened.View.Locator("g.mussel-diagram-node");
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await Expect(nodes).ToHaveCountAsync(9);
+        var (left, top) = await OriginAsync();
+        await page.Mouse.MoveAsync((float)left + 250, (float)top + 170);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync((float)left + 310, (float)top + 170, new() { Steps = 10 });
+        await page.Mouse.UpAsync();
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
+        await ClickAsync(700, 470);
+        await Expect(star1).Not.ToHaveAttributeAsync("data-selected", string.Empty);
+        await HoldDropsAsync();
+        await DragInAsync(page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']"), 120, 500);
+        await page.WaitForFunctionAsync("() => window.heldDrops.length === 1");
+
+        await page.EvaluateAsync("() => window.view.invokeMethodAsync('ExecuteCommandAsync', 'Undo', null)");
+        await Expect(star1).ToHaveAttributeAsync("data-selected", string.Empty);
+        await page.EvaluateAsync("() => window.heldDrops[0]()");
+        await Expect(nodes).ToHaveCountAsync(10);
+        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', '', []); await new Promise((resolve) => setTimeout(resolve, 0)); }");
+
+        await Expect(star1).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected]")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task APlacedNodeThatArrivesLaterLeavesTheFocusWhereItIs()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var search = page.Locator(".mussel-diagram-palette-search");
+        await HoldDropsAsync();
+        await DragInAsync(page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']"), 120, 500);
+        await page.WaitForFunctionAsync("() => window.heldDrops.length === 1");
+        await search.FocusAsync();
+
+        await page.EvaluateAsync("() => window.heldDrops[0]()");
+
+        await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected] > text.mussel-diagram-label[data-label='星 3']")).ToHaveCountAsync(1);
+        await Expect(search).ToBeFocusedAsync();
+    }
+
+    [Fact]
     public async Task ThePaletteDragShowsTheColorsOfTheItem()
     {
         opened = await app.OpenAsync(string.Empty, "server");
@@ -566,6 +636,23 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await opened.Page.Keyboard.PressAsync("Control+0");
         await Expect(opened.View.Locator(".mussel-diagram-canvas > .mussel-diagram-viewport")).ToHaveAttributeAsync("transform", new Regex(@"scale\(1\)"));
     }
+
+    private async Task HoldDropsAsync() =>
+        await opened!.Page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldDrops = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name !== 'CommitDropAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    window.view = this;
+                    return new Promise((resolve) => window.heldDrops.push(() => resolve(invoke.call(this, name, ...args))));
+                };
+            }
+            """).ConfigureAwait(true);
 
     private async Task<(double X, double Y)> OriginAsync()
     {

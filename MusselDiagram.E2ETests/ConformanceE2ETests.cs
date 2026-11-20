@@ -500,6 +500,50 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(rect).ToHaveAttributeAsync("transform", "translate(370,156)");
     }
 
+    [Theory]
+    [InlineData(2e12, 226)]
+    [InlineData(100, 326)]
+    public async Task TheTextEditorFollowsItsElementToWhereTheAnswerOfAMovePutsIt(double dx, int x)
+    {
+        const string offset =
+            """
+            () => new Promise((resolve) => setTimeout(() => {
+                const editor = document.querySelector('textarea.mussel-diagram-text-editor').getBoundingClientRect();
+                const label = document.querySelector("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label").getBoundingClientRect();
+                resolve((editor.left + (editor.width / 2)) - (label.left + (label.width / 2)));
+            }, 300))
+            """;
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        await page.EvaluateAsync(
+            """
+            dx => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name !== 'CommitMoveAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => resolve(invoke.call(this, name, args[0], dx, 0, ...args.slice(3)))));
+                };
+            }
+            """,
+            dx);
+        await DragAsync(250, 170, 60, 0, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        var label = await opened.View.Locator("g.mussel-diagram-node[data-id='star1'] > text.mussel-diagram-label").BoundingBoxAsync() ?? throw new InvalidOperationException("The label is not shown.");
+        await page.Mouse.DblClickAsync(label.X + (label.Width / 2), label.Y + (label.Height / 2));
+        await Expect(opened.View.Locator("textarea.mussel-diagram-text-editor")).ToBeVisibleAsync();
+        var aligned = await page.EvaluateAsync<double>(offset);
+
+        await page.EvaluateAsync("() => window.heldMoves[0]()");
+
+        await Expect(star1).ToHaveAttributeAsync("transform", $"translate({x},146)");
+        Assert.InRange(await page.EvaluateAsync<double>(offset), aligned - 1, aligned + 1);
+    }
+
     [Fact]
     public async Task AResizeGrabbedWhileALaterMoveWaitsKeepsThatMove()
     {
@@ -585,6 +629,349 @@ public sealed class ConformanceE2ETests(AppFixture app) : IClassFixture<AppFixtu
 
         await Expect(hit).ToHaveAttributeAsync("d", path);
         await Expect(shape).ToHaveAttributeAsync("width", width);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task AMoveStopsUntilTheReleaseWhenARejectedReconnectTakesALinkOffTheBox(bool live, bool moveOn)
+    {
+        if (live)
+        {
+            opened = await app.OpenAsync(string.Empty, "server");
+        }
+        else
+        {
+            opened = await OpenWithFramedMovesAsync();
+        }
+
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var star2 = opened.View.Locator("g.mussel-diagram-node[data-id='star2']");
+        var hit = opened.View.Locator("g.mussel-diagram-link[data-id='pin-star1'] > path.mussel-diagram-link-hit");
+        var path = await hit.GetAttributeAsync("d") ?? throw new InvalidOperationException("The link has no path.");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldReconnects = [];
+                window.reconnectsDone = 0;
+                window.clicks = 0;
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name === 'OnClickedAsync') {
+                        window.clicks++;
+                    }
+                    if (name !== 'CommitReconnectAsync') {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldReconnects.push(() => {
+                        const result = invoke.call(this, name, args[0], args[1], 'missing', ...args.slice(3));
+                        result.then(() => setTimeout(() => window.reconnectsDone++, 0), () => { });
+                        resolve(result);
+                    }));
+                };
+            }
+            """);
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 200, (float)top + 170);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay [data-end='target'][data-id='pin-star1']")).ToHaveCountAsync(1);
+        await DragAsync(226, 170, 104, 20, null);
+        await page.WaitForFunctionAsync("() => window.heldReconnects.length === 1");
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 190);
+        await page.Keyboard.DownAsync("Shift");
+        await page.Mouse.ClickAsync((float)left + 250, (float)top + 300);
+        await page.Keyboard.UpAsync("Shift");
+        await Expect(star2).ToHaveAttributeAsync("data-selected", string.Empty);
+        var clicks = 0;
+
+        await DragAsync(380, 190, 60, 40, async () =>
+        {
+            await page.EvaluateAsync("() => window.heldReconnects[0]()").ConfigureAwait(true);
+            await page.WaitForFunctionAsync("() => window.reconnectsDone === 1").ConfigureAwait(true);
+            clicks = await page.EvaluateAsync<int>("() => window.clicks").ConfigureAwait(true);
+            if (moveOn)
+            {
+                await page.Mouse.MoveAsync((float)left + 480, (float)top + 260, new() { Steps = 5 }).ConfigureAwait(true);
+            }
+        });
+
+        await Expect(hit).ToHaveAttributeAsync("d", path);
+        await Expect(rect).ToHaveAttributeAsync("transform", "translate(330,160)");
+        await Expect(star2).ToHaveAttributeAsync("transform", "translate(226,276)");
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(star2).ToHaveAttributeAsync("data-selected", string.Empty);
+        Assert.Equal(clicks, await page.EvaluateAsync<int>("() => new Promise((resolve) => setTimeout(() => resolve(window.clicks), 300))"));
+    }
+
+    [Fact]
+    public async Task AGroupMoveStopsWhenARejectedMoveTakesANodeBackOutOfTheGroup()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var group = opened.View.Locator("g.mussel-diagram-group[data-id='right']");
+        await HoldTheFirstMoveAsync();
+        await DragAsync(380, 190, 200, 40, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await Expect(rect).Not.ToHaveAttributeAsync("transform", "translate(330,160)");
+        var label = await opened.View.Locator("g.mussel-diagram-group[data-id='right'] > text.mussel-diagram-label").BoundingBoxAsync() ?? throw new InvalidOperationException("The label is not shown.");
+        var (left, top) = await OriginAsync();
+
+        await DragAsync((float)(label.X + 10 - left), (float)(label.Y + (label.Height / 2) - top), 0, 20, async () =>
+        {
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await page.WaitForFunctionAsync("() => window.movesDone === 1").ConfigureAwait(true);
+        });
+
+        await Expect(rect).ToHaveAttributeAsync("transform", "translate(330,160)");
+        await Expect(group).ToHaveAttributeAsync("transform", "translate(470,100)");
+    }
+
+    [Fact]
+    public async Task TheFrameOfAMoveTakesTheSizeOfWhereTheElementsWentBack()
+    {
+        opened = await OpenWithFramedMovesAsync();
+        var page = opened.Page;
+        var star2 = opened.View.Locator("g.mussel-diagram-node[data-id='star2']");
+        var frame = opened.View.Locator(".mussel-diagram-drag-frame");
+        await HoldTheFirstMoveAsync();
+        await page.Keyboard.DownAsync("Alt");
+        await DragAsync(250, 300, 0, 60, null);
+        await page.Keyboard.UpAsync("Alt");
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await Expect(star2).ToHaveAttributeAsync("transform", "translate(226,336)");
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 190);
+        await page.Keyboard.DownAsync("Shift");
+        await page.Mouse.ClickAsync((float)left + 250, (float)top + 360);
+        await page.Keyboard.UpAsync("Shift");
+        await Expect(star2).ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await DragAsync(380, 190, 40, 0, async () =>
+        {
+            await Expect(frame).ToHaveAttributeAsync("height", "224").ConfigureAwait(true);
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await page.WaitForFunctionAsync("() => window.movesDone === 1").ConfigureAwait(true);
+            await Expect(frame).ToHaveAttributeAsync("height", "164").ConfigureAwait(true);
+            await page.Keyboard.PressAsync("Escape").ConfigureAwait(true);
+        });
+    }
+
+    [Fact]
+    public async Task AMoveMarksItsDropTargetAgainWhenARejectionTakesTheNodeBackOutOfTheGroup()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        var page = opened.Page;
+        var group = opened.View.Locator("g.mussel-diagram-group[data-id='right']");
+        await HoldTheFirstMoveAsync();
+        await DragAsync(380, 190, 200, 40, null);
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+
+        await DragAsync(580, 230, 20, 0, async () =>
+        {
+            await Expect(group).Not.ToHaveAttributeAsync("data-drop-target", string.Empty).ConfigureAwait(true);
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await page.WaitForFunctionAsync("() => window.movesDone === 1").ConfigureAwait(true);
+            await Expect(group).ToHaveAttributeAsync("data-drop-target", string.Empty).ConfigureAwait(true);
+            await page.Keyboard.PressAsync("Escape").ConfigureAwait(true);
+        });
+    }
+
+    [Theory]
+    [InlineData(350)]
+    [InlineData(240)]
+    public async Task AMoveDropsItsTargetLookWhenAFailedMoveLeavesItsElementsInTwoParents(float dy)
+    {
+        opened = await OpenWithScriptArgumentsChangedAsync("(item) => { for (const type of Array.isArray(item.types) ? item.types : []) { if (type.name === 'star') { type.topLevel = false; } } }");
+        var page = opened.Page;
+        var triangle = opened.View.Locator("g.mussel-diagram-node[data-id='triangle']");
+        var group = opened.View.Locator("g.mussel-diagram-group[data-id='group']");
+        await page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                window.movesDone = 0;
+                window.moveCalls = 0;
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if (name === 'CommitMoveAsync') {
+                        window.moveCalls++;
+                    }
+                    if ((name !== 'CommitMoveAsync') || (window.heldMoves.length > 0)) {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve, reject) => window.heldMoves.push(() => {
+                        reject(new Error(name));
+                        setTimeout(() => window.movesDone++, 0);
+                    }));
+                };
+            }
+            """);
+        await page.Keyboard.DownAsync("Alt");
+        await DragAsync(600, 230, -220, 100, null);
+        await page.Keyboard.UpAsync("Alt");
+        await page.WaitForFunctionAsync("() => window.heldMoves.length === 1");
+        await Expect(triangle).ToHaveAttributeAsync("transform", "translate(356,306)");
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 250, (float)top + 170);
+        await page.Keyboard.DownAsync("Shift");
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 330);
+        await page.Keyboard.UpAsync("Shift");
+        await Expect(triangle).ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await DragAsync(250, 170, 0, dy, async () =>
+        {
+            if (dy > 300)
+            {
+                await Expect(opened.View).ToHaveClassAsync(new Regex("mussel-diagram-not-allowed")).ConfigureAwait(true);
+            }
+            else
+            {
+                await Expect(group).ToHaveAttributeAsync("data-drop-target", string.Empty).ConfigureAwait(true);
+            }
+
+            await page.EvaluateAsync("() => window.heldMoves[0]()").ConfigureAwait(true);
+            await page.WaitForFunctionAsync("() => window.movesDone === 1").ConfigureAwait(true);
+            await Expect(opened.View).Not.ToHaveClassAsync(new Regex("mussel-diagram-not-allowed")).ConfigureAwait(true);
+            await Expect(opened.View.Locator(".mussel-diagram-reason")).ToHaveCountAsync(0).ConfigureAwait(true);
+            await Expect(group).Not.ToHaveAttributeAsync("data-drop-target", string.Empty).ConfigureAwait(true);
+        });
+
+        await page.WaitForFunctionAsync("() => window.moveCalls === 2");
+    }
+
+    [Fact]
+    public async Task ASelectionOfCSharpThatCrossesAClickLeavesTheClickedLink()
+    {
+        opened = await OpenHoldingTheSelectionsOfCSharpAsync();
+        var page = opened.Page;
+        var star1 = opened.View.Locator("g.mussel-diagram-node[data-id='star1']");
+        var link = opened.View.Locator("g.mussel-diagram-link[data-id='pin-star1']");
+        await DragAsync(250, 170, 60, 0, null);
+        await Expect(star1).Not.ToHaveAttributeAsync("transform", "translate(226,146)");
+        await page.EvaluateAsync("() => { window.holdSelects = true; }");
+        await page.Keyboard.PressAsync("Control+Z");
+        await page.WaitForFunctionAsync("() => window.heldSelects.length === 1");
+        await Expect(star1).ToHaveAttributeAsync("transform", "translate(226,146)");
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 200, (float)top + 170);
+        await Expect(link).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(page.Locator("[data-panel='look'] [data-field='link-dash']")).ToHaveCountAsync(1);
+
+        await page.EvaluateAsync("() => window.heldSelects[0]()");
+
+        await Expect(link).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(star1).Not.ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(page.Locator("[data-panel='look'] [data-field='link-dash']")).ToHaveCountAsync(1);
+    }
+
+    [Fact]
+    public async Task ASelectionOfCSharpThatCrossesAMoveLeavesTheMovedNode()
+    {
+        opened = await OpenHoldingTheSelectionsOfCSharpAsync();
+        var page = opened.Page;
+        var rect = opened.View.Locator("g.mussel-diagram-node[data-id='rect']");
+        var link = opened.View.Locator("g.mussel-diagram-link[data-id='pin-star1']");
+        var hit = opened.View.Locator("g.mussel-diagram-link[data-id='pin-star1'] > path.mussel-diagram-link-hit");
+        var path = await hit.GetAttributeAsync("d") ?? throw new InvalidOperationException("The link has no path.");
+        var (left, top) = await OriginAsync();
+        await page.Mouse.ClickAsync((float)left + 200, (float)top + 170);
+        await Expect(opened.View.Locator(".mussel-diagram-overlay [data-end='target'][data-id='pin-star1']")).ToHaveCountAsync(1);
+        await DragAsync(226, 170, 104, 20, null);
+        await Expect(hit).Not.ToHaveAttributeAsync("d", path);
+        await Expect(link).Not.ToHaveAttributeAsync("data-reconnecting", string.Empty);
+        await page.Mouse.ClickAsync((float)left + 380, (float)top + 190);
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(page.Locator("[data-panel='look'] [data-field='box-fill']")).ToHaveCountAsync(1);
+        await page.EvaluateAsync("() => { window.holdSelects = true; }");
+        await page.Keyboard.PressAsync("Control+Z");
+        await page.WaitForFunctionAsync("() => window.heldSelects.length === 1");
+
+        await DragAsync(380, 190, 40, 0, null);
+        await Expect(rect).Not.ToHaveAttributeAsync("transform", "translate(330,160)");
+        await page.EvaluateAsync("() => window.heldSelects[0]()");
+
+        await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(link).Not.ToHaveAttributeAsync("data-selected", string.Empty);
+        await Expect(page.Locator("[data-panel='look'] [data-field='box-fill']")).ToHaveCountAsync(1);
+        await Expect(page.Locator("[data-panel='look'] [data-field='link-dash']")).ToHaveCountAsync(0);
+    }
+
+    private async Task HoldTheFirstMoveAsync() =>
+        await opened!.Page.EvaluateAsync(
+            """
+            () => {
+                const proto = DotNet.DotNetObject.prototype;
+                const invoke = proto.invokeMethodAsync;
+                window.heldMoves = [];
+                window.movesDone = 0;
+                proto.invokeMethodAsync = function (name, ...args) {
+                    if ((name !== 'CommitMoveAsync') || (window.heldMoves.length > 0)) {
+                        return invoke.call(this, name, ...args);
+                    }
+                    return new Promise((resolve) => window.heldMoves.push(() => {
+                        const result = invoke.call(this, name, args[0], 2e12, ...args.slice(2));
+                        result.then(() => setTimeout(() => window.movesDone++, 0), () => { });
+                        resolve(result);
+                    }));
+                };
+            }
+            """).ConfigureAwait(true);
+
+    private Task<SamplePage> OpenWithFramedMovesAsync() =>
+        OpenWithScriptArgumentsChangedAsync("(item) => { if ('livePreviewLimit' in item) { item.livePreviewLimit = 1; } }");
+
+    private Task<SamplePage> OpenWithScriptArgumentsChangedAsync(string change) =>
+        OpenWithInitScriptAsync(
+            $$"""
+            (() => {
+                const change = {{change}};
+                const parse = JSON.parse;
+                JSON.parse = function (text, reviver) {
+                    const value = parse.call(this, text, reviver);
+                    for (const item of Array.isArray(value) ? value : []) {
+                        if (item && (typeof item === 'object')) {
+                            change(item);
+                        }
+                    }
+                    return value;
+                };
+            })();
+            """);
+
+    private Task<SamplePage> OpenHoldingTheSelectionsOfCSharpAsync() =>
+        OpenWithInitScriptAsync(
+            """
+            (() => {
+                window.holdSelects = false;
+                window.heldSelects = [];
+                const set = WeakMap.prototype.set;
+                WeakMap.prototype.set = function (key, value) {
+                    if ((key instanceof Element) && key.classList.contains('mussel-diagram') && value && (typeof value.select === 'function') && !Object.hasOwn(value, 'select')) {
+                        const select = value.select;
+                        value.select = function (...args) {
+                            if (!window.holdSelects) {
+                                return select.apply(this, args);
+                            }
+                            window.heldSelects.push(() => select.apply(this, args));
+                            return undefined;
+                        };
+                    }
+                    return set.call(this, key, value);
+                };
+            })();
+            """);
+
+    private async Task<SamplePage> OpenWithInitScriptAsync(string script)
+    {
+        var page = await app.OpenBlankAsync().ConfigureAwait(true);
+        await page.Page.AddInitScriptAsync(script).ConfigureAwait(true);
+        await page.Page.GotoAsync($"{app.BaseAddress}render-mode/server?redirect=%2F").ConfigureAwait(true);
+        await page.WaitForDiagramAsync().ConfigureAwait(true);
+        return page;
     }
 
     private async Task DragAsync(float x, float y, float dx, float dy, Func<Task>? beforeRelease)

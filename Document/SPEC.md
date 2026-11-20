@@ -470,7 +470,7 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click on the background, Esc outside an operation, and passing another diagram to the view clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment, unless it is the selection JS sent last; then C# uses the selection it received last. Even when the selection known to C# is behind, they act on the selection the user saw
-- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. After a command, JS sends its selection again when the user selected while the command was on its way, or when its selection changed between the press and the send, as when C# selected for an earlier command
+- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. It also gives the number of selections it has received from JS (clicks, commits and commands), and JS does not apply it when it has sent one since, so the later selection stays on both sides. After a command, JS sends its selection again when the user selected while the command was on its way, or when its selection changed between the press and the send, as when C# selected for an earlier command
 
 ### Moving
 
@@ -569,7 +569,7 @@ JS computes snapping and guides while dragging. They work for moving, resizing a
 - Every line that matches exactly at the snapped position shows as a guide. A guide spans both the moving rectangle and the other one, and keeps its width on screen. Guides are never saved or exported
 - When resizing, only the moving edges snap
 - Only the nodes and tree groups in the visible area count. The moving elements, their descendants and ancestors, and links do not
-- The candidates are collected once, when the drag passes the threshold, and looked up through indexes sorted per axis
+- The candidates are collected when the drag passes the threshold, and again when a move or a resize is rebuilt after a rejection. They are looked up through indexes sorted per axis
 - Snapping to equal spacing and to equal sizes is added later, when needed
 
 ### Priority and turning snapping off
@@ -734,7 +734,7 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 | Release | Where the element can be placed, it is added. Outside the view, over the palette, and where it cannot be placed, nothing happens |
 
 - The new element is placed at the position of the preview, with the default size of the type. Its label and data are the defaults of the type. When the type registers a function, the function makes them from the diagram and the value of an external drag source (External drag sources), for example a numbered name
-- The new element is selected, and the view gets the focus, unless the user selected while the drop was on its way
+- The view gets the focus at the release, and the new element is selected when it arrives, unless the user or the app selected before then
 - Adding is one change, which includes splicing into a link. `Dropping` and `Dropped` report the type, the position, the parent, the value and the link spliced into, before and after. Before, `Cancel` stops it and a reason can be returned (Commit and validation)
 - A placed group does not take the elements under it as children
 - Auto-scrolling at the edges, Esc and a second finger work as for moving (Selection and moving). Auto-scrolling starts once the pointer has been inside the view away from its edges
@@ -749,8 +749,8 @@ The palette (`MusselDiagramPalette`) lists the types of the schema that can be p
 |---|---|---|
 | 1 | The type is below its maximum count | Count |
 | 2 | A group accepts it, or it can be at the top level | Nesting |
-| 3 | The box lies inside ±1e12 (at commit only) | Nesting |
-| 4 | The app rules (at commit only) | The reason of the app |
+| 3 | The app rules (at commit only) | The reason of the app |
+| 4 | The box lies inside ±1e12 (at commit only) | Nesting |
 
 - The reason has a kind and a text. While dragging, it shows next to the pointer. A rejection at commit is in Commit and validation (the texts are in Languages)
 - Placing from the type picker runs the same checks. The parent when placing from an arrow or a port is in Adding a connected element
@@ -779,7 +779,7 @@ A small list that opens over the view to find and choose a type. It has a search
 - The order is the order of the palette, and typing filters as in the palette
 - ↑ and ↓ choose, and Enter or a click places. Esc or a click outside closes the list and creates nothing
 - While the list is open, a preview frame with the size of the chosen type is drawn at the position. When it was opened from a link, an arrow or a port, a preview line from the connection point is drawn too. The list opens where it fits in the view
-- The placed element is snapped to the grid, passes the checks of Parent and where an element can be placed, and is selected. When the list was opened from a link, an arrow or a port, the element is connected at its first declared connection point that can connect, and adding and connecting are one change (`Connecting`, `Connected`). When it was opened by the command, `Dropping` and `Dropped` report it
+- The placed element is snapped to the grid, passes the checks of Parent and where an element can be placed, and is selected as a dropped one (Placing). When the list was opened from a link, an arrow or a port, the element is connected at its first declared connection point that can connect, and adding and connecting are one change (`Connecting`, `Connected`). When it was opened by the command, `Dropping` and `Dropped` report it
 - The app can open it too, at a position it gives (on a double-click on the background, for example)
 - It places one element at a time. Adding several in a row is planned for the next version
 
@@ -861,7 +861,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 ### On rejection
 
 - JS removes the provisional display and returns to the current snapshot
-- A drag under way takes its start again from what went back: the position, the snapping and the limits of staying inside the parent. A resize, or a move that draws its links, is canceled when the links of its elements changed
+- A move or a resize under way takes its start again from what went back: the position, the snapping, the drop target and the limits of staying inside the parent. It is canceled when the links of its elements changed, or for a move when the elements it carries changed, and nothing happens until the release
 - The reason shows next to where the operation happened, until the next operation starts or for 3 seconds. CSS can change its look (the texts are in Languages)
 - `CommitRejected` reports the operation and the reason (for notifications of the app, for example)
 

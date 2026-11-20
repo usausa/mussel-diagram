@@ -387,7 +387,7 @@ export function keyName(event, mac) {
     if (event.altKey) {
         parts.push('Alt');
     }
-    if (event.shiftKey && (pressed || /^[A-Z]$/.test(key) || ((key.length > 1) && (key !== 'Plus') && (key !== 'Minus')))) {
+    if (event.shiftKey && (pressed || ((key.length === 1) && (key.toLowerCase() !== key.toUpperCase())) || ((key.length > 1) && (key !== 'Plus') && (key !== 'Minus')))) {
         parts.push('Shift');
     }
     parts.push(key);
@@ -478,7 +478,7 @@ export function wheelAction(event, options) {
     return options.panEnabled ? 'pan' : null;
 }
 
-export function portPosition(box, side, ratio, offset, along) {
+function portPosition(box, side, ratio, offset, along) {
     const fixed = (along ?? null) !== null;
     switch (side) {
         case 'top':
@@ -500,7 +500,7 @@ function contains(box, point) {
     return (point.x >= box.x) && (point.x <= box.x + box.w) && (point.y >= box.y) && (point.y <= box.y + box.h);
 }
 
-export function anchorOf(box, port, toward) {
+function anchorOf(box, port, toward) {
     if (port) {
         return { ...portPosition(box, port.side, port.ratio, port.offset, port.along), side: port.side };
     }
@@ -559,7 +559,7 @@ export function gridMiddle(a, b, grid) {
     return first > last ? middle : Math.min(Math.max(Math.round(middle / grid) * grid, first), last);
 }
 
-export function orthogonalRoute(start, end, stub, grid = 0) {
+function orthogonalRoute(start, end, stub, grid = 0) {
     const startOut = stepOut(start, start.side, stub);
     const endOut = stepOut(end, end.side, stub);
     const points = [{ x: start.x, y: start.y }, startOut];
@@ -578,7 +578,7 @@ export function orthogonalRoute(start, end, stub, grid = 0) {
     return simplify(points);
 }
 
-export function curveRoute(start, end, stub) {
+function curveRoute(start, end, stub) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const reach = Math.min(Math.max(stub, Math.sqrt((dx * dx) + (dy * dy)) / 2), MAX_CURVE_REACH);
@@ -590,7 +590,7 @@ function curveReach(point, reach) {
     return stepOut(point, point.side, Math.min(Math.max(ROUTE_RANGE - Math.abs(along), 0), reach));
 }
 
-export function routeBetween(start, end, form, stub, grid = 0) {
+function routeBetween(start, end, form, stub, grid = 0) {
     if (form === 'straight') {
         return [{ x: start.x, y: start.y }, { x: end.x, y: end.y }];
     }
@@ -601,7 +601,7 @@ function findPort(box, id) {
     return id ? (box?.ports ?? []).find((p) => p.id === id) : undefined;
 }
 
-export function linkAnchors(link, source, target) {
+function linkAnchors(link, source, target) {
     const sourcePort = findPort(source, link.sourcePort);
     const targetPort = findPort(target, link.targetPort);
     const sourceToward = targetPort ? portPosition(target, targetPort.side, targetPort.ratio, targetPort.offset, targetPort.along) : centerOf(target);
@@ -675,7 +675,7 @@ function lowerBound(lines, value) {
     return low;
 }
 
-export function nearestLine(lines, value, tolerance) {
+function nearestLine(lines, value, tolerance) {
     const index = lowerBound(lines, value);
     let best = null;
     for (const line of [lines[index - 1], lines[index]]) {
@@ -1629,6 +1629,7 @@ class DiagramController {
         this.rejections = 0;
         this.sentSelection = null;
         this.selectionSends = 0;
+        this.selectionMessages = 0;
         this.waiting = false;
         this.reason = null;
         this.spaceDown = false;
@@ -1777,6 +1778,7 @@ class DiagramController {
         if (this.editor && !this.table.boxes.has(this.editor.id)) {
             this.closeEditor();
         }
+        this.placeEditor();
         if (this.awaitedSelection?.size) {
             let added = false;
             for (const id of [...this.awaitedSelection]) {
@@ -1790,10 +1792,10 @@ class DiagramController {
                 this.drawSelection();
             }
         }
-        const added = this.selectWhenAdded;
-        if (added && (this.table.boxes.has(added.id) || this.table.links.has(added.id))) {
+        const placed = this.selectWhenAdded;
+        if (placed && (this.table.boxes.has(placed.id) || this.table.links.has(placed.id))) {
             this.selectWhenAdded = null;
-            this.selectNew(added.id, added.sends);
+            this.selectNew(placed.id, placed.sends);
         }
     }
 
@@ -2384,11 +2386,17 @@ class DiagramController {
         this.drawSelection();
     }
 
-    select(ids) {
+    select(ids, seen) {
+        if (seen < this.selectionMessages) {
+            return;
+        }
         const known = (id) => this.table.boxes.has(id) || this.table.links.has(id);
         this.selection = new Set(ids.filter(known));
         this.awaitedSelection = new Set(ids.filter((id) => !known(id)));
         this.selectWhenAdded = null;
+        for (const entry of this.pending) {
+            entry.sends = null;
+        }
         this.drawSelection();
     }
 
@@ -2404,6 +2412,7 @@ class DiagramController {
         if (this.dotnet) {
             this.sentSelection = new Set(next);
             this.selectionSends++;
+            this.selectionMessages++;
             this.track(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', [...next]).catch(() => { }));
         }
     }
@@ -2766,6 +2775,7 @@ class DiagramController {
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
         this.drag = null;
+        this.press = null;
         if (drag.written) {
             this.restoreDrag(drag);
         }
@@ -2969,7 +2979,10 @@ class DiagramController {
             this.cancelDrag();
             return;
         }
-        Object.assign(drag, basis);
+        Object.assign(drag, basis, { target: undefined, nestBlocked: false });
+        this.clearMarks();
+        this.setNotAllowed(false);
+        this.hideReason();
         this.requestFrame();
     }
 
@@ -3859,6 +3872,7 @@ class DiagramController {
             return;
         }
         entry.sent = true;
+        this.selectionMessages++;
         let result = null;
         try {
             result = await call();
@@ -3917,18 +3931,25 @@ class DiagramController {
         }
         this.settlePending();
         this.table.index();
-        this.drawSelection();
+        this.placeEditor();
         const drag = this.drag;
-        if (((drag?.kind === 'resize') || ((drag?.kind === 'move') && drag.live)) && this.dragLinksChanged(drag)) {
+        if (((drag?.kind === 'resize') || (drag?.kind === 'move')) && this.dragSetsChanged(drag)) {
             this.cancelDrag();
         } else if (drag?.kind === 'resize') {
             this.rebaseResize(drag);
         } else if (drag?.kind === 'move') {
             this.rebaseMove(drag);
         }
+        this.drawSelection();
     }
 
-    dragLinksChanged(drag) {
+    dragSetsChanged(drag) {
+        if (drag.kind === 'move') {
+            const moving = this.table.movingSet(drag.roots);
+            if ((moving.size !== drag.moving.size) || [...moving].some((id) => !drag.moving.has(id))) {
+                return true;
+            }
+        }
         const links = this.table.linksOf(drag.kind === 'resize' ? [drag.id] : drag.moving);
         return (links.size !== drag.links.size) || [...links].some((link) => !drag.links.has(link));
     }
@@ -4016,7 +4037,6 @@ class DiagramController {
             if (this.picker) {
                 this.closePicker();
             } else if (this.drag) {
-                this.press = null;
                 this.cancelDrag();
             } else if (this.pinch) {
                 this.pinch = null;
@@ -4056,7 +4076,11 @@ class DiagramController {
             return;
         }
         this.setSelection([id]);
-        this.root.focus({ preventScroll: true });
+        for (const entry of this.pending) {
+            if (entry.sends === sends) {
+                entry.sends = this.selectionSends;
+            }
+        }
     }
 
     setCommands(commands) {
@@ -4122,9 +4146,11 @@ class DiagramController {
             await this.whenIdle();
             if (this.commandFor(command.name)?.enabled) {
                 const replaced = changedSelection(this.currentSelection(), new Set(selection)) !== null;
+                this.selectionMessages++;
                 await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
                 const current = (this.selectionSends === sends) && !replaced ? null : this.selectionArgument();
                 if (current) {
+                    this.selectionMessages++;
                     await this.dotnet?.invokeMethodAsync('OnSelectionChangedAsync', current);
                 }
             }

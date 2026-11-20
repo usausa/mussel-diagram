@@ -36,7 +36,6 @@ public sealed class OperationCommitTests : BunitContext
     public OperationCommitTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        JSInterop.SetupModule(MusselDiagramView.ModulePath);
     }
 
     [Fact]

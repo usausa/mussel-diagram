@@ -150,8 +150,14 @@ test('a curve from ports that stand out stays inside the route range', () => {
         { id: 'in', side: 'left', ratio: 0.5, offset: 10 },
         { id: 'out', side: 'right', ratio: 0.5, offset: 10 },
     ]);
+    const upright = (id, x, y) => box(id, x, y, [
+        { id: 'in', side: 'top', ratio: 0.5, offset: 10 },
+        { id: 'out', side: 'bottom', ratio: 0.5, offset: 10 },
+    ]);
     const points = routeLink(link, outward('a', 1e12 - 100, 0), outward('b', -1e12, 1e12 - 50));
     assert.deepEqual(points.map((point) => [point.x, point.y]), [[1e12 + 10, 25], [2e12, 25], [-2e12, 1e12 - 25], [-1e12 - 10, 1e12 - 25]]);
+    const vertical = routeLink(link, upright('a', 0, 1e12 - 50), upright('b', 1e12 - 100, -1e12));
+    assert.deepEqual(vertical.map((point) => [point.x, point.y]), [[50, 1e12 + 10], [50, 2e12], [1e12 - 50, -2e12], [1e12 - 50, -1e12 - 10]]);
 });
 
 test('bends go to the grid line nearest the middle between the stubs', () => {
@@ -303,6 +309,7 @@ test('nesting follows the allowed parents and children', () => {
 test('the type list is searched by words and ranked by the label', () => {
     const types = [{ name: 'a', label: 'Web server' }, { name: 'b', label: 'Server', search: ['ec2'] }, { name: 'c', label: 'Database', category: 'storage', categoryLabel: 'Storage' }];
     assert.deepEqual(searchTypes(types, 'server').map((t) => t.name), ['b', 'a']);
+    assert.deepEqual(searchTypes(types, 'server\u0085').map((t) => t.name), ['b', 'a']);
     assert.deepEqual(searchTypes(types, 'ec2').map((t) => t.name), ['b']);
     assert.deepEqual(searchTypes(types, 'stor data').map((t) => t.name), ['c']);
     assert.equal(searchTypes(types, ' ').length, 3);
@@ -331,6 +338,9 @@ test('keys are named with the modifiers in a fixed order', () => {
     assert.equal(key('Control', { ctrlKey: true }), null);
     assert.equal(keyName({ key: 'c', code: 'KeyC', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, true), 'Ctrl+C');
     assert.equal(key('ä', { ctrlKey: true }), 'Ctrl+Ä');
+    assert.equal(key('Ä', { ctrlKey: true, shiftKey: true }), 'Ctrl+Shift+Ä');
+    assert.equal(key('Ж', { ctrlKey: true, shiftKey: true }), 'Ctrl+Shift+Ж');
+    assert.equal(key('!', { ctrlKey: true, shiftKey: true }), 'Ctrl+!');
     assert.equal(key('ß', { ctrlKey: true }), 'Ctrl+ß');
     assert.equal(key('\u0131', { ctrlKey: true }), 'Ctrl+I');
 });

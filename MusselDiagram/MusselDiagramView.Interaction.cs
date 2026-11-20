@@ -23,6 +23,8 @@ public sealed partial class MusselDiagramView
 
     private IReadOnlyList<string>? scriptSelection;
 
+    private int selectionMessages;
+
     [Parameter]
     public bool ReadOnly { get; set; }
 
@@ -67,7 +69,7 @@ public sealed partial class MusselDiagramView
 
         try
         {
-            await controller.InvokeVoidAsync("select", SelectedIds).ConfigureAwait(true);
+            await controller.InvokeVoidAsync("select", SelectedIds, selectionMessages).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {
@@ -80,6 +82,7 @@ public sealed partial class MusselDiagramView
     {
         string[] list = [.. ids];
         scriptSelection = list;
+        selectionMessages++;
         return SetSelectionAsync([.. list.Where(IsSelectable)]);
     }
 

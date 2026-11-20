@@ -8,12 +8,6 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
 {
     private SamplePage? opened;
 
-    public static TheoryData<string, string> ModeMarkers => new()
-    {
-        { "server", "server" },
-        { "wasm", "webassembly" }
-    };
-
     public static TheoryData<string> Modes => ["server", "wasm"];
 
     public async ValueTask DisposeAsync()
@@ -25,12 +19,11 @@ public sealed class ViewE2ETests(AppFixture app) : IClassFixture<AppFixture>, IA
     }
 
     [Theory]
-    [MemberData(nameof(ModeMarkers))]
-    public async Task ViewStartsInEveryRenderMode(string mode, string markerType)
+    [MemberData(nameof(Modes))]
+    public async Task ViewStartsInEveryRenderMode(string mode)
     {
         opened = await app.OpenAsync(string.Empty, mode);
 
-        Assert.Contains($"\"type\":\"{markerType}\"", opened.InitialHtml, StringComparison.Ordinal);
         await Expect(opened.View.Locator("svg.mussel-diagram-canvas, svg.mussel-diagram-overlay")).ToHaveCountAsync(2);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-id='star1'] text tspan").First).ToHaveTextAsync("星 1");
     }

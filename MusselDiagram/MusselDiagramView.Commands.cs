@@ -29,6 +29,7 @@ public sealed partial class MusselDiagramView
 
     internal async Task ExecuteFromScriptAsync(string name, IEnumerable<string>? selection)
     {
+        selectionMessages++;
         if (selection is not null)
         {
             scriptSelection = [.. selection];
@@ -40,9 +41,9 @@ public sealed partial class MusselDiagramView
         }
         else
         {
-            string[] applied = [.. scriptSelection.Where(Snapshot.Contains)];
+            string[] applied = [.. scriptSelection.Where(IsSelectable)];
             await SetSelectionAsync(applied).ConfigureAwait(true);
-            await Commands.ExecuteForSelectionAsync(name, [.. applied.Where(Snapshot.Contains)]).ConfigureAwait(true);
+            await Commands.ExecuteForSelectionAsync(name, [.. applied.Where(IsSelectable)]).ConfigureAwait(true);
         }
 
         await RefreshCommandsAsync().ConfigureAwait(true);

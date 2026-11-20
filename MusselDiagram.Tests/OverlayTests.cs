@@ -21,7 +21,6 @@ public sealed class OverlayTests : BunitContext
     public OverlayTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        JSInterop.SetupModule(MusselDiagramView.ModulePath);
     }
 
     [Fact]

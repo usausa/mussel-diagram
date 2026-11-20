@@ -192,17 +192,30 @@ public sealed class RoutingTests
                 new DiagramPortDefinition { Id = "out", Direction = DiagramPortDirection.Out, Side = DiagramSide.Right, Offset = 10 }
             ]
         };
+        var upright = new DiagramNodeType
+        {
+            Name = "upright",
+            Ports =
+            [
+                new DiagramPortDefinition { Id = "in", Direction = DiagramPortDirection.In, Side = DiagramSide.Top, Offset = 10 },
+                new DiagramPortDefinition { Id = "out", Direction = DiagramPortDirection.Out, Side = DiagramSide.Bottom, Offset = 10 }
+            ]
+        };
         var diagram = new Diagram(Schema with
         {
-            NodeTypes = [.. Schema.NodeTypes, outward],
+            NodeTypes = [.. Schema.NodeTypes, outward, upright],
             LinkTypes = [.. Schema.LinkTypes, new DiagramLinkType { Name = "curve", Form = DiagramLineForm.Curved, TargetMarker = DiagramMarker.None }]
         });
         diagram.Add(Node("a", 1e12 - 100, 0, type: "outward"));
         diagram.Add(Node("b", -1e12, 1e12 - 50, type: "outward"));
+        diagram.Add(Node("c", 0, 1e12 - 50, type: "upright"));
+        diagram.Add(Node("d", 1e12 - 100, -1e12, type: "upright"));
 
         diagram.Connect(Link("ab", "a", "b", "out", "in", "curve"));
+        diagram.Connect(Link("cd", "c", "d", "out", "in", "curve"));
 
         Assert.Equal([new DiagramPoint(1e12 + 10, 25), new DiagramPoint(2e12, 25), new DiagramPoint(-2e12, 1e12 - 25), new DiagramPoint(-1e12 - 10, 1e12 - 25)], Route(diagram, "ab"));
+        Assert.Equal([new DiagramPoint(50, 1e12 + 10), new DiagramPoint(50, 2e12), new DiagramPoint(1e12 - 50, -2e12), new DiagramPoint(1e12 - 50, -1e12 - 10)], Route(diagram, "cd"));
     }
 
     [Fact]

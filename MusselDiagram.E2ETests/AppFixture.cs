@@ -103,20 +103,27 @@ public sealed partial class AppFixture : IAsyncLifetime
     public async Task<SamplePage> OpenAsync(string path, string mode, bool touch = false)
     {
         var page = await OpenBlankAsync(touch).ConfigureAwait(false);
-        var response = await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
-        page.InitialHtml = response is null ? string.Empty : await response.TextAsync().ConfigureAwait(false);
-        await page.WaitForDiagramAsync().ConfigureAwait(false);
-        return page;
+        try
+        {
+            await page.Page.GotoAsync($"{BaseAddress}render-mode/{mode}?redirect={Uri.EscapeDataString($"/{path}")}").ConfigureAwait(false);
+            await page.WaitForDiagramAsync().ConfigureAwait(false);
+            return page;
+        }
+        catch
+        {
+            await page.CloseAsync(true).ConfigureAwait(false);
+            throw;
+        }
     }
 
-    public async Task<SamplePage> OpenBlankAsync(bool touch = false)
+    public async Task<SamplePage> OpenBlankAsync(bool touch = false, bool javaScriptEnabled = true)
     {
         if (browser is null)
         {
             Assert.Skip("Neither Edge nor Chrome was found, so the E2E test is skipped.");
         }
 
-        var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = touch }).ConfigureAwait(false);
+        var context = await browser.NewContextAsync(new() { JavaScriptEnabled = javaScriptEnabled, ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = touch }).ConfigureAwait(false);
         var page = new SamplePage(context, await context.NewPageAsync().ConfigureAwait(false), Log);
         page.Watch();
         return page;

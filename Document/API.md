@@ -120,7 +120,7 @@ Wraps HTML of the app so that a drag into the view starts from it. Other attribu
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
 Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command.  
-The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a letter of any script keeps `Shift` (`Ctrl+Shift+Ä`), a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
 
@@ -364,9 +364,9 @@ These are shared with the other Mussel libraries. Their light defaults follow th
 
 | Variable | Use |
 |---|---|
-| `--mussel-primary-text`, `--mussel-secondary-text`, `--mussel-muted-text` | Labels and the headers of the palette; the items of the palette; placeholders and the text of empty lists |
+| `--mussel-primary-text`, `--mussel-secondary-text`, `--mussel-muted-text` | Labels and the headers of the palette; the items of the palette; the placeholder of the text editor and the text of empty lists |
 | `--mussel-grid-line` | The grid |
-| `--mussel-tooltip-background`, `--mussel-tooltip-border`, `--mussel-tooltip-text` | The type picker, rejection reasons and the text editor |
+| `--mussel-tooltip-background`, `--mussel-tooltip-border`, `--mussel-tooltip-text` | The type picker, rejection reasons, the text editor and the border of the search box of the palette |
 | `--mussel-critical` | Errors |
 | `--mussel-font-family` | Font family |
 
