@@ -1,0 +1,556 @@
+/* Page */
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+.layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.layout-body {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.page-card {
+    max-width: 400px;
+}
+
+/* Top bar */
+.layout-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    background-color: #1a73e8;
+    color: #ffffff;
+}
+
+.layout-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.layout-spacer {
+    flex: 1 1 auto;
+}
+
+/* Render mode switch */
+.mode-switch,
+.page-switch {
+    display: flex;
+    gap: 4px;
+}
+
+.mode-switch .mode,
+.page-switch .page {
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.mode-switch .mode.active,
+.page-switch .page.active {
+    background-color: #ffffff;
+    color: #1a73e8;
+}
+
+/* Diagram pages */
+.diagram-page {
+    height: 100%;
+}
+
+.diagram-with-palette {
+    display: flex;
+}
+
+.diagram-sidebar {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 200px;
+    border-right: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.diagram-sidebar > .mussel-diagram-palette {
+    flex: 1;
+}
+
+.diagram-source {
+    padding: 8px;
+    border-top: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.diagram-area {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+}
+
+.diagram-area > .mussel-diagram {
+    flex: 1;
+    min-height: 0;
+}
+
+.view-toolbar {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    background-color: var(--mud-palette-surface);
+    border-bottom: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.view-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.view-toolbar-separator {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background-color: var(--mussel-tooltip-border, #d0d7de);
+}
+
+.card-band {
+    fill: var(--example-green-stroke);
+}
+
+.card-title {
+    fill: var(--mussel-diagram-text-color);
+    font-weight: 600;
+}
+
+.card-note {
+    fill: var(--mussel-diagram-text-color);
+    font-size: 11px;
+}
+
+.card-empty {
+    fill: var(--mussel-muted-text, #6e7781);
+}
+
+.diagram-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
+}
+
+.mussel-diagram-state-running > .mussel-diagram-shape {
+    stroke: #1a73e8;
+    stroke-width: 2.5;
+}
+
+.mussel-diagram-state-done > .mussel-diagram-shape {
+    fill: var(--example-done-fill);
+}
+
+.mussel-diagram-state-flowed > .mussel-diagram-link-line {
+    stroke: #1f883d;
+    stroke-width: 2;
+}
+
+.layout {
+    --example-aws-cloud: #242f3e;
+    --example-aws-text: #000000;
+    --example-aws-arrow: #000000;
+    --example-blue-fill: #e3f2fd;
+    --example-blue-stroke: #1e88e5;
+    --example-green-fill: #f1f8e9;
+    --example-green-stroke: #7cb342;
+    --example-orange-fill: #fff3e0;
+    --example-orange-stroke: #fb8c00;
+    --example-purple-fill: #f3e8ff;
+    --example-purple-stroke: #9333ea;
+    --example-teal-fill: #e0f2f1;
+    --example-teal-stroke: #00897b;
+    --example-done-fill: #e6f4ea;
+    --example-node-fill: #ffffff;
+    --example-node-stroke: #94a3b8;
+    --example-flow-line: #64748b;
+    --example-er-header: #eef2ff;
+    --example-electric-line: #374151;
+    --example-warning: #bf8700;
+    --example-critical: var(--mussel-critical, #cf222e);
+}
+
+.layout.mussel-dark {
+    --example-aws-cloud: #ffffff;
+    --example-aws-text: #ffffff;
+    --example-aws-arrow: #8fa7c4;
+    --example-blue-fill: #1b3047;
+    --example-blue-stroke: #64b5f6;
+    --example-green-fill: #253219;
+    --example-green-stroke: #9ccc65;
+    --example-orange-fill: #3b2a14;
+    --example-orange-stroke: #ffb74d;
+    --example-purple-fill: #2e1f3d;
+    --example-purple-stroke: #c084fc;
+    --example-teal-fill: #13302d;
+    --example-teal-stroke: #4db6ac;
+    --example-done-fill: #1e3a26;
+    --example-node-fill: #262624;
+    --example-node-stroke: #6b7280;
+    --example-flow-line: #9ca3af;
+    --example-er-header: #2c2c3a;
+    --example-electric-line: #d1d5db;
+    --example-warning: #bb8009;
+    --example-critical: var(--mussel-critical);
+}
+
+.layout .mussel-diagram-icon,
+.layout .mussel-diagram-palette-icon {
+    color: var(--example-aws-cloud);
+}
+
+.diagram-import {
+    max-width: 100%;
+    font-size: 12px;
+}
+
+.diagram-panel {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 12px;
+    width: 260px;
+    padding: 12px;
+    overflow: auto;
+    border-left: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.diagram-panel > * {
+    flex: none;
+}
+
+.example-workflow .mussel-diagram-port[data-kind="ai-model"],
+.example-workflow .mussel-diagram-port[data-kind="ai-tool"] {
+    stroke: #a855f7;
+}
+
+.er-header {
+    fill: var(--example-er-header);
+}
+
+.er-name {
+    fill: var(--mussel-diagram-text-color);
+    font-weight: 600;
+}
+
+.er-line {
+    stroke: var(--example-node-stroke);
+    stroke-width: 1;
+}
+
+.er-key {
+    fill: #d97706;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.er-column {
+    fill: var(--mussel-diagram-text-color);
+}
+
+.er-primary {
+    font-weight: 600;
+}
+
+.er-type {
+    fill: var(--mussel-muted-text, #6e7781);
+    font-size: 11px;
+    text-anchor: end;
+}
+
+.er-column-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--mussel-tooltip-border, #d0d7de);
+}
+
+.example-monitor .mussel-diagram-state-warning > .mussel-diagram-shape {
+    stroke: var(--mussel-diagram-warning-color);
+    stroke-width: 2.5;
+}
+
+.example-monitor .mussel-diagram-state-down > .mussel-diagram-shape {
+    stroke: var(--mussel-diagram-error-color);
+    stroke-width: 2.5;
+    stroke-dasharray: 4 3;
+}
+
+.example-monitor .mussel-diagram-state-busy > .mussel-diagram-link-line {
+    stroke: #f59e0b;
+    stroke-width: 3;
+}
+
+.example-monitor .mussel-diagram-state-cut > .mussel-diagram-link-line {
+    stroke: var(--mussel-diagram-error-color);
+    stroke-dasharray: 4 3;
+}
+
+.monitor-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.monitor-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.monitor-values {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    margin: 0;
+}
+
+.monitor-values dt {
+    color: var(--mussel-muted-text, #6e7781);
+}
+
+.monitor-values dd {
+    margin: 0;
+}
+
+.monitor-state[data-state="warning"] {
+    color: var(--example-warning);
+}
+
+.monitor-state[data-state="down"] {
+    color: var(--example-critical);
+}
+
+.monitor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.monitor-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    justify-content: flex-start;
+    text-align: left;
+    cursor: pointer;
+}
+
+.monitor-item::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #1f883d;
+}
+
+.monitor-item[data-state="warning"]::before {
+    background: var(--example-warning);
+}
+
+.monitor-item[data-state="down"]::before {
+    background: var(--example-critical);
+}
+
+.monitor-item:hover {
+    background: rgba(127, 127, 127, 0.12);
+}
+
+.ledger-type {
+    color: var(--mussel-secondary-text, #57606a);
+    font-size: 12px;
+}
+
+.ledger-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ledger-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--mussel-tooltip-border, #d0d7de);
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ledger-item[data-status="due"] .ledger-next {
+    color: var(--example-warning);
+}
+
+.ledger-item[data-status="expired"] .ledger-next {
+    color: var(--example-critical);
+    font-weight: 600;
+}
+
+/* Blazor error UI */
+#blazor-error-ui {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 1000;
+    display: none;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.6rem 1.25rem 0.7rem;
+    background: lightyellow;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    cursor: pointer;
+}
+
+/* Reconnect modal */
+.components-reconnect-first-attempt-visible,
+.components-reconnect-repeated-attempt-visible,
+.components-reconnect-failed-visible,
+.components-pause-visible,
+.components-resume-failed-visible,
+.components-rejoining-animation {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-show .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-paused .components-pause-visible,
+#components-reconnect-modal.components-reconnect-resume-failed .components-resume-failed-visible,
+#components-reconnect-modal.components-reconnect-retrying,
+#components-reconnect-modal.components-reconnect-retrying .components-reconnect-repeated-attempt-visible,
+#components-reconnect-modal.components-reconnect-retrying .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-failed .components-reconnect-failed-visible {
+    display: block;
+}
+
+#components-reconnect-modal {
+    width: 20rem;
+    margin: 20vh auto;
+    padding: 2rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background-color: white;
+    box-shadow: 0 3px 6px 2px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: display 0.5s allow-discrete, overlay 0.5s allow-discrete;
+    animation: components-reconnect-modal-fadeOutOpacity 0.5s both;
+}
+
+#components-reconnect-modal[open] {
+    animation: components-reconnect-modal-slideUp 1.5s cubic-bezier(.05, .89, .25, 1.02) 0.3s,
+               components-reconnect-modal-fadeInOpacity 0.5s ease-in-out 0.3s;
+    animation-fill-mode: both;
+}
+
+#components-reconnect-modal::backdrop {
+    background-color: rgba(0, 0, 0, 0.4);
+    opacity: 1;
+    animation: components-reconnect-modal-fadeInOpacity 0.5s ease-in-out;
+}
+
+@keyframes components-reconnect-modal-slideUp {
+    0% { transform: translateY(30px) scale(0.95); }
+    100% { transform: translateY(0); }
+}
+
+@keyframes components-reconnect-modal-fadeInOpacity {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+@keyframes components-reconnect-modal-fadeOutOpacity {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.components-reconnect-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+#components-reconnect-modal p {
+    margin: 0;
+    text-align: center;
+}
+
+#components-reconnect-modal button {
+    padding: 4px 24px;
+    border: 0;
+    border-radius: 4px;
+    background-color: #6B9ED2;
+    color: white;
+}
+
+#components-reconnect-modal button:hover {
+    background-color: #3B6EA2;
+}
+
+#components-reconnect-modal button:active {
+    background-color: #6B9ED2;
+}
+
+.components-rejoining-animation {
+    position: relative;
+    width: 80px;
+    height: 80px;
+}
+
+.components-rejoining-animation div {
+    position: absolute;
+    border: 3px solid #0087FF;
+    border-radius: 50%;
+    opacity: 1;
+    animation: components-rejoining-animation 1.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+.components-rejoining-animation div:nth-child(2) {
+    animation-delay: -0.5s;
+}
+
+@keyframes components-rejoining-animation {
+    0% { top: 40px; left: 40px; width: 0; height: 0; opacity: 0; }
+    4.9% { top: 40px; left: 40px; width: 0; height: 0; opacity: 0; }
+    5% { top: 40px; left: 40px; width: 0; height: 0; opacity: 1; }
+    100% { top: 0; left: 0; width: 80px; height: 80px; opacity: 0; }
+}
