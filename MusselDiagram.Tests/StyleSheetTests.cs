@@ -19,6 +19,21 @@ public sealed partial class StyleSheetTests
         Assert.All(selectors, static x => Assert.Matches(WhereOnly(), x));
     }
 
+    [Fact]
+    public void TheStatesOfReconnectingWaitingAndEditingSlotsStayInsideTheDiagram()
+    {
+        var css = File.ReadAllText(Path.Combine(TestPaths.Root, "MusselDiagram", "wwwroot", "MusselDiagram.css"));
+
+        var selectors = Rule().Matches(css)
+            .SelectMany(static x => TopLevelComma().Split(x.Groups["selector"].Value))
+            .Select(static x => x.Trim())
+            .Where(static x => x.Contains("[data-reconnecting]", StringComparison.Ordinal) || x.Contains("[data-pending]", StringComparison.Ordinal) || x.Contains("[data-slot][data-editing]", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(3, selectors.Count);
+        Assert.All(selectors, static x => Assert.StartsWith(":where(.mussel-diagram) ", x, StringComparison.Ordinal));
+    }
+
     [GeneratedRegex(@"(?<selector>[^{}]+)\{(?<body>[^{}]*)\}")]
     private static partial Regex Rule();
 

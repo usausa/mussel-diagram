@@ -99,6 +99,33 @@ public sealed class LanguageTests
     }
 
     [Fact]
+    public void TheTextsOfAnUnusedElementUrlAndOfAParentCycleFitTheirArguments()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(new DiagramNode { Id = "n1", Type = "server", Bounds = new DiagramRect(0, 0, 40, 40), Icon = "ftp://example.com/a.svg" });
+        const string json = """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "groups": [
+                { "id": "g1", "type": "vpc", "x": 0, "y": 0, "width": 400, "height": 300, "parent": "g2" },
+                { "id": "g2", "type": "vpc", "x": 0, "y": 0, "width": 400, "height": 300, "parent": "g1" }
+              ]
+            }
+            """;
+
+        var url = diagram.Validate().Single(static x => x.Kind == DiagramIssueKind.RejectedUrl);
+        var japaneseUrl = InCulture(Japanese, () => diagram.Validate().Single(static x => x.Kind == DiagramIssueKind.RejectedUrl));
+        var cycle = new Diagram(Schema).LoadJson(json).Single();
+        var japaneseCycle = InCulture(Japanese, () => new Diagram(Schema).LoadJson(json).Single());
+
+        Assert.Equal("The URLs that 'n1' refers to were not used: ftp://example.com/a.svg", url.Message);
+        Assert.Equal("「n1」の使わなかった URL: ftp://example.com/a.svg", japaneseUrl.Message);
+        Assert.Equal("The parent 'g2' does not exist, is not a tree group or makes a cycle.", cycle.Message);
+        Assert.Equal("親「g2」がないか、木の群でないか、親が循環しています", japaneseCycle.Message);
+    }
+
+    [Fact]
     public void EveryKindHasEnglishAndJapaneseTexts()
     {
         foreach (var kind in Enum.GetValues<DiagramReasonKind>().Where(static x => x != DiagramReasonKind.App))

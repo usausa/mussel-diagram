@@ -191,6 +191,35 @@ public sealed class MusselDiagramViewTests : BunitContext
     }
 
     [Fact]
+    public async Task AnotherDiagramTellsTheScriptToDropWhatItShowsAhead()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var diagram = CreateDiagram();
+        var other = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        await cut.InvokeAsync(() => diagram.LoadJson(other.ToJson()));
+        await cut.WaitForAssertionAsync(() => Assert.NotEmpty(controller.Invocations["setTable"]));
+        var loaded = controller.Invocations["setTable"].Count;
+
+        cut.Render(parameters => parameters.Add(static p => p.Diagram, other));
+
+        await cut.WaitForAssertionAsync(() => Assert.True(controller.Invocations["setTable"].Count > loaded));
+        Assert.Equal((false, true), ((bool)controller.Invocations["setTable"][loaded - 1].Arguments[1]!, (bool)controller.Invocations["setTable"][^1].Arguments[1]!));
+    }
+
+    [Fact]
+    public async Task APaletteBeforeTheViewFollowsAnotherDiagram()
+    {
+        var other = new Diagram(new DiagramSchema { NodeTypes = [new DiagramNodeType { Name = "printer" }] });
+        var host = Render<PaletteFirstHost>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        await host.WaitForAssertionAsync(() => Assert.Contains("service", host.FindAll(".mussel-diagram-palette-item").Select(static x => x.GetAttribute("data-mussel-type"))));
+
+        host.Render(parameters => parameters.Add(static p => p.Diagram, other));
+
+        Assert.Equal(["printer"], host.FindAll(".mussel-diagram-palette-item").Select(static x => x.GetAttribute("data-mussel-type")));
+    }
+
+    [Fact]
     public async Task ChangesThatWaitForTheScriptAreSentInOneCall()
     {
         var runtime = new LateRuntime { Module = { Hold = "attach" } };
@@ -413,12 +442,30 @@ public sealed class MusselDiagramViewTests : BunitContext
         await cut.WaitForAssertionAsync(() => Assert.NotEmpty(controller.Invocations["ready"]));
 
         var selecting = cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
-        await cut.InvokeAsync(() => new DiagramScriptBridge(cut.Instance).OnSelectionChangedAsync(["b"]));
+        await cut.InvokeAsync(() => new DiagramScriptBridge(cut.Instance).OnSelectionChangedAsync(["b"], 1));
         release.SetResult();
         await selecting.ConfigureAwait(true);
 
         Assert.Equal(["b"], cut.Instance.SelectedIds);
         Assert.Equal(["b"], (IEnumerable<string>)controller.Invocations["select"][^1].Arguments[0]!);
+    }
+
+    [Fact]
+    public async Task CSharpSelectsWithTheNumberOfTheLastMessageFromTheScript()
+    {
+        var controller = module.SetupModule("attach", static _ => true);
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        await cut.WaitForAssertionAsync(() => Assert.NotEmpty(controller.Invocations["ready"]));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        await cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"], 4));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["b"]).AsTask());
+        var afterSelection = controller.Invocations["select"][^1].Arguments[1];
+        await cut.InvokeAsync(() => bridge.ExecuteCommandAsync(DiagramCommands.Copy, null, 7));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        Assert.Equal(4, afterSelection);
+        Assert.Equal(7, controller.Invocations["select"][^1].Arguments[1]);
     }
 
     [Fact]
@@ -431,8 +478,8 @@ public sealed class MusselDiagramViewTests : BunitContext
             .Add(p => p.SelectionChanged, ids => ids is ["b"] ? release.Task : Task.CompletedTask));
         var bridge = new DiagramScriptBridge(cut.Instance);
 
-        var deleting = cut.InvokeAsync(() => bridge.ExecuteCommandAsync(DiagramCommands.Delete, ["b"]));
-        await cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["vpc"]));
+        var deleting = cut.InvokeAsync(() => bridge.ExecuteCommandAsync(DiagramCommands.Delete, ["b"], 1));
+        await cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["vpc"], 2));
         release.SetResult();
         await deleting.ConfigureAwait(true);
 
@@ -678,7 +725,7 @@ public sealed class MusselDiagramViewTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.SelectionChanged, static _ => throw new InvalidOperationException("app")));
         var bridge = new DiagramScriptBridge(cut.Instance);
 
-        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"])));
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"], 1)));
         var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
 
         Assert.Same(Renderer.UnhandledException, ended);
@@ -694,8 +741,8 @@ public sealed class MusselDiagramViewTests : BunitContext
             .Add(static p => p.Moving, static _ => throw new JSDisconnectedException("gone")));
 
         var bridge = new DiagramScriptBridge(cut.Instance);
-        await Assert.ThrowsAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"])));
-        await Assert.ThrowsAsync<JSDisconnectedException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, cut.Instance.ScriptVersion, 0, null)));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"], 1)));
+        await Assert.ThrowsAsync<JSDisconnectedException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, cut.Instance.ScriptVersion, 0, null, 1)));
         var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
 
         Assert.NotSame(Renderer.UnhandledException, ended);
@@ -712,7 +759,7 @@ public sealed class MusselDiagramViewTests : BunitContext
         }));
         var bridge = new DiagramScriptBridge(cut.Instance);
 
-        var changed = cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"]));
+        var changed = cut.InvokeAsync(() => bridge.OnSelectionChangedAsync(["a"], 1));
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
         pending.SetResult();
 
@@ -729,7 +776,7 @@ public sealed class MusselDiagramViewTests : BunitContext
         var bridge = new DiagramScriptBridge(cut.Instance);
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.SearchTypesAsync("a", ["service"])));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.SearchTypesAsync("a")));
     }
 
     [Fact]
@@ -738,11 +785,33 @@ public sealed class MusselDiagramViewTests : BunitContext
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()).Add(static p => p.SearchNormalizer, static _ => throw new InvalidOperationException("app")));
         var bridge = new DiagramScriptBridge(cut.Instance);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => bridge.SearchTypesAsync("a", ["service"])));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => bridge.SearchTypesAsync("a")));
         var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
 
         Assert.Same(Renderer.UnhandledException, ended);
         Assert.IsType<InvalidOperationException>(await Renderer.UnhandledException.ConfigureAwait(true));
+    }
+
+    [Fact]
+    public async Task ASearchFromTheScriptRanksEveryTypeInThePaletteOrder()
+    {
+        var schema = new DiagramSchema
+        {
+            NodeTypes =
+            [
+                new DiagramNodeType { Name = "server", DisplayName = "Web server", Category = "b" },
+                new DiagramNodeType { Name = "printer", DisplayName = "Server room printer", InPalette = false },
+                new DiagramNodeType { Name = "plain", DisplayName = "Server" }
+            ],
+            GroupTypes = [new DiagramGroupType { Name = "servers", DisplayName = "Servers", Category = "a" }],
+            Categories = [new DiagramCategory { Name = "a" }, new DiagramCategory { Name = "b" }]
+        };
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, new Diagram(schema)).Add(static p => p.SearchNormalizer, static x => x.Replace("ｓ", "s", StringComparison.Ordinal)));
+        var bridge = new DiagramScriptBridge(cut.Instance);
+
+        var names = await cut.InvokeAsync(() => bridge.SearchTypesAsync("ｓerver"));
+
+        Assert.Equal(["plain", "printer", "servers", "server"], names.EnumerateArray().Select(static x => x.GetString()));
     }
 
     [Fact]
@@ -780,8 +849,8 @@ public sealed class MusselDiagramViewTests : BunitContext
         var bridge = new DiagramScriptBridge(cut.Instance);
 
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => cut.InvokeAsync(() => place
-            ? bridge.CommitPlaceAsync("broken", 0, 0, 80, 40, null, "a", null, "flow", 0, [])
-            : bridge.CommitDropAsync("broken", 0, 0, 80, 40, null, null, null, default, 0, [])));
+            ? bridge.CommitPlaceAsync("broken", 0, 0, 80, 40, null, "a", null, "flow", 0, [], 1)
+            : bridge.CommitDropAsync("broken", 0, 0, 80, 40, null, null, null, default, 0, [], 1)));
         var ended = await Task.WhenAny(Renderer.UnhandledException, Task.Delay(500, Xunit.TestContext.Current.CancellationToken)).ConfigureAwait(true);
 
         Assert.Same(Renderer.UnhandledException, ended);
@@ -837,5 +906,36 @@ public sealed class MusselDiagramViewTests : BunitContext
         }
 
         private void OnViewportChanged(DiagramViewport viewport) => Zoom = viewport.Zoom;
+    }
+
+    public sealed class PaletteFirstHost : ComponentBase
+    {
+        private MusselDiagramView? view;
+
+        [Parameter]
+        public Diagram Diagram { get; set; } = default!;
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            if (view is not null)
+            {
+                builder.OpenComponent<MusselDiagramPalette>(0);
+                builder.AddComponentParameter(1, nameof(MusselDiagramPalette.View), view);
+                builder.CloseComponent();
+            }
+
+            builder.OpenComponent<MusselDiagramView>(2);
+            builder.AddComponentParameter(3, nameof(MusselDiagramView.Diagram), Diagram);
+            builder.AddComponentReferenceCapture(4, x => view = (MusselDiagramView)x);
+            builder.CloseComponent();
+        }
+
+        protected override void OnAfterRender(bool firstRender)
+        {
+            if (firstRender)
+            {
+                StateHasChanged();
+            }
+        }
     }
 }

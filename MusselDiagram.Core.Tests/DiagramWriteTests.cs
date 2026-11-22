@@ -1,5 +1,7 @@
 namespace MusselDiagram;
 
+using System.Text.Json;
+
 using static MusselDiagram.TestDiagrams;
 
 public sealed class DiagramWriteTests
@@ -179,6 +181,26 @@ public sealed class DiagramWriteTests
 
         Assert.Equal(0, count);
         Assert.Equal(1, diagram.Snapshot.Version);
+    }
+
+    [Fact]
+    public void ReplacingWithTheSameContentMakesNoVersion()
+    {
+        var diagram = new Diagram(Schema);
+        diagram.Add(Node("a", 0, 0) with { Texts = ImmutableDictionary<string, string>.Empty.Add("note", "x"), Data = JsonSerializer.SerializeToElement(new PortData(80), TestJsonContext.Default.PortData) });
+        diagram.Add(Node("b", 200, 0));
+        diagram.Add(new DiagramGroup { Id = "asg", Type = "scaling", Kind = DiagramGroupKind.Overlay, MemberIds = ["a", "b"] });
+        diagram.ClearHistory();
+        var version = diagram.Snapshot.Version;
+        var count = 0;
+        diagram.Changed += (_, _) => count++;
+        var node = (DiagramNode)diagram.Find("a")!;
+        var group = (DiagramGroup)diagram.Find("asg")!;
+
+        diagram.Replace(node with { Texts = ImmutableDictionary<string, string>.Empty.Add("note", "x"), Data = JsonSerializer.SerializeToElement(new PortData(80), TestJsonContext.Default.PortData) });
+        diagram.Replace(group with { MemberIds = [.. group.MemberIds] });
+
+        Assert.Equal((0, version, false), (count, diagram.Snapshot.Version, diagram.CanUndo));
     }
 
     [Fact]

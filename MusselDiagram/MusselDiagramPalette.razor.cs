@@ -21,6 +21,8 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
 
     private Diagram? subscribed;
 
+    private MusselDiagramView? followed;
+
     private string query = string.Empty;
 
     private bool disposed;
@@ -45,12 +47,14 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         disposed = true;
+        Follow(null);
         Subscribe(null);
         await ReleaseAsync().ConfigureAwait(true);
     }
 
     protected override void OnParametersSet()
     {
+        Follow(View);
         Subscribe(View.Diagram);
         Build();
     }
@@ -120,9 +124,41 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
         }
     }
 
+    private void Follow(MusselDiagramView? view)
+    {
+        if (ReferenceEquals(followed, view))
+        {
+            return;
+        }
+
+        if (followed is not null)
+        {
+            followed.DiagramReplaced -= OnDiagramReplaced;
+        }
+
+        followed = view;
+        if (view is not null)
+        {
+            view.DiagramReplaced += OnDiagramReplaced;
+        }
+    }
+
     private void OnChanged(object? sender, EventArgs e) =>
         _ = InvokeAsync(() =>
         {
+            Build();
+            StateHasChanged();
+        });
+
+    private void OnDiagramReplaced(object? sender, EventArgs e) =>
+        _ = InvokeAsync(() =>
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            Subscribe(View.Diagram);
             Build();
             StateHasChanged();
         });

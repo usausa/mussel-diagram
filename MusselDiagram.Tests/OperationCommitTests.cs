@@ -233,6 +233,36 @@ public sealed class OperationCommitTests : BunitContext
     }
 
     [Fact]
+    public async Task ARejectionHandlerOfACommandRunsItsCommandBeforeTheCommitsThatWait()
+    {
+        var diagram = CreateDiagram();
+        var release = new TaskCompletionSource();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, diagram));
+        cut.Render(parameters => parameters
+            .Add(p => p.Deleting, static args => args.Cancel = true)
+            .Add(p => p.CommitRejected, async args =>
+            {
+                if (args.Operation == DiagramOperation.Delete)
+                {
+                    await release.Task.ConfigureAwait(true);
+                    await cut.Instance.Commands.ExecuteAsync(DiagramCommands.ToggleLock).ConfigureAwait(true);
+                }
+            }));
+        await cut.InvokeAsync(() => cut.Instance.SelectAsync(["a"]).AsTask());
+
+        var delete = cut.InvokeAsync(() => cut.Instance.Commands.ExecuteAsync(DiagramCommands.Delete));
+        var move = cut.InvokeAsync(() => cut.Instance.CommitMoveAsync(["a"], new DiagramPoint(10, 0), false, null, null, cut.Instance.ScriptVersion, 0));
+        release.SetResult();
+        await delete.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+        var moved = await move.WaitAsync(TimeSpan.FromSeconds(10), Xunit.TestContext.Current.CancellationToken).ConfigureAwait(true);
+
+        Assert.False(moved.Accepted);
+        var box = (DiagramBox)diagram.Find("a")!;
+        Assert.True(box.Locked);
+        Assert.Equal(40, box.Bounds.X);
+    }
+
+    [Fact]
     public async Task AHandlerOfACommandCanAwaitACommand()
     {
         var diagram = CreateDiagram();
@@ -278,7 +308,7 @@ public sealed class OperationCommitTests : BunitContext
         var version = diagram.Snapshot.Version;
         await cut.InvokeAsync(() => cut.Instance.DisposeAsync().AsTask());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, default, 0, [])));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cut.InvokeAsync(() => bridge.CommitMoveAsync(["a"], 10, 0, false, null, null, default, 0, [], 1)));
         await cut.InvokeAsync(() => bridge.OnViewportChanged(2, 0, 0, 100, 100));
 
         Assert.Null(reported);

@@ -121,6 +121,53 @@ public sealed class JsonTests
     }
 
     [Fact]
+    public void NullsInTheListsOfElementsAreSkipped()
+    {
+        var diagram = new Diagram(JsonSchema);
+
+        var issues = diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "groups": [null, { "id": "g1", "type": "vpc", "kind": "tree", "x": 0, "y": 0, "width": 400, "height": 300 }],
+              "nodes": [null, { "id": "n1", "type": "server", "x": 40, "y": 80, "width": 100, "height": 50 }, null],
+              "links": [null],
+              "sharedItems": [null]
+            }
+            """);
+
+        Assert.Empty(issues);
+        Assert.Equal(["g1"], diagram.Snapshot.Groups.Select(static x => x.Id));
+        Assert.Equal(["n1"], diagram.Snapshot.Nodes.Select(static x => x.Id));
+        Assert.Empty(diagram.Snapshot.Links);
+        Assert.Empty(diagram.Snapshot.SharedItems);
+    }
+
+    [Fact]
+    public void DataThatTheTypeOfTheAppRefusesStaysJson()
+    {
+        var diagram = new Diagram(JsonSchema with { NodeTypes = [.. JsonSchema.NodeTypes, new DiagramNodeType { Name = "port", DataType = TestJsonContext.Default.PortData }] });
+
+        var issues = diagram.LoadJson(
+            """
+            {
+              "format": "mussel-diagram",
+              "version": 1,
+              "nodes": [
+                { "id": "bad", "type": "port", "x": 0, "y": 0, "width": 100, "height": 50, "data": { "Port": -1 } },
+                { "id": "good", "type": "port", "x": 200, "y": 0, "width": 100, "height": 50, "data": { "Port": 80 } }
+              ]
+            }
+            """);
+
+        var issue = Assert.Single(issues);
+        Assert.Equal((DiagramIssueKind.UnreadableData, "bad"), (issue.Kind, issue.ElementIds[0]));
+        Assert.IsType<JsonElement>(diagram.Find("bad")!.Data);
+        Assert.Equal(new PortData(80), diagram.Find("good")!.Data);
+    }
+
+    [Fact]
     public void OverlayGroupsThatShareMembersEachKeepThemOnce()
     {
         var diagram = new Diagram(JsonSchema);

@@ -171,7 +171,7 @@ Changing parents:
 
 | Event | When | Content |
 |---|---|---|
-| `Diagram.Changed` | Once after each change, whatever its origin | The snapshots before and after, the origin, the tag, the changed elements (added, deleted, changed) and what changed (position, size, ends, parent, members, label, data, order, route, look). Loading reports only that everything changed, without listing elements |
+| `Diagram.Changed` | Once after each change, whatever its origin | The snapshots before and after, the origin, the tag, the changed elements (added, deleted, changed) and what changed (position, size, ends, parent, members, label, data, order, route, look). A change of only the icon, the lock or the permissions, or of only the type of a node, a group or a shared item, has none of these. Loading reports only that everything changed, without listing elements |
 | `…ing` of the view | Before a user operation is written | What will be written. `Cancel` stops it (Commit and validation) |
 | `…ed` of the view | After a user operation is written | What was written |
 
@@ -183,6 +183,8 @@ Changing parents:
 | `Load` | Loading JSON |
 
 The app can pass a tag, any value, when writing, and gets it back in `Changed` to recognize its own writes. Which changes go into the undo history is in Undo.
+
+An exception from a `Changed` handler reaches the caller (a write, undo, redo or load), and the route requests of the change are kept.
 
 ### Queries
 
@@ -360,7 +362,7 @@ From back to front:
 | Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. The whole diagram includes the labels and badges drawn outside the elements. An element can also be brought to the center |
 
 - `WheelMode` makes the plain wheel zoom instead
-- The zoom goes from `MinZoom` (default 0.05, greater than 0) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid. A zoom below 5%, which a smaller `MinZoom` allows, is not rounded to a grid
+- The zoom goes from `MinZoom` (default 0.05, greater than 0) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid. A zoom below 5%, which a smaller `MinZoom` allows, is not rounded to a grid. When the limits change, a zoom outside them comes inside around the center of the view
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
 - The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
 - The position and zoom of the view are not in the diagram. To keep them, the app saves the values of `ViewportChanged`
@@ -464,13 +466,13 @@ The browser handles the pointer and the keys, and sends only commits to C# (the 
 - A click selects the frontmost element under the pointer. A group is selected by its frame, header or ports (Rendering)
 - A click on a port that can start a link does not change the selection and opens the type picker (Palette)
 - Shift+click and Ctrl+click (Cmd on Mac) add to or remove from the selection
-- Box selection, a left drag on the background, selects the elements entirely inside the rectangle. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is added later, when needed
+- Box selection, a left drag on the background, selects the elements entirely inside the rectangle. A link that is not drawn (outside the drawn area) is selected when the boxes at both its ends are inside. With Shift, it adds to the current selection. Selecting the elements that only touch the rectangle is added later, when needed
 - `BackgroundDragMode` decides what a left drag on the background does with a mouse or a pen: `BoxSelect` (the default), `Pan` or `None`. A click on the background clears the selection in every mode. Touch keeps its gestures (a one-finger drag pans, and a drag after a long press selects)
 - With `Tool` `Pan` (the default is `Select`), a left drag with a mouse or a pen and a one-finger drag pan from anywhere, nodes, links and ports included, and `BackgroundDragMode` is not used. Clicks, double-clicks and long presses neither change the selection or the text nor open the type picker, but the click events are still raised. The selection stays without handles, and the keys and dropping from the palette work as usual
 - A click on the background, Esc outside an operation, and passing another diagram to the view clear the selection. Elements that no longer exist leave the selection
 - Selected nodes and groups show a frame, selected links a highlight and a handle at each end (reconnecting is in Connecting), and resizable elements show resize handles. All of them keep the same width and size on screen
 - Commands and commits that JS sends to C# carry the selection of that moment, unless it is the selection JS sent last; then C# uses the selection it received last. Even when the selection known to C# is behind, they act on the selection the user saw
-- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. It also gives the number of selections it has received from JS (clicks, commits and commands), and JS does not apply it when it has sent one since, so the later selection stays on both sides. After a command, JS sends its selection again when the user selected while the command was on its way, or when its selection changed between the press and the send, as when C# selected for an earlier command
+- When C# selects (`SelectAsync` and commands that select), it gives JS the selection it has after `SelectionChanged` and the update of the command states, so a selection the user made in the meantime stays. JS numbers what it sends with its selection (clicks, commits and commands), and C# also gives the number of the last one it received. JS does not apply the selection when it has sent a newer number, so the later selection stays on both sides, and a call that never arrives does not keep them apart after the next one. After a command, JS sends its selection again when the user selected while the command was on its way, or when its selection changed between the press and the send, as when C# selected for an earlier command
 
 ### Moving
 
@@ -777,10 +779,10 @@ A small list that opens over the view to find and choose a type. It has a search
 
 - Every list shows only the types that can be placed at that position (Palette filtering in Types and rules). Without such types, it does not open
 - The order is the order of the palette, and typing filters as in the palette
-- ↑ and ↓ choose, and Enter or a click places. Esc or a click outside closes the list and creates nothing
+- ↑ and ↓ choose, and Enter or a click places. Esc or a click outside closes the list and creates nothing. During IME composition, Enter and Esc belong to the composition
 - While the list is open, a preview frame with the size of the chosen type is drawn at the position. When it was opened from a link, an arrow or a port, a preview line from the connection point is drawn too. The list opens where it fits in the view
 - The placed element is snapped to the grid, passes the checks of Parent and where an element can be placed, and is selected as a dropped one (Placing). When the list was opened from a link, an arrow or a port, the element is connected at its first declared connection point that can connect, and adding and connecting are one change (`Connecting`, `Connected`). When it was opened by the command, `Dropping` and `Dropped` report it
-- The app can open it too, at a position it gives (on a double-click on the background, for example)
+- The app can open it too, at a position it gives (on a double-click on the background, for example). It does not open during a drag
 - It places one element at a time. Adding several in a row is planned for the next version
 
 ### Adding a connected element
@@ -824,7 +826,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 | 5 | The model is written. Dependent changes (descendants, group sizes, deleting attached links, routes) are in the same change | — |
 | 6 | The after event (`…ed`) and `Diagram.Changed` | — |
 
-- When a commit is rejected, the commits sent before JS received that answer are rejected too, without a reason
+- When a commit is rejected, the commits sent before JS received that answer are rejected too, without a reason. The first commit after one that failed or got no answer is the exception: it is made on the display that went back, so JS sends it as knowing every rejection, and its answer gives JS the count again
 - When the diagram changes while step 4 is awaited, steps 1 to 3 run again before writing
 - A built-in command that a handler of the before or after event, or of `CommitRejected`, starts runs at once, inside the operation, whether the handler awaits it or not. A command that is not awaited is inside the operation only until the handler returns
 - App rules are synchronous functions. Checks that wait (asking a server, for example) belong in step 4
@@ -856,18 +858,19 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 
 - JS shows the results first for pointer operations (move, resize, connect, reconnect, place) and for text editing. For commands, the rendering of C# shows the result in both modes
 - When a text edit is rejected with `Wait`, the editor stays open with the reason (Esc gives up). With `Optimistic`, the old text comes back
-- When the commit call fails (the connection is lost, for example), the result is undone as for a rejection
+- When the commit call fails (the connection is lost, for example), the result is undone as for a rejection. A commit without an answer within 60 seconds counts as failed, and an answer that arrives later does nothing
 
 ### On rejection
 
 - JS removes the provisional display and returns to the current snapshot
 - A move or a resize under way takes its start again from what went back: the position, the snapping, the drop target and the limits of staying inside the parent. It is canceled when the links of its elements changed, or for a move when the elements it carries changed, and nothing happens until the release
+- The same happens when a change from C# removes an element or a link that a move or a resize carries, or the element that a connection or a reconnection starts from: the operation is canceled, and nothing happens until the release
 - The reason shows next to where the operation happened, until the next operation starts or for 3 seconds. CSS can change its look (the texts are in Languages)
 - `CommitRejected` reports the operation and the reason (for notifications of the app, for example)
 
 ### Provisional display and late results
 
-- Until the rendering of the snapshot after the commit arrives from C#, JS keeps the provisional display (the moved elements, links with simple routes, the preview of a placed element, the written text). Each rendering carries its snapshot number, which tells JS which one has arrived
+- Until the rendering of the snapshot after the commit arrives from C#, JS keeps the provisional display (the moved elements, links with simple routes, the preview of a placed element, the written text). Each rendering carries its snapshot number, which tells JS which one has arrived. When another diagram is passed to the view, the provisional display of the commits that wait is dropped as on a rejection
 - A rendering that arrives before the commit is sent does not undo its provisional display. Once the commit is sent, JS shows the renderings as they arrive, because the next one may be the commit's own; a rendering by another writer that arrives within that round trip can show the earlier state for a moment
 - When the answer tells the snapshot number of the commit before its rendering arrives, JS writes the provisional display back over the renderings until that one arrives. On Server the answer can come first, since renderings wait while too many are not acknowledged
 - An element that two commits, or a commit and the current drag, wrote follows the later writer: while the later commit waits for its answer, the renderings show as they arrive, even when the earlier one has its answer
@@ -971,7 +974,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - A key is written as modifiers (Ctrl, Alt, Shift) and a key joined with `+` (`Ctrl+Shift+Z`). On Mac, Ctrl means ⌘ and Alt means Option. A key pressed with the Control key of a Mac or with the Windows key matches no command
 - A key belongs to one command only. The last assignment wins
 - JS matches the keys, and stops (`preventDefault`) and runs only the keys of enabled commands. The keys of disabled commands go to the browser
-- While a command, a commit or a selection change is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, if the command is enabled then. During a drag, the keys of all commands are stopped and do not run, and so are the keys of the commands other than the view and selection commands while a `Wait` commit awaits its answer
+- While a command or a commit is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, or after 60 seconds without an answer, if the command is enabled then. A selection change on its way (for up to 60 seconds, as for commits) does not hold them: the keys go to C# at once, and C# runs the command if it is enabled for that selection. During a drag, the keys of all commands are stopped and do not run, and so are the keys of the commands other than the view and selection commands while a `Wait` commit awaits its answer
 - Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them, unless the app changed what they do or when they are enabled. For the others, JS sends the name and the selection of that moment to C#
 - During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input, and the text editor keeps Enter with any modifier. F1 to F12, with or without modifiers, are not treated as typing keys (when they are command keys, they run the command). During IME composition, no key is a command
 - Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving)
@@ -1091,6 +1094,7 @@ When the text is not JSON, the `format` differs, or the version is missing, less
 | A box outside ±1e12, or a size of 0 or less | A size of 0 or less or larger than 2e12 becomes the default size of the type, and the box moves inside the limits |
 | Data the data type cannot read | Kept as `JsonElement` (a warning) |
 | Values of a look that cannot be used (color syntax, widths, names of markers and so on) | Those values are removed (a warning) |
+| A `null` in a list of elements | Skipped, without an issue |
 
 - Links to ports that no longer exist stay. They are drawn towards the outline of the element, and the whole-diagram check reports them as errors (Types and rules)
 - Elements of unregistered types are kept as they are (Types and rules)
@@ -1116,7 +1120,7 @@ When the text is not JSON, the `format` differs, or the version is missing, less
 
 - Loaded JSON and the SVG of icons are treated as untrusted
 - Labels, slot texts and tooltips are always drawn as text, never parsed as HTML
-- The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject`, references to external URLs and elements nested deeper than 256 levels are removed (the prefixes of the IDs inside are in Palette). So are values with CSS escapes, and values with functions that take URLs without `url()`, such as `image-set()`
+- The SVG of an icon keeps only allowed elements and attributes. Scripts, event attributes, `foreignObject`, references to external URLs and elements nested deeper than 256 levels are removed (the prefixes of the IDs inside are in Palette). So are values with CSS escapes, and values with functions that take URLs without `url()`, such as `image-set()`. When expanding the `<use>` elements of one icon adds more than 10,000 elements to the icon without them, each `<use>` that points at a `<use>` or at an element with a `<use>` inside is removed too, and when the rest still add more than 10,000, every `<use>` is removed
 - The `Icon` URL of an element is used only when it is an http, https or relative URL, or a data URL of an image. Other URLs are not drawn
 - What was removed from icons, and the URLs they do not use, come back as issues (warnings) of the import. Element URLs that were not used come back from the whole-diagram check
 
@@ -1128,7 +1132,7 @@ When the text is not JSON, the `format` differs, or the version is missing, less
 - The area is the bounds of all the elements plus a margin (default 10). Choosing an area is planned for the next version
 - The background is transparent by default, and can be filled with the background color. Colors follow the current light or dark mode
 - The colors, strokes and text formats that CSS variables and classes decide are written to the attributes of the elements as computed values, so the SVG looks the same without CSS
-- Export waits for the icons in use that are still being read, and up to 5 seconds for the routes still being computed (links still waiting after that keep their simple routes). Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example)
+- Export waits for the icons in use that are still being read, and up to 5 seconds for the routes still being computed (links still waiting after that keep their simple routes). Each `<use>` of an icon is replaced with a copy of its content, with the IDs inside made unique per copy. An icon from an image URL is embedded as a data URL when it can be fetched, and otherwise left out and reported as an issue (because of CORS, for example). End markers are written in the color of the link's look or type, not as `context-stroke`, so a state color that an overlay gives the line does not reach them
 - Fonts are written by name only by default. When chosen, the fonts used among those the page loaded with `@font-face` are embedded as data URLs
 - Tooltips, classes, styles and the hit areas of links are left out. `data-id` and `data-type` are kept
 - PDF, and images with the diagram data embedded, are planned for the next version

@@ -38,6 +38,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private bool tableChanged;
 
+    private bool replacedDiagram;
+
     private bool schemaChanged;
 
     private ShownSet? shown;
@@ -75,6 +77,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    internal event EventHandler? DiagramReplaced;
 
     public DiagramViewport? Viewport { get; private set; }
 
@@ -234,10 +238,15 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
     protected override void OnParametersSet()
     {
         parametersSet = true;
+        var replaced = (subscribed is not null) && !ReferenceEquals(subscribed, Diagram);
         Subscribe(Diagram);
         RefreshContext();
         RefreshOverlays();
         WantIcons(null);
+        if (replaced)
+        {
+            DiagramReplaced?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -261,6 +270,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
                 var attachOptions = ScriptJson.ToElement(CreateOptions());
                 sentOptions = attachOptions.GetRawText();
                 tableChanged = false;
+                replacedDiagram = false;
                 schemaChanged = false;
                 pendingChanges.Clear();
                 var table = ScriptJson.ToElement(ScriptTables.Build(++ScriptVersion, Snapshot, Diagram.Index, templates));
@@ -274,7 +284,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
                 if (SelectedIds.Count > 0)
                 {
-                    await controller.InvokeVoidAsync("select", SelectedIds, selectionMessages).ConfigureAwait(true);
+                    await controller.InvokeVoidAsync("select", SelectedIds, SelectionNumber).ConfigureAwait(true);
                 }
 
                 while (!IsDisposed && pendingViews.TryDequeue(out var view))
@@ -499,11 +509,12 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
             return;
         }
 
+        replacedDiagram = true;
         if (SelectedIds.Count > 0)
         {
             SelectedIds = [];
             _ = NotifyAsync(SelectionChanged, SelectedIds);
-            _ = RunViewAsync("select", Array.Empty<string>(), selectionMessages).AsTask();
+            _ = RunViewAsync("select", Array.Empty<string>(), SelectionNumber).AsTask();
         }
 
         if (!ReferenceEquals(previous.EffectiveOptions, diagram.EffectiveOptions))

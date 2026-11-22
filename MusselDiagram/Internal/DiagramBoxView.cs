@@ -96,20 +96,38 @@ internal sealed class DiagramBoxView : ComponentBase
             builder.OpenElement(20, "use");
             builder.AddAttribute(21, "class", "mussel-diagram-icon");
             builder.AddAttribute(22, "href", $"#{iconId}");
-            AddPosition(builder, iconX, iconY);
-            builder.AddAttribute(23, "width", Svg.Number(isGroup ? iconSize : width));
-            builder.AddAttribute(24, "height", Svg.Number(isGroup ? iconSize : height));
+            if (iconX != 0)
+            {
+                builder.AddAttribute(23, "x", Svg.Number(iconX));
+            }
+
+            if (iconY != 0)
+            {
+                builder.AddAttribute(24, "y", Svg.Number(iconY));
+            }
+
+            builder.AddAttribute(25, "width", Svg.Number(isGroup ? iconSize : width));
+            builder.AddAttribute(26, "height", Svg.Number(isGroup ? iconSize : height));
             builder.CloseElement();
         }
         else if (iconUrl is not null)
         {
-            builder.OpenElement(25, "image");
-            builder.AddAttribute(26, "class", "mussel-diagram-icon");
-            builder.AddAttribute(27, "href", iconUrl);
-            AddPosition(builder, iconX, iconY);
-            builder.AddAttribute(28, "width", Svg.Number(isGroup ? iconSize : width));
-            builder.AddAttribute(29, "height", Svg.Number(isGroup ? iconSize : height));
-            builder.AddAttribute(30, "preserveAspectRatio", "xMidYMid meet");
+            builder.OpenElement(27, "image");
+            builder.AddAttribute(28, "class", "mussel-diagram-icon");
+            builder.AddAttribute(29, "href", iconUrl);
+            if (iconX != 0)
+            {
+                builder.AddAttribute(30, "x", Svg.Number(iconX));
+            }
+
+            if (iconY != 0)
+            {
+                builder.AddAttribute(31, "y", Svg.Number(iconY));
+            }
+
+            builder.AddAttribute(32, "width", Svg.Number(isGroup ? iconSize : width));
+            builder.AddAttribute(33, "height", Svg.Number(isGroup ? iconSize : height));
+            builder.AddAttribute(34, "preserveAspectRatio", "xMidYMid meet");
             builder.CloseElement();
         }
 
@@ -119,24 +137,24 @@ internal sealed class DiagramBoxView : ComponentBase
         {
             builder.OpenElement(40, "text");
             builder.AddAttribute(41, "class", "mussel-diagram-label");
-            builder.AddAttribute(50, "data-slot", label.Slot);
+            builder.AddAttribute(42, "data-slot", label.Slot);
             if (label.IsDefault)
             {
-                builder.AddAttribute(51, "data-default", string.Empty);
+                builder.AddAttribute(43, "data-default", string.Empty);
             }
 
-            builder.AddAttribute(52, "data-stack", label.Stack);
+            builder.AddAttribute(44, "data-stack", label.Stack);
 
-            builder.AddAttribute(42, "x", Svg.Number(label.X));
-            builder.AddAttribute(43, "y", Svg.Number(label.Y));
-            builder.AddAttribute(44, "text-anchor", label.Anchor);
-            builder.AddAttribute(45, "data-label", label.Text);
-            builder.AddAttribute(46, "data-width", Svg.Number(label.Width));
-            builder.AddAttribute(47, "data-lines", label.MaxLines.ToString(CultureInfo.InvariantCulture));
-            builder.AddAttribute(48, "data-valign", label.VerticalAlign);
+            builder.AddAttribute(45, "x", Svg.Number(label.X));
+            builder.AddAttribute(46, "y", Svg.Number(label.Y));
+            builder.AddAttribute(47, "text-anchor", label.Anchor);
+            builder.AddAttribute(48, "data-label", label.Text);
+            builder.AddAttribute(49, "data-width", Svg.Number(label.Width));
+            builder.AddAttribute(50, "data-lines", label.MaxLines.ToString(CultureInfo.InvariantCulture));
+            builder.AddAttribute(51, "data-valign", label.VerticalAlign);
             if (TextStyleOf(label.Format, box.Look?.TextColor is not null) is { } textStyle)
             {
-                builder.AddAttribute(49, "style", textStyle);
+                builder.AddAttribute(52, "style", textStyle);
             }
 
             builder.CloseElement();
@@ -144,19 +162,6 @@ internal sealed class DiagramBoxView : ComponentBase
 
         AddPorts(builder, box, width, height);
         builder.CloseElement();
-    }
-
-    private static void AddPosition(RenderTreeBuilder builder, double x, double y)
-    {
-        if (x != 0)
-        {
-            builder.AddAttribute(31, "x", Svg.Number(x));
-        }
-
-        if (y != 0)
-        {
-            builder.AddAttribute(32, "y", Svg.Number(y));
-        }
     }
 
     private void AddPorts(RenderTreeBuilder builder, DiagramBox box, double width, double height)

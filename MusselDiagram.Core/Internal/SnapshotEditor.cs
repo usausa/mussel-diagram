@@ -191,25 +191,50 @@ internal sealed class SnapshotEditor
         }
     }
 
-    public void ApplyRoutes(IEnumerable<(DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)> results)
+    public void ApplyRoutes(IEnumerable<(DiagramLink Original, DiagramLink Routed, DiagramSnapshot Routing)> results)
     {
-        foreach (var (original, routed, used) in results)
+        foreach (var (original, routed, routing) in results)
         {
-            if (!ReferenceEquals(elements.GetValueOrDefault(original.Id), original))
+            if (elements.GetValueOrDefault(original.Id) is not DiagramLink current)
             {
                 continue;
             }
 
-            if (!ReferenceEquals(used, Obstacles) && !Avoids(routed))
+            var link = routed;
+            if (!ReferenceEquals(current, original))
             {
-                deferred.Add(original.Id);
+                if (current.RouteState != DiagramRouteState.Provisional)
+                {
+                    continue;
+                }
+
+                if (!SameRoute(current, routed, routing))
+                {
+                    deferred.Add(current.Id);
+                    continue;
+                }
+
+                link = current with { Route = routed.Route, RouteState = routed.RouteState, RouteError = routed.RouteError };
+            }
+
+            if (!ReferenceEquals(routing.Obstacles, Obstacles) && !Avoids(link))
+            {
+                deferred.Add(link.Id);
                 continue;
             }
 
-            Put(routed);
-            Changes.MarkUpdated(routed.Id, DiagramChangeParts.Route);
+            Put(link);
+            Changes.MarkUpdated(link.Id, DiagramChangeParts.Route);
         }
     }
+
+    private bool SameRoute(DiagramLink current, DiagramLink routed, DiagramSnapshot routing) =>
+        (current.Source == routed.Source) && (current.Target == routed.Target) && String.Equals(current.Type, routed.Type, StringComparison.Ordinal) &&
+        (LinkRouting.FormOf(index.FindLinkType(current.Type), current.Look) == LinkRouting.FormOf(index.FindLinkType(routed.Type), routed.Look)) &&
+        SameEnd(current.Source.ElementId, routing) && SameEnd(current.Target.ElementId, routing);
+
+    private bool SameEnd(string id, DiagramSnapshot routing) =>
+        (elements.GetValueOrDefault(id) is { } mine) && (routing.Find(id) is { } theirs) && SnapshotContent.Same(mine, theirs);
 
     private bool Avoids(DiagramLink link)
     {
@@ -355,7 +380,7 @@ internal sealed class SnapshotEditor
             throw new DiagramException($"The element '{element.Id}' cannot change into another kind of element.");
         }
 
-        if (current == element)
+        if (SnapshotContent.Same(current, element))
         {
             return;
         }

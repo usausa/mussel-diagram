@@ -18,6 +18,8 @@ internal static partial class SvgSanitizer
 
     private const int MaxDepth = 256;
 
+    private const int MaxAddedElements = 10_000;
+
     private static readonly XNamespace XLink = "http://www.w3.org/1999/xlink";
 
     private static readonly object Marker = new();
@@ -45,6 +47,8 @@ internal static partial class SvgSanitizer
         "stop-opacity", "clip-path", "clip-rule", "mask", "filter", "color", "display", "visibility", "font-family", "font-size", "font-weight", "font-style",
         "text-anchor", "dominant-baseline", "letter-spacing", "vector-effect", "shape-rendering", "paint-order", "transform-origin", "style", "href"
     };
+
+    private static readonly HashSet<string> RootOnlyAttributes = new(StringComparer.Ordinal) { "viewBox", "width", "height", "x", "y", "id" };
 
     private static readonly string[] ForbiddenStyle = ["expression", "javascript:", "@import", "behavior", "-moz-binding"];
 
@@ -107,7 +111,14 @@ internal static partial class SvgSanitizer
         var builder = new StringBuilder(value.Length);
         foreach (var c in value)
         {
-            builder.Append(Char.IsAsciiLetterOrDigit(c) || (c is '-' or '_') ? c : '_');
+            if (Char.IsAsciiLetterOrDigit(c))
+            {
+                builder.Append(c);
+            }
+            else
+            {
+                builder.Append("_x").Append(((int)c).ToString("X4", CultureInfo.InvariantCulture)).Append('_');
+            }
         }
 
         return builder.ToString();
@@ -171,26 +182,150 @@ internal static partial class SvgSanitizer
     private static SanitizedSvg Sanitize(XElement root, string idPrefix)
     {
         var ids = new Dictionary<string, string>(StringComparer.Ordinal);
+        var targets = new Dictionary<string, XElement>(StringComparer.Ordinal);
         foreach (var element in root.Descendants())
         {
             if (element.Attribute("id")?.Value is { Length: > 0 } id)
             {
                 ids[id] = idPrefix + SafeId(id);
+                targets.TryAdd(id, element);
+            }
+        }
+
+        var limit = CountWithoutUses(root) + MaxAddedElements;
+        var cut = new HashSet<XElement>();
+        if (ExpandsTooFar(root, targets, cut, limit))
+        {
+            cut = NestedUses(root, targets);
+            if (ExpandsTooFar(root, targets, cut, limit))
+            {
+                cut = [.. root.Descendants().Where(IsUse)];
             }
         }
 
         var removed = new List<string>();
         var rejected = new List<string>();
-        var builder = new StringBuilder();
+        var builder = new StringBuilder("<g");
+        WriteAttributes(root, builder, ids, removed, rejected, RootOnlyAttributes);
+        var wrapped = builder.Length > 2;
+        if (wrapped)
+        {
+            builder.Append('>');
+        }
+        else
+        {
+            builder.Clear();
+        }
+
         foreach (var child in root.Elements())
         {
-            Write(child, 1, builder, ids, removed, rejected);
+            Write(child, 1, builder, ids, cut, removed, rejected);
+        }
+
+        if (wrapped)
+        {
+            builder.Append("</g>");
         }
 
         return new SanitizedSvg(builder.ToString(), 0, 0, removed, rejected);
     }
 
-    private static void Write(XElement element, int depth, StringBuilder builder, Dictionary<string, string> ids, List<string> removed, List<string> rejected)
+    private static int CountWithoutUses(XElement root)
+    {
+        var count = 0;
+        var stack = new Stack<XElement>();
+        stack.Push(root);
+        while (stack.TryPop(out var element))
+        {
+            if (IsUse(element))
+            {
+                continue;
+            }
+
+            count++;
+            foreach (var child in element.Elements())
+            {
+                stack.Push(child);
+            }
+        }
+
+        return count;
+    }
+
+    private static bool ExpandsTooFar(XElement root, Dictionary<string, XElement> targets, HashSet<XElement> cut, int limit)
+    {
+        var counts = new Dictionary<XElement, int>();
+        var stack = new Stack<XElement>();
+        stack.Push(root);
+        while (stack.TryPeek(out var element))
+        {
+            if (counts.TryAdd(element, -1))
+            {
+                foreach (var dependency in DependenciesOf(element, targets, cut))
+                {
+                    if (!counts.ContainsKey(dependency))
+                    {
+                        stack.Push(dependency);
+                    }
+                }
+
+                continue;
+            }
+
+            stack.Pop();
+            if (counts[element] >= 0)
+            {
+                continue;
+            }
+
+            var count = 1;
+            foreach (var dependency in DependenciesOf(element, targets, cut))
+            {
+                var expanded = counts[dependency];
+                count += expanded < 0 ? limit + 1 : expanded;
+                if (count > limit)
+                {
+                    return true;
+                }
+            }
+
+            counts[element] = count;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<XElement> DependenciesOf(XElement element, Dictionary<string, XElement> targets, HashSet<XElement> cut)
+    {
+        var children = element.Elements().Where(x => !cut.Contains(x));
+        return (TargetOf(element, targets) is { } target) && !cut.Contains(target) ? children.Append(target) : children;
+    }
+
+    private static HashSet<XElement> NestedUses(XElement root, Dictionary<string, XElement> targets)
+    {
+        var holding = new HashSet<XElement>();
+        foreach (var use in root.Descendants().Where(IsUse))
+        {
+            var element = use;
+            while ((element is not null) && holding.Add(element))
+            {
+                element = element.Parent;
+            }
+        }
+
+        return [.. root.Descendants().Where(x => (TargetOf(x, targets) is { } target) && holding.Contains(target))];
+    }
+
+    private static XElement? TargetOf(XElement element, Dictionary<string, XElement> targets) =>
+        IsUse(element) &&
+        ((element.Attribute("href") ?? element.Attribute(XLink + "href"))?.Value is ['#', .. var id]) &&
+        targets.TryGetValue(id, out var target)
+            ? target
+            : null;
+
+    private static bool IsUse(XElement element) => String.Equals(element.Name.LocalName, "use", StringComparison.Ordinal);
+
+    private static void Write(XElement element, int depth, StringBuilder builder, Dictionary<string, string> ids, HashSet<XElement> cut, List<string> removed, List<string> rejected)
     {
         var name = element.Name.LocalName;
         if ((depth > MaxDepth) || ((element.Name.Namespace != XNamespace.None) && (element.Name.Namespace != (XNamespace)"http://www.w3.org/2000/svg")))
@@ -209,7 +344,40 @@ internal static partial class SvgSanitizer
             return;
         }
 
+        if (cut.Contains(element))
+        {
+            removed.Add(name);
+            return;
+        }
+
         builder.Append('<').Append(name);
+        WriteAttributes(element, builder, ids, removed, rejected, null);
+        var children = element.Nodes().ToList();
+        if (children.Count == 0)
+        {
+            builder.Append("/>");
+            return;
+        }
+
+        builder.Append('>');
+        foreach (var node in children)
+        {
+            switch (node)
+            {
+                case XElement child:
+                    Write(child, depth + 1, builder, ids, cut, removed, rejected);
+                    break;
+                case XText text when name is "text" or "tspan":
+                    builder.Append(Escape(text.Value));
+                    break;
+            }
+        }
+
+        builder.Append("</").Append(name).Append('>');
+    }
+
+    private static void WriteAttributes(XElement element, StringBuilder builder, Dictionary<string, string> ids, List<string> removed, List<string> rejected, HashSet<string>? skipped)
+    {
         foreach (var attribute in element.Attributes())
         {
             if (attribute.IsNamespaceDeclaration)
@@ -228,34 +396,16 @@ internal static partial class SvgSanitizer
                 continue;
             }
 
+            if ((skipped is not null) && skipped.Contains(attributeName))
+            {
+                continue;
+            }
+
             if (Clean(attributeName, attribute.Value, ids, rejected) is { } value)
             {
                 builder.Append(' ').Append(attributeName).Append("=\"").Append(Escape(value)).Append('"');
             }
         }
-
-        var children = element.Nodes().ToList();
-        if (children.Count == 0)
-        {
-            builder.Append("/>");
-            return;
-        }
-
-        builder.Append('>');
-        foreach (var node in children)
-        {
-            switch (node)
-            {
-                case XElement child:
-                    Write(child, depth + 1, builder, ids, removed, rejected);
-                    break;
-                case XText text when name is "text" or "tspan":
-                    builder.Append(Escape(text.Value));
-                    break;
-            }
-        }
-
-        builder.Append("</").Append(name).Append('>');
     }
 
     private static string? Clean(string name, string value, Dictionary<string, string> ids, List<string> rejected)

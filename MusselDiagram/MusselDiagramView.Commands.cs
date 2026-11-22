@@ -29,7 +29,6 @@ public sealed partial class MusselDiagramView
 
     internal async Task ExecuteFromScriptAsync(string name, IEnumerable<string>? selection)
     {
-        selectionMessages++;
         if (selection is not null)
         {
             scriptSelection = [.. selection];
@@ -208,7 +207,7 @@ public sealed partial class MusselDiagramView
     {
         var turn = await EnterGateAsync().ConfigureAwait(true);
         turn?.Begin();
-        DiagramReason? reason;
+        DiagramReason localized;
         try
         {
             if (IsDisposed)
@@ -216,7 +215,7 @@ public sealed partial class MusselDiagramView
                 return false;
             }
 
-            reason = check();
+            var reason = check();
             if ((reason is null) && (before is not null))
             {
                 var snapshot = Snapshot;
@@ -237,14 +236,15 @@ public sealed partial class MusselDiagramView
 
                 return true;
             }
+
+            localized = Options.Localize(reason);
+            await HandleAsync(turn, () => CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, localized))).ConfigureAwait(true);
         }
         finally
         {
             turn?.End();
         }
 
-        var localized = Options.Localize(reason);
-        await CommitRejected.InvokeAsync(new DiagramCommitRejectedEventArgs(operation, localized)).ConfigureAwait(true);
         await RunViewAsync("showReason", localized.Message ?? string.Empty).ConfigureAwait(true);
         return false;
     }

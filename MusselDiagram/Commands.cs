@@ -268,7 +268,13 @@ public sealed class DiagramCommandRegistry
 
     private static string Normalize(string key)
     {
-        var parts = key.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var entries = key.Split('+', StringSplitOptions.TrimEntries);
+        string[] parts = [.. entries.Where(static x => x.Length > 0)];
+        if ((entries.Length >= 2) && (entries[^1].Length == 0) && (entries[^2].Length == 0))
+        {
+            parts = [.. parts, "+"];
+        }
+
         if (parts.Length == 0)
         {
             return key;
@@ -295,11 +301,23 @@ public sealed class DiagramCommandRegistry
             }
         }
 
-        return String.Concat(others) + (ctrl ? "Ctrl+" : string.Empty) + (alt ? "Alt+" : string.Empty) + (shift ? "Shift+" : string.Empty) + NameOf(parts[^1]);
+        return String.Concat(others) + (ctrl ? "Ctrl+" : string.Empty) + (alt ? "Alt+" : string.Empty) + (shift ? "Shift+" : string.Empty) + NameOf(parts[^1], ctrl);
     }
 
-    private static string NameOf(string name)
+    private static string NameOf(string name, bool ctrl)
     {
+        switch (name)
+        {
+            case "+":
+                return "Plus";
+            case "-":
+                return "Minus";
+            case "=" when ctrl:
+                return "Plus";
+            case "_" when ctrl:
+                return "Minus";
+        }
+
         if (name.Length == 1)
         {
             return name.ToUpperInvariant();

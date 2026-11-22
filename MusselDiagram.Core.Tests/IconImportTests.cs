@@ -38,6 +38,65 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void IconifyQuarterTurnsSwapTheSizeAndTurnAroundTheCenterOfIconify()
+    {
+        const string json = """
+            {
+              "prefix": "demo",
+              "icons": { "wide": { "body": "<path d='M0 0h32v16H0z'/>", "width": 32, "height": 16 } },
+              "aliases": { "tall": { "parent": "wide", "rotate": 1 }, "down": { "parent": "wide", "rotate": 2 }, "up": { "parent": "wide", "rotate": 3 } }
+            }
+            """;
+
+        var icons = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json))).IconSet.Icons.ToDictionary(static x => x.Id);
+
+        Assert.Equal((16d, 32d), (icons["tall"].Width, icons["tall"].Height));
+        Assert.StartsWith("<g transform=\"rotate(90 8 8)\">", icons["tall"].Body, StringComparison.Ordinal);
+        Assert.Equal((32d, 16d), (icons["down"].Width, icons["down"].Height));
+        Assert.StartsWith("<g transform=\"rotate(180 16 8)\">", icons["down"].Body, StringComparison.Ordinal);
+        Assert.Equal((16d, 32d), (icons["up"].Width, icons["up"].Height));
+        Assert.StartsWith("<g transform=\"rotate(270 16 16)\">", icons["up"].Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IconifyTurnsAreWrittenTheSameInEveryCulture()
+    {
+        const string json = """{ "prefix": "demo", "icons": { "home": { "body": "<path d='M0 0'/>" } }, "aliases": { "left": { "parent": "home", "rotate": -1 } } }""";
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("sv-SE");
+        DiagramIconImportResult result;
+        try
+        {
+            result = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+
+        Assert.StartsWith("<g transform=\"rotate(270 8 8)\">", result.IconSet.Icons.Single(static x => x.Id == "left").Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAliasWithTheNameOfAnIconIsLeftOut()
+    {
+        const string json = """
+            {
+              "prefix": "demo",
+              "icons": { "home": { "body": "<path d='M0 0'/>" }, "house": { "body": "<rect width='1' height='1'/>" } },
+              "aliases": { "home": { "parent": "house" }, "flat": { "parent": "home", "hFlip": true }, "flat": { "parent": "house" } }
+            }
+            """;
+
+        var set = DiagramIconImport.FromIconify(new MemoryStream(Encoding.UTF8.GetBytes(json))).IconSet;
+
+        Assert.Equal(["home", "house", "flat"], set.Icons.Select(static x => x.Id));
+        Assert.Equal("<path d=\"M0 0\"/>", set.Icons[0].Body);
+        Assert.Contains("scale(-1 1)", set.Icons[2].Body, StringComparison.Ordinal);
+        Assert.Equal(["demo:home", "demo:house", "demo:flat"], DiagramIconImport.CreateNodeTypes(set, new DiagramNodeType { Name = "base" }).Select(static x => x.Name));
+    }
+
+    [Fact]
     public void ImportedSvgKeepsOnlySafeContent()
     {
         const string svg = """
@@ -61,13 +120,131 @@ public sealed class IconImportTests
         Assert.Equal("Compute", icon.Category);
         Assert.Equal((80, 80), (icon.Width, icon.Height));
         Assert.Equal(
-            "<defs><linearGradient id=\"aws-Arch_Amazon-EC2_64-g\"><stop offset=\"0\" stop-color=\"#C8511B\"/></linearGradient></defs>" +
-            "<rect width=\"80\" height=\"80\" fill=\"url(#aws-Arch_Amazon-EC2_64-g)\"/>" +
+            "<defs><linearGradient id=\"aws-Arch_x005F_Amazon_x002D_EC2_x005F_64-g\"><stop offset=\"0\" stop-color=\"#C8511B\"/></linearGradient></defs>" +
+            "<rect width=\"80\" height=\"80\" fill=\"url(#aws-Arch_x005F_Amazon_x002D_EC2_x005F_64-g)\"/>" +
             "<path d=\"M0 0\" style=\"stroke:#fff\"/>" +
-            "<use href=\"#aws-Arch_Amazon-EC2_64-g\"/>",
+            "<use href=\"#aws-Arch_x005F_Amazon_x002D_EC2_x005F_64-g\"/>",
             icon.Body);
         Assert.Equal([DiagramIssueKind.RemovedSvgContent, DiagramIssueKind.RejectedUrl], result.Issues.Select(static x => x.Kind));
         Assert.Equal("script, onclick, foreignObject", result.Issues[0].Arguments[1]);
+    }
+
+    [Fact]
+    public void ThePaintOfTheRootOfAnSvgFileStaysOnItsContent()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" id="root" x="1" y="2" width="24" height="24" viewBox="2 3 24 24" fill="none" stroke="currentColor" stroke-width="1.5" onload="alert(1)"><path d="M0 0"/></svg>""";
+
+        var result = DiagramIconImport.FromZip(Zip(("outline.svg", svg)), "demo");
+
+        var icon = Assert.Single(result.IconSet.Icons);
+        Assert.Equal("<g transform=\"translate(-2,-3)\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M0 0\"/></g></g>", icon.Body);
+        Assert.Equal("onload", Assert.Single(result.Issues).Arguments[1]);
+    }
+
+    [Fact]
+    public void TheIdsInsideIconsWithDifferentNamesDoNotMeet()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><linearGradient id="a"/><rect width="1" height="1" fill="url(#a)"/></svg>""";
+
+        var result = DiagramIconImport.FromZip(Zip(("サーバー.svg", svg), ("ルーター.svg", svg), ("db.server.svg", svg), ("db_server.svg", svg)), "app");
+
+        var ids = result.IconSet.Icons.Select(static x => Regex.Match(x.Body, "id=\"([^\"]+)\"").Groups[1].Value).ToList();
+        Assert.Equal(4, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains("app-_x30B5__x30FC__x30D0__x30FC_-a", ids);
+        Assert.Contains("app-db_x002E_server-a", ids);
+        Assert.Contains("app-db_x005F_server-a", ids);
+    }
+
+    [Theory]
+    [InlineData("a-b", "c", "x", "a_x002D_b-c-x")]
+    [InlineData("a", "b-c", "x", "a-b_x002D_c-x")]
+    [InlineData("s", "a-b", "c", "s-a_x002D_b-c")]
+    [InlineData("s", "a", "b-c", "s-a-b_x002D_c")]
+    public void DashesInTheNamesDoNotMakeTheIdsMeet(string prefix, string icon, string id, string expected)
+    {
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><linearGradient id=\"{id}\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(($"{icon}.svg", svg)), prefix);
+
+        Assert.Equal($"<linearGradient id=\"{expected}\"/>", Assert.Single(result.IconSet.Icons).Body);
+    }
+
+    [Fact]
+    public void UsesInsideAnIconThatExpandToFewElementsStay()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><path id="dot" d="M0 0h1v1H0z"/><g id="pair"><use href="#dot"/><use href="#dot" x="2"/></g></defs><use href="#pair"/><use href="#pair" y="2"/></svg>""";
+
+        var result = DiagramIconImport.FromZip(Zip(("dots.svg", svg)), "demo");
+
+        Assert.Equal(
+            "<defs><path id=\"demo-dots-dot\" d=\"M0 0h1v1H0z\"/><g id=\"demo-dots-pair\"><use href=\"#demo-dots-dot\"/><use href=\"#demo-dots-dot\" x=\"2\"/></g></defs><use href=\"#demo-dots-pair\"/><use href=\"#demo-dots-pair\" y=\"2\"/>",
+            Assert.Single(result.IconSet.Icons).Body);
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void UsesOfElementsWithUsesAreRemovedWhenTheyAddMoreThanTenThousandElements()
+    {
+        var levels = String.Concat(Enumerable.Range(1, 5).Select(static i => $"<g id=\"l{i}\">{String.Concat(Enumerable.Repeat($"<use href=\"#l{i - 1}\"/>", 10))}</g>"));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><path id=\"l0\" d=\"M0 0h1v1H0z\"/>{levels}</defs><use href=\"#l5\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("bomb.svg", svg)), "demo");
+
+        var body = Assert.Single(result.IconSet.Icons).Body;
+        Assert.Equal(Enumerable.Repeat("demo-bomb-l0", 10), Regex.Matches(body, "href=\"#([^\"]+)\"").Select(static x => x.Groups[1].Value));
+        Assert.Contains("<g id=\"demo-bomb-l5\"></g>", body, StringComparison.Ordinal);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal((DiagramIssueKind.RemovedSvgContent, "use"), (issue.Kind, issue.Arguments[1]));
+    }
+
+    [Fact]
+    public void EveryUseIsRemovedWhenTheUsesStillAddMoreThanTenThousandElementsWithoutTheNestedOnes()
+    {
+        var paths = String.Concat(Enumerable.Repeat("<path d=\"M0 0h1v1H0z\"/>", 2_000));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><g id=\"big\">{paths}</g></defs>{String.Concat(Enumerable.Repeat("<use href=\"#big\"/>", 10))}</svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("wide.svg", svg)), "demo");
+
+        Assert.DoesNotContain("<use", Assert.Single(result.IconSet.Icons).Body, StringComparison.Ordinal);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal((DiagramIssueKind.RemovedSvgContent, "use"), (issue.Kind, issue.Arguments[1]));
+    }
+
+    [Theory]
+    [InlineData(98, 98)]
+    [InlineData(99, 0)]
+    public void UsesAreRemovedOnlyWhenTheyAddMoreThanTenThousandElements(int uses, int kept)
+    {
+        var paths = String.Concat(Enumerable.Repeat("<path d=\"M0 0h1v1H0z\"/>", 100));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><g id=\"g\">{paths}</g></defs>{String.Concat(Enumerable.Repeat("<use href=\"#g\"/>", uses))}</svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("many.svg", svg)), "demo");
+
+        Assert.Equal(kept, Regex.Count(Assert.Single(result.IconSet.Icons).Body, "<use "));
+        Assert.Equal(kept == 0, result.Issues.Any(static x => x.Kind == DiagramIssueKind.RemovedSvgContent));
+    }
+
+    [Fact]
+    public void AFewUsesInALargeIconStay()
+    {
+        var paths = String.Concat(Enumerable.Repeat("<path d=\"M0 0h1v1H0z\"/>", 11_000));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><path id=\"dot\" d=\"M0 0h1v1H0z\"/></defs>{paths}<use href=\"#dot\"/><use href=\"#dot\" x=\"2\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("large.svg", svg)), "demo");
+
+        Assert.Equal(2, Regex.Count(Assert.Single(result.IconSet.Icons).Body, "<use "));
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
+    public void LongChainsOfUsesAreCutWhenTheyAddMoreThanTenThousandElements()
+    {
+        var chain = String.Concat(Enumerable.Range(0, 20_000).Select(static i => $"<use id=\"u{i}\" href=\"#u{i + 1}\"/>"));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">{chain}<path id=\"u20000\" d=\"M0 0\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("chain.svg", svg)), "demo");
+
+        Assert.Equal(["demo-chain-u20000"], Regex.Matches(Assert.Single(result.IconSet.Icons).Body, "href=\"#([^\"]+)\"").Select(static x => x.Groups[1].Value));
     }
 
     [Fact]
@@ -359,6 +536,32 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void FoldersReportFilesThatCannotBeReadAndCountTheLimitInCharacters()
+    {
+        var folder = Directory.CreateTempSubdirectory("mussel-diagram-icons-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "open.svg"), Square);
+            File.WriteAllText(Path.Combine(folder, "Upper.SVG"), Square);
+            File.WriteAllText(Path.Combine(folder, "wide.svg"), $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"8\"><desc>{new string('あ', 1_500_000)}</desc><rect width=\"8\" height=\"8\"/></svg>", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(folder, "locked.svg"), Square);
+            DiagramIconImportResult result;
+            using (new FileStream(Path.Combine(folder, "locked.svg"), FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                result = DiagramIconImport.FromFolder(folder, "demo");
+            }
+
+            Assert.Equal(["Upper", "open", "wide"], result.IconSet.Icons.Select(static x => x.Id));
+            var issue = Assert.Single(result.Issues);
+            Assert.Equal((DiagramIssueKind.UnreadableIcon, "locked"), (issue.Kind, issue.Arguments[0]));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
     public void ListedFilesAreNotReadUntilLoaded()
     {
         var reads = new List<string>();
@@ -396,7 +599,7 @@ public sealed class IconImportTests
         Assert.Equal(["Compute/Arch_Amazon-EC2_64.svg"], reads);
         Assert.NotNull(content);
         Assert.Equal((48, 32), (content.Width, content.Height));
-        Assert.Equal("<linearGradient id=\"aws-Arch_Amazon-EC2_64-g\"/><rect fill=\"url(#aws-Arch_Amazon-EC2_64-g)\"/>", content.Body);
+        Assert.Equal("<linearGradient id=\"aws-Arch_x005F_Amazon_x002D_EC2_x005F_64-g\"/><rect fill=\"url(#aws-Arch_x005F_Amazon_x002D_EC2_x005F_64-g)\"/>", content.Body);
     }
 
     [Fact]

@@ -13,7 +13,7 @@ public sealed class Diagram
 
     private readonly HashSet<string> deferredLinks = new(StringComparer.Ordinal);
 
-    private readonly Dictionary<string, (DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)> routedLinks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DiagramLink Original, DiagramLink Routed, DiagramSnapshot Routing)> routedLinks = new(StringComparer.Ordinal);
 
     private long unpublishedSince;
 
@@ -242,9 +242,16 @@ public sealed class Diagram
             return;
         }
 
-        Commit(before, editor.Build(before.Version + 1), editor.Changes, origin, options, fromRouter);
-        Track(editor.PendingRoutes);
-        Defer(editor.DeferredLinks);
+        var after = editor.Build(before.Version + 1);
+        try
+        {
+            Commit(before, after, editor.Changes, origin, options, fromRouter);
+        }
+        finally
+        {
+            Track(editor.PendingRoutes);
+            Defer(editor.DeferredLinks);
+        }
     }
 
     internal void UseRegisteredOptions(MusselDiagramOptions? registered) => registeredOptions ??= registered;
@@ -330,6 +337,21 @@ public sealed class Diagram
 
     private void ApplyRoute(PendingRoute route, Task<DiagramRouteResult> task)
     {
+        if (updateDepth > 0)
+        {
+            if (SynchronizationContext.Current is { } context)
+            {
+                context.Post(_ => ApplyRoute(route, task), null);
+                return;
+            }
+
+            if (OperatingSystem.IsBrowser())
+            {
+                _ = Task.Delay(1).ContinueWith(_ => ApplyRoute(route, task), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                return;
+            }
+        }
+
         route.Cancellation.Dispose();
         if (!routes.TryGetValue(route.LinkId, out var latest) || !ReferenceEquals(latest, route))
         {
@@ -381,8 +403,14 @@ public sealed class Diagram
         var after = target.WithVersion(before.Version + 1);
         Snapshot = after;
         CancelRemovedRoutes();
-        Changed?.Invoke(this, ChangeSet.Restored(before, after, recorded).ToArgs(before, after, origin, null));
-        DeferProvisional();
+        try
+        {
+            Changed?.Invoke(this, ChangeSet.Restored(before, after, recorded).ToArgs(before, after, origin, null));
+        }
+        finally
+        {
+            DeferProvisional();
+        }
     }
 
     private static RouteBudget? NewBudget(TimeSpan limit) => CanDefer ? new RouteBudget(limit) : null;
@@ -468,14 +496,14 @@ public sealed class Diagram
             unpublishedSince = Stopwatch.GetTimestamp();
         }
 
-        var obstacles = Snapshot.Obstacles;
-        var editor = new SnapshotEditor(Snapshot, Index) { Budget = NewBudget(BackgroundRouteLimit) };
+        var source = Snapshot;
+        var editor = new SnapshotEditor(source, Index) { Budget = NewBudget(BackgroundRouteLimit) };
         deferredLinks.ExceptWith(editor.RouteDeferred(deferredLinks));
         foreach (var id in editor.Changes.Updated.Keys)
         {
-            if ((Snapshot.Find(id) is DiagramLink original) && (editor.Find(id) is DiagramLink { RouteState: not DiagramRouteState.Provisional } routed))
+            if ((source.Find(id) is DiagramLink original) && (editor.Find(id) is DiagramLink { RouteState: not DiagramRouteState.Provisional } routed))
             {
-                routedLinks[id] = (original, routed, obstacles);
+                routedLinks[id] = (original, routed, source);
             }
         }
 
@@ -497,7 +525,7 @@ public sealed class Diagram
             return;
         }
 
-        (DiagramLink Original, DiagramLink Routed, ObstacleIndex Obstacles)[] results = [.. routedLinks.Values];
+        (DiagramLink Original, DiagramLink Routed, DiagramSnapshot Routing)[] results = [.. routedLinks.Values];
         routedLinks.Clear();
         Write(SkipHistory, DiagramChangeOrigin.Api, editor => editor.ApplyRoutes(results), true);
     }
@@ -522,10 +550,17 @@ public sealed class Diagram
             updateChanges = new ChangeSet();
         }
 
-        Changed?.Invoke(this, new DiagramChangedEventArgs(before, Snapshot, DiagramChangeOrigin.Load, options?.Tag, [], [], []) { IsReset = true });
-        Track(result.PendingRoutes);
-        deferredLinks.Clear();
-        DeferProvisional();
+        try
+        {
+            Changed?.Invoke(this, new DiagramChangedEventArgs(before, Snapshot, DiagramChangeOrigin.Load, options?.Tag, [], [], []) { IsReset = true });
+        }
+        finally
+        {
+            Track(result.PendingRoutes);
+            deferredLinks.Clear();
+            DeferProvisional();
+        }
+
         return result.Issues;
     }
 

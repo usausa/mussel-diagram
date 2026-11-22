@@ -145,6 +145,52 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         Assert.Equal([0xFF, 0xD8, 0xFF], jpeg[..3]);
     }
 
+    [Fact]
+    public async Task ExportedMarkersHaveTheColorOfTheirTypeInsteadOfTheContextStroke()
+    {
+        opened = await app.OpenAsync("workflow", "server");
+        await Expect(opened.View.Locator("g.mussel-diagram-link[data-id='start-fetch']")).ToHaveCountAsync(1);
+
+        var svg = XDocument.Parse(Encoding.UTF8.GetString(await DownloadAsync("SVG")));
+
+        XNamespace ns = "http://www.w3.org/2000/svg";
+        var root = svg.Root!;
+        Assert.DoesNotContain(root.Descendants().Attributes(), static x => x.Value.Contains("context-", StringComparison.Ordinal));
+        var line = root.Descendants(ns + "g").Single(static x => x.Attribute("data-id")?.Value == "start-fetch").Elements(ns + "path").Single();
+        var marker = root.Descendants(ns + "marker").Single(x => $"url(#{x.Attribute("id")?.Value})" == line.Attribute("marker-end")?.Value);
+        Assert.StartsWith("rgb(", line.Attribute("stroke")?.Value, StringComparison.Ordinal);
+        Assert.Equal(line.Attribute("stroke")?.Value, marker.Elements().Single().Attribute("fill")?.Value);
+    }
+
+    [Fact]
+    public async Task TheMarkerOfALinkTakesTheColorOfItsLine()
+    {
+        opened = await app.OpenAsync("workflow", "server");
+        var link = opened.View.Locator("g.mussel-diagram-link[data-id='start-fetch']");
+        var middle = await opened.Page.EvaluateAsync<double[]>(
+            """
+            () => {
+                const path = document.querySelector("g.mussel-diagram-link[data-id='start-fetch'] > .mussel-diagram-link-hit");
+                const point = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM());
+                return [point.x, point.y];
+            }
+            """);
+        await opened.Page.Mouse.ClickAsync((float)middle[0], (float)middle[1]);
+        await Expect(link).ToHaveAttributeAsync("data-selected", string.Empty);
+        var (selectedLine, selectedMarker) = await MarkerAndLineAsync("start-fetch");
+        await opened.View.FocusAsync();
+        await opened.Page.Keyboard.PressAsync("Escape");
+        await Expect(link).Not.ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await opened.Page.Locator("[data-action='run']").ClickAsync();
+        await Expect(link).ToHaveClassAsync(new Regex("mussel-diagram-state-flowed"), new() { Timeout = 15000 });
+        var (flowedLine, flowedMarker) = await MarkerAndLineAsync("start-fetch");
+
+        Assert.Equal(selectedLine, selectedMarker);
+        Assert.Equal(flowedLine, flowedMarker);
+        Assert.NotEqual(selectedLine, flowedLine);
+    }
+
     private async Task DeleteAsync(string id)
     {
         var node = opened!.View.Locator($"g.mussel-diagram-node[data-id='{id}']");
@@ -153,6 +199,40 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await Expect(node).ToHaveAttributeAsync("data-selected", string.Empty).ConfigureAwait(true);
         await opened.Page.Keyboard.PressAsync("Delete").ConfigureAwait(true);
         await Expect(node).ToHaveCountAsync(0).ConfigureAwait(true);
+    }
+
+    private async Task<(string Line, string Marker)> MarkerAndLineAsync(string id)
+    {
+        var page = opened!.Page;
+        var point = await page.EvaluateAsync<double[]>(
+            """
+            (id) => {
+                const line = document.querySelector(`g.mussel-diagram-link[data-id='${id}'] > .mussel-diagram-link-line`);
+                const length = line.getTotalLength();
+                const end = line.getPointAtLength(length);
+                const before = line.getPointAtLength(length - 1);
+                const distance = Math.hypot(end.x - before.x, end.y - before.y);
+                const inside = new DOMPoint(end.x + (((end.x - before.x) / distance) * 4), end.y + (((end.y - before.y) / distance) * 4)).matrixTransform(line.getScreenCTM());
+                return [inside.x, inside.y];
+            }
+            """,
+            id).ConfigureAwait(true);
+        var line = await page.EvaluateAsync<string>("(id) => getComputedStyle(document.querySelector(`g.mussel-diagram-link[data-id='${id}'] > .mussel-diagram-link-line`)).stroke", id).ConfigureAwait(true);
+        var png = await page.ScreenshotAsync(new() { Clip = new() { X = (float)Math.Floor(point[0]), Y = (float)Math.Floor(point[1]), Width = 1, Height = 1 } }).ConfigureAwait(true);
+        var marker = await page.EvaluateAsync<string>(
+            """
+            async (data) => {
+                const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+                const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+                const canvas = new OffscreenCanvas(1, 1);
+                const context = canvas.getContext('2d');
+                context.drawImage(bitmap, 0, 0);
+                const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+                return `rgb(${r}, ${g}, ${b})`;
+            }
+            """,
+            Convert.ToBase64String(png)).ConfigureAwait(true);
+        return (line, marker);
     }
 
     private async Task<byte[]> DownloadAsync(string format)

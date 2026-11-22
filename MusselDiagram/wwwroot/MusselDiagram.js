@@ -307,6 +307,8 @@ const MOUSE_THRESHOLD = 4;
 const TOUCH_THRESHOLD = 8;
 const LONG_PRESS_DELAY = 400;
 const REASON_DURATION = 3000;
+const ANSWER_LIMIT = 60000;
+const ALL_REJECTIONS = 2147483647;
 const SELECTION_PADDING = 4;
 const HANDLE_SIZE = 8;
 const PORT_RADIUS = 4;
@@ -1302,6 +1304,7 @@ const EXPORT_HTML_PROPERTIES = ['display', 'box-sizing', 'width', 'height', 'mar
 const EXPORT_KEPT_ATTRIBUTES = new Set(['data-id', 'data-type']);
 const EXPORT_DEFINITIONS = 'defs, marker, symbol, clipPath, mask, pattern, linearGradient, radialGradient, filter';
 const EXPORT_MARKS = ['data-selected', 'data-pending', 'data-candidate', 'data-drop-target', 'data-not-allowed', 'data-editing', 'data-split-target', 'data-reconnecting'];
+const EXPORT_MARKER_COLOR = 'var(--mussel-diagram-marker-color, var(--mussel-diagram-link-color))';
 
 function normalizeFamily(name) {
     return name.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
@@ -1629,7 +1632,8 @@ class DiagramController {
         this.rejections = 0;
         this.sentSelection = null;
         this.selectionSends = 0;
-        this.selectionMessages = 0;
+        this.selectionNumber = 0;
+        this.answerLimit = ANSWER_LIMIT;
         this.waiting = false;
         this.reason = null;
         this.spaceDown = false;
@@ -1655,6 +1659,7 @@ class DiagramController {
         this.touches = new Map();
         this.pinch = null;
         this.commandsInFlight = new Set();
+        this.selectionsInFlight = new Set();
         this.commandChain = Promise.resolve();
         this.listeners = [];
         this.listen(root, 'wheel', (e) => this.onWheel(e), { passive: false });
@@ -1703,6 +1708,12 @@ class DiagramController {
             this.labels.writeAll(true);
         }
         this.options = options;
+        const zoom = this.view.zoom * (this.gesture?.k ?? 1);
+        if ((zoom < options.minZoom) || (zoom > options.maxZoom)) {
+            this.foldGesture();
+            const center = this.toWorld(this.centerPoint());
+            this.setView(this.view.zoom, center.x, center.y);
+        }
         if (this.panTool()) {
             this.clearHover();
         }
@@ -1762,7 +1773,10 @@ class DiagramController {
         this.dotnet.invokeMethodAsync('WantIcons', fresh).catch(() => { });
     }
 
-    setTable(table) {
+    setTable(table, replaced) {
+        if (replaced && (this.pending.length > 0)) {
+            this.revertFrom(this.pending[0]);
+        }
         this.table.set(table);
         this.pruneSelection();
         this.afterTableChange();
@@ -1779,6 +1793,14 @@ class DiagramController {
             this.closeEditor();
         }
         this.placeEditor();
+        const drag = this.drag;
+        if (drag && this.dragLost(drag)) {
+            if ((drag.kind === 'connect') || (drag.kind === 'reconnect')) {
+                this.cancelDrag(true);
+            } else {
+                this.rebaseDrag(drag);
+            }
+        }
         if (this.awaitedSelection?.size) {
             let added = false;
             for (const id of [...this.awaitedSelection]) {
@@ -2387,7 +2409,7 @@ class DiagramController {
     }
 
     select(ids, seen) {
-        if (seen < this.selectionMessages) {
+        if (seen < this.selectionNumber) {
             return;
         }
         const known = (id) => this.table.boxes.has(id) || this.table.links.has(id);
@@ -2412,9 +2434,13 @@ class DiagramController {
         if (this.dotnet) {
             this.sentSelection = new Set(next);
             this.selectionSends++;
-            this.selectionMessages++;
-            this.track(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', [...next]).catch(() => { }));
+            this.sendSelection([...next]);
         }
+    }
+
+    sendSelection(ids) {
+        this.selectionNumber++;
+        this.track(this.answered(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', ids, this.selectionNumber)).catch(() => { }), this.selectionsInFlight);
     }
 
     pruneSelection() {
@@ -2725,6 +2751,7 @@ class DiagramController {
         if (!drag) {
             return;
         }
+        this.drag = null;
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
         drag.world = this.toWorld(drag.point);
@@ -2743,7 +2770,6 @@ class DiagramController {
                 break;
         }
         this.endDragState(drag);
-        this.drag = null;
         this.clearMarks();
         this.layers.guides.replaceChildren();
         this.layers.candidates.replaceChildren();
@@ -2766,7 +2792,7 @@ class DiagramController {
         this.drawSelection();
     }
 
-    cancelDrag() {
+    cancelDrag(hold = false) {
         const drag = this.drag;
         if (!drag) {
             return;
@@ -2775,7 +2801,11 @@ class DiagramController {
         cancelAnimationFrame(this.frameRequest);
         this.frameRequest = 0;
         this.drag = null;
-        this.press = null;
+        if (hold && this.press) {
+            this.press.consumed = true;
+        } else {
+            this.press = null;
+        }
         if (drag.written) {
             this.restoreDrag(drag);
         }
@@ -2797,6 +2827,7 @@ class DiagramController {
         for (const element of drag.revealed ?? []) {
             element.removeAttribute('data-revealed');
         }
+        drag.reconnecting?.removeAttribute('data-reconnecting');
         if (drag.panned) {
             this.notifyViewport();
         }
@@ -2976,7 +3007,7 @@ class DiagramController {
     rebaseMove(drag) {
         const basis = drag.roots.every((id) => this.table.boxes.has(id)) ? this.moveBasis(drag.roots, drag.moving, drag.pressed) : null;
         if (!basis) {
-            this.cancelDrag();
+            this.cancelDrag(true);
             return;
         }
         Object.assign(drag, basis, { target: undefined, nestBlocked: false });
@@ -3082,7 +3113,7 @@ class DiagramController {
     placeMoved(drag) {
         const moved = (id) => {
             const box = this.table.boxes.get(id);
-            return drag.moving.has(id) ? { ...box, x: box.x + drag.dx, y: box.y + drag.dy } : box;
+            return box && drag.moving.has(id) ? { ...box, x: box.x + drag.dx, y: box.y + drag.dy } : box;
         };
         for (const [id, element] of drag.elements) {
             const box = this.table.boxes.get(id);
@@ -3145,7 +3176,7 @@ class DiagramController {
         if (reparent) {
             this.table.index();
         }
-        this.commit(drag, { saved: drag.saved, previous }, () => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, drag.startVersion, this.rejections, this.selectionArgument()));
+        this.commit(drag, { saved: drag.saved, previous }, (number) => this.dotnet.invokeMethodAsync('CommitMoveAsync', drag.roots, drag.dx, drag.dy, reparent, parentId, splitLinkId, drag.startVersion, this.rejections, this.selectionArgument(), number));
     }
 
     startResize(press) {
@@ -3191,7 +3222,7 @@ class DiagramController {
     rebaseResize(drag) {
         const box = this.table.boxes.get(drag.id);
         if (!box) {
-            this.cancelDrag();
+            this.cancelDrag(true);
             return;
         }
         Object.assign(drag, this.resizeBasis(box));
@@ -3243,7 +3274,7 @@ class DiagramController {
         this.layers.pending.append(frame);
         const left = rect.x - box.x;
         const top = rect.y - box.y;
-        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, () => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, left, top, left + (rect.w - box.w), top + (rect.h - box.h), drag.startVersion, this.rejections, this.selectionArgument()));
+        this.commit(drag, { saved: drag.saved, previous, overlays: [frame] }, (number) => this.dotnet.invokeMethodAsync('CommitResizeAsync', box.id, left, top, left + (rect.w - box.w), top + (rect.h - box.h), drag.startVersion, this.rejections, this.selectionArgument(), number));
     }
 
     connectionTargets(check) {
@@ -3295,11 +3326,12 @@ class DiagramController {
 
     revealPorts(drag) {
         drag.revealed = [];
+        const elements = firstById(this.canvas.querySelectorAll('[data-id]'), 'id');
         for (const target of drag.targets) {
             if (!target.port?.hidden) {
                 continue;
             }
-            const element = this.element(target.box.id)?.querySelector(`.mussel-diagram-port[data-port="${CSS.escape(target.port.id)}"]`);
+            const element = elements.get(target.box.id)?.querySelector(`.mussel-diagram-port[data-port="${CSS.escape(target.port.id)}"]`);
             if (element) {
                 element.setAttribute('data-revealed', '');
                 drag.revealed.push(element);
@@ -3379,9 +3411,10 @@ class DiagramController {
             targets: this.connectionTargets(check),
             target: null,
             element,
+            reconnecting: element && !element.hasAttribute('data-reconnecting') ? element : null,
             startVersion: this.table.version,
         };
-        this.mark(element, 'data-reconnecting');
+        this.drag.reconnecting?.setAttribute('data-reconnecting', '');
         this.root.classList.add('mussel-diagram-connecting');
         this.revealPorts(this.drag);
         this.drawCandidates(this.drag);
@@ -3429,13 +3462,16 @@ class DiagramController {
     }
 
     updateConnect(drag) {
+        const fromEnd = drag.kind === 'connect' ? drag.from : drag.fixed;
+        const fromBox = this.table.boxes.get(fromEnd.element);
+        if (!fromBox) {
+            return;
+        }
         const point = drag.world;
         const target = this.findTarget(drag, point);
         drag.target = target;
         this.clearMarks();
         this.hideReason();
-        const fromEnd = drag.kind === 'connect' ? drag.from : drag.fixed;
-        const fromBox = this.table.boxes.get(fromEnd.element);
         const fromPort = findPort(fromBox, fromEnd.port);
         let endAnchor;
         if (target) {
@@ -3499,8 +3535,8 @@ class DiagramController {
             this.layers.pending.append(overlay);
         }
         if (drag.kind === 'connect') {
-            this.commit(drag, { saved: new Map(), previous: new Map(), overlays }, () => this.dotnet.invokeMethodAsync(
-                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.rejections, this.selectionArgument()));
+            this.commit(drag, { saved: new Map(), previous: new Map(), overlays }, (number) => this.dotnet.invokeMethodAsync(
+                'CommitConnectAsync', drag.from.element, drag.from.port ?? null, end.element, end.port, drag.linkType, this.rejections, this.selectionArgument(), number));
             return;
         }
         const link = drag.link;
@@ -3515,8 +3551,8 @@ class DiagramController {
         this.save(saved, drag.element, 'data-reconnecting');
         drag.element?.setAttribute('data-reconnecting', '');
         this.table.index();
-        this.commit(drag, { saved, previous: new Map(), previousLinks, overlays, reconnecting: drag.element }, () => this.dotnet.invokeMethodAsync(
-            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, drag.startVersion, this.rejections, this.selectionArgument()));
+        this.commit(drag, { saved, previous: new Map(), previousLinks, overlays, reconnecting: drag.element }, (number) => this.dotnet.invokeMethodAsync(
+            'CommitReconnectAsync', link.id, drag.side, end.element, end.port, drag.startVersion, this.rejections, this.selectionArgument(), number));
     }
 
     startBoxSelection(press) {
@@ -3548,10 +3584,14 @@ class DiagramController {
                 next.add(box.id);
             }
         }
+        const elements = firstById(this.canvas.querySelectorAll('[data-id]'), 'id');
         for (const link of this.table.links.values()) {
-            const path = link.selectable ? this.element(link.id)?.querySelector('.mussel-diagram-link-hit') : null;
-            const bounds = path?.getBBox?.();
-            if (bounds && inside({ x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height })) {
+            if (!link.selectable) {
+                continue;
+            }
+            const bounds = elements.get(link.id)?.querySelector('.mussel-diagram-link-hit')?.getBBox?.();
+            const ends = [this.table.boxes.get(link.source), this.table.boxes.get(link.target)];
+            if (bounds ? inside({ x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height }) : ends.every((box) => box && inside(box))) {
                 next.add(link.id);
             }
         }
@@ -3685,11 +3725,12 @@ class DiagramController {
         if (this.options.hostSearch && this.dotnet) {
             const token = (picker.token ?? 0) + 1;
             picker.token = token;
-            this.dotnet.invokeMethodAsync('SearchTypesAsync', picker.search.value, picker.items.map((x) => x.type.name)).then((names) => {
+            this.dotnet.invokeMethodAsync('SearchTypesAsync', picker.search.value).then((names) => {
                 if ((this.picker !== picker) || (picker.token !== token)) {
                     return;
                 }
-                picker.shown = names.map((name) => picker.items.find((x) => x.type.name === name)).filter((x) => x);
+                const items = new Map(picker.items.map((x) => [x.type.name, x]));
+                picker.shown = names.map((name) => items.get(name)).filter((x) => x);
                 picker.active = 0;
                 this.renderPicker();
             }).catch(() => { });
@@ -3763,7 +3804,7 @@ class DiagramController {
 
     onPickerKey(event) {
         const picker = this.picker;
-        if (!picker || event.isComposing) {
+        if (!picker || event.isComposing || (event.keyCode === 229)) {
             return;
         }
         if ((event.key === 'ArrowDown') || (event.key === 'ArrowUp')) {
@@ -3810,14 +3851,14 @@ class DiagramController {
         const center = centerOf(item.bounds);
         const operation = { point: { x: (center.x * this.view.zoom) + this.view.x, y: (center.y * this.view.zoom) + this.view.y } };
         if (!from) {
-            this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, this.table.version, this.rejections, this.selectionArgument()));
+            this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, (number) => this.dotnet.invokeMethodAsync(
+                'CommitDropAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, null, null, this.table.version, this.rejections, this.selectionArgument(), number));
             this.root.focus({ preventScroll: true });
             return;
         }
         const linkType = this.linkTypeFor(from);
-        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.rejections, this.selectionArgument()));
+        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, (number) => this.dotnet.invokeMethodAsync(
+            'CommitPlaceAsync', item.type.name, item.bounds.x, item.bounds.y, item.bounds.w, item.bounds.h, item.parent, from.element, from.port ?? null, linkType, this.rejections, this.selectionArgument(), number));
         this.root.focus({ preventScroll: true });
     }
 
@@ -3872,12 +3913,13 @@ class DiagramController {
             return;
         }
         entry.sent = true;
-        this.selectionMessages++;
+        this.selectionNumber++;
         let result = null;
         try {
-            result = await call();
+            result = await this.answered(call(this.selectionNumber));
         } catch {
             result = null;
+            this.rejections = ALL_REJECTIONS;
         }
         for (const element of entry.elements) {
             element.removeAttribute('data-pending');
@@ -3932,15 +3974,35 @@ class DiagramController {
         this.settlePending();
         this.table.index();
         this.placeEditor();
-        const drag = this.drag;
-        if (((drag?.kind === 'resize') || (drag?.kind === 'move')) && this.dragSetsChanged(drag)) {
-            this.cancelDrag();
-        } else if (drag?.kind === 'resize') {
-            this.rebaseResize(drag);
-        } else if (drag?.kind === 'move') {
-            this.rebaseMove(drag);
+        if (this.drag) {
+            this.rebaseDrag(this.drag);
         }
         this.drawSelection();
+    }
+
+    rebaseDrag(drag) {
+        if (((drag.kind === 'resize') || (drag.kind === 'move')) && this.dragSetsChanged(drag)) {
+            this.cancelDrag(true);
+        } else if (drag.kind === 'resize') {
+            this.rebaseResize(drag);
+        } else if (drag.kind === 'move') {
+            this.rebaseMove(drag);
+        }
+    }
+
+    dragLost(drag) {
+        switch (drag.kind) {
+            case 'move':
+                return [...drag.moving].some((id) => !this.table.boxes.has(id)) || [...drag.links].some((link) => !this.table.links.has(link.id));
+            case 'resize':
+                return !this.table.boxes.has(drag.id) || [...drag.links].some((link) => !this.table.links.has(link.id));
+            case 'connect':
+                return !this.table.boxes.has(drag.from.element);
+            case 'reconnect':
+                return !this.table.boxes.has(drag.fixed.element);
+            default:
+                return false;
+        }
     }
 
     dragSetsChanged(drag) {
@@ -4144,19 +4206,18 @@ class DiagramController {
         const sends = this.selectionSends;
         const run = this.commandChain.then(async () => {
             await this.whenIdle();
-            if (this.commandFor(command.name)?.enabled) {
+            if (this.dotnet && ((this.selectionsInFlight.size > 0) || this.commandFor(command.name)?.enabled)) {
                 const replaced = changedSelection(this.currentSelection(), new Set(selection)) !== null;
-                this.selectionMessages++;
-                await this.dotnet?.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection));
+                this.selectionNumber++;
+                await this.answered(this.dotnet.invokeMethodAsync('ExecuteCommandAsync', command.name, this.selectionArgument(selection), this.selectionNumber));
                 const current = (this.selectionSends === sends) && !replaced ? null : this.selectionArgument();
                 if (current) {
-                    this.selectionMessages++;
-                    await this.dotnet?.invokeMethodAsync('OnSelectionChangedAsync', current);
+                    this.sendSelection(current);
                 }
             }
         }).catch(() => { });
         this.commandChain = run;
-        this.track(run, true);
+        this.track(run, this.commandsInFlight);
     }
 
     commandFor(name) {
@@ -4168,15 +4229,22 @@ class DiagramController {
         return undefined;
     }
 
-    track(promise, command) {
-        const set = command ? this.commandsInFlight : this.inFlight;
+    track(promise, set = this.inFlight) {
         set.add(promise);
         promise.finally(() => set.delete(promise));
         return promise;
     }
 
+    answered(promise) {
+        let timer = 0;
+        const limit = new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('No answer')), this.answerLimit);
+        });
+        return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+    }
+
     busy() {
-        return (this.inFlight.size + this.commandsInFlight.size) > 0;
+        return (this.inFlight.size + this.commandsInFlight.size + this.selectionsInFlight.size) > 0;
     }
 
     async whenIdle() {
@@ -4263,7 +4331,7 @@ class DiagramController {
     }
 
     quickAdd(x, y) {
-        if (!this.options.dropEnabled || this.waiting) {
+        if (!this.options.dropEnabled || this.waiting || this.drag) {
             return;
         }
         this.foldGesture();
@@ -4502,7 +4570,7 @@ class DiagramController {
         const box = this.table.boxes.get(editor.id);
         const point = box ? { x: ((box.x + box.w / 2) * this.view.zoom) + this.view.x, y: ((box.y + box.h / 2) * this.view.zoom) + this.view.y } : null;
         const operation = { point };
-        const call = () => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, editor.startVersion, this.rejections, this.selectionArgument());
+        const call = (number) => this.dotnet.invokeMethodAsync('CommitTextAsync', editor.id, editor.slot, value, editor.startVersion, this.rejections, this.selectionArgument(), number);
         if (!this.options.optimistic) {
             editor.pending = true;
             editor.input.readOnly = true;
@@ -4748,8 +4816,8 @@ class DiagramController {
         const frame = shapeElement(type, bounds, { class: 'mussel-diagram-place-frame' });
         this.layers.pending.append(frame);
         const operation = { point: external.point };
-        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, () => this.dotnet.invokeMethodAsync(
-            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, external.startVersion, this.rejections, this.selectionArgument()));
+        this.commit(operation, { saved: new Map(), previous: new Map(), overlays: [frame], selectNew: true }, (number) => this.dotnet.invokeMethodAsync(
+            'CommitDropAsync', type.name, bounds.x, bounds.y, bounds.w, bounds.h, parent, value, splitLinkId, external.startVersion, this.rejections, this.selectionArgument(), number));
         this.root.focus({ preventScroll: true });
     }
 
@@ -4828,6 +4896,9 @@ class DiagramController {
             inlineIcons(clone);
             const missing = await embedImages(clone, cache);
             const background = getComputedStyle(this.root).backgroundColor;
+            for (const shape of clone.querySelectorAll('.mussel-diagram-marker > *')) {
+                shape.style.setProperty(shape.parentElement.classList.contains('mussel-diagram-marker-open') ? 'stroke' : 'fill', EXPORT_MARKER_COLOR);
+            }
             const families = inlineStyles(clone);
             const fonts = options.fonts ? await embedFonts(families, cache) : '';
             const margin = Math.max(0, options.margin);

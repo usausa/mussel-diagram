@@ -261,7 +261,7 @@ internal static class OrthogonalRouter
         var ys = Coordinates(work.Values, inside, false, startOut.Y, endOut.Y, region.Y, region.Bottom, grid);
         var width = xs.Length;
         var height = ys.Length;
-        if ((width * height) > MaxNodes)
+        if (((long)width * height) > MaxNodes)
         {
             return null;
         }

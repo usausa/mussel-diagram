@@ -67,7 +67,7 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await page.WaitForFunctionAsync("() => window.selected.includes(JSON.stringify(['rect']))");
         await page.EvaluateAsync("() => window.heldDrops[0]()");
         await Expect(nodes).ToHaveCountAsync(10);
-        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', '', []); await new Promise((resolve) => setTimeout(resolve, 0)); }");
+        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', ''); await new Promise((resolve) => setTimeout(resolve, 0)); }");
 
         await Expect(rect).ToHaveAttributeAsync("data-selected", string.Empty);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected]")).ToHaveCountAsync(1);
@@ -116,11 +116,11 @@ public sealed class EditingE2ETests(AppFixture app) : IClassFixture<AppFixture>,
         await DragInAsync(page.Locator(".mussel-diagram-palette-item[data-mussel-type='star']"), 120, 500);
         await page.WaitForFunctionAsync("() => window.heldDrops.length === 1");
 
-        await page.EvaluateAsync("() => window.view.invokeMethodAsync('ExecuteCommandAsync', 'Undo', null)");
+        await page.EvaluateAsync("() => window.view.invokeMethodAsync('ExecuteCommandAsync', 'Undo', null, 2147483647)");
         await Expect(star1).ToHaveAttributeAsync("data-selected", string.Empty);
         await page.EvaluateAsync("() => window.heldDrops[0]()");
         await Expect(nodes).ToHaveCountAsync(10);
-        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', '', []); await new Promise((resolve) => setTimeout(resolve, 0)); }");
+        await page.EvaluateAsync("async () => { await window.view.invokeMethodAsync('SearchTypesAsync', ''); await new Promise((resolve) => setTimeout(resolve, 0)); }");
 
         await Expect(star1).ToHaveAttributeAsync("data-selected", string.Empty);
         await Expect(opened.View.Locator("g.mussel-diagram-node[data-selected]")).ToHaveCountAsync(1);

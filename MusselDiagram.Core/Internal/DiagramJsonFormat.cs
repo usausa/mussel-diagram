@@ -216,7 +216,7 @@ internal static class DiagramJsonFormat
             var items = new List<DiagramSharedItem>();
             foreach (var json in document.Groups ?? [])
             {
-                if (Claim(json.Id) is { } id)
+                if ((json is not null) && (Claim(json.Id) is { } id))
                 {
                     boxes.Add(ReadBox(json, id, true));
                 }
@@ -224,7 +224,7 @@ internal static class DiagramJsonFormat
 
             foreach (var json in document.Nodes ?? [])
             {
-                if (Claim(json.Id) is { } id)
+                if ((json is not null) && (Claim(json.Id) is { } id))
                 {
                     boxes.Add(ReadBox(json, id, false));
                 }
@@ -232,7 +232,7 @@ internal static class DiagramJsonFormat
 
             foreach (var json in document.Links ?? [])
             {
-                if ((Claim(json.Id) is { } id) && (ReadLink(json, id) is { } link))
+                if ((json is not null) && (Claim(json.Id) is { } id) && (ReadLink(json, id) is { } link))
                 {
                     links.Add(link);
                 }
@@ -240,7 +240,7 @@ internal static class DiagramJsonFormat
 
             foreach (var json in document.SharedItems ?? [])
             {
-                if (Claim(json.Id) is { } id)
+                if ((json is not null) && (Claim(json.Id) is { } id))
                 {
                     items.Add(ReadSharedItem(json, id));
                 }
@@ -581,7 +581,7 @@ internal static class DiagramJsonFormat
             {
                 return value.Deserialize(dataType);
             }
-            catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Report(DiagramIssueSeverity.Warning, DiagramIssueKind.UnreadableData, id, typeName);
                 return value;

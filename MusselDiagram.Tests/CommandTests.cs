@@ -57,6 +57,19 @@ public sealed class CommandTests : BunitContext
     }
 
     [Fact]
+    public void PlusMinusEqualsAndUnderscoreAreNamedAsTheScriptNamesThem()
+    {
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var commands = cut.Instance.Commands;
+
+        commands.Add(new DiagramCommand { Name = "Mine", Keys = ["Ctrl+-", "Ctrl++", "Ctrl+=", "+", "Alt + -", "=", "Ctrl+_", "_"], Execute = static _ => Task.CompletedTask });
+
+        Assert.Equal(["Ctrl+Minus", "Ctrl+Plus", "Plus", "Alt+Minus", "=", "_"], commands["Mine"].Keys);
+        Assert.Empty(commands[DiagramCommands.ZoomIn].Keys);
+        Assert.Empty(commands[DiagramCommands.ZoomOut].Keys);
+    }
+
+    [Fact]
     public void ALetterWhoseCapitalIsLongerStaysAsItIs()
     {
         var cut = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));

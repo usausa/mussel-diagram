@@ -240,12 +240,14 @@
 
 .mussel-diagram-marker > * {
     fill: var(--mussel-diagram-marker-color, var(--mussel-diagram-link-color));
+    fill: context-stroke;
     stroke: none;
 }
 
 .mussel-diagram-marker-open > * {
     fill: none;
     stroke: var(--mussel-diagram-marker-color, var(--mussel-diagram-link-color));
+    stroke: context-stroke;
     stroke-width: 1.5;
 }
 
@@ -421,7 +423,7 @@
     stroke: var(--mussel-diagram-not-allowed-color);
 }
 
-[data-reconnecting] {
+:where(.mussel-diagram) [data-reconnecting] {
     visibility: hidden;
 }
 
@@ -517,7 +519,7 @@
     stroke: var(--mussel-diagram-selection-color);
 }
 
-[data-pending] {
+:where(.mussel-diagram) [data-pending] {
     opacity: calc(var(--mussel-diagram-pending-opacity) * var(--mussel-diagram-override-opacity, 1));
 }
 
@@ -534,7 +536,7 @@
     transform: translate(-50%, 16px);
 }
 
-[data-template] [data-slot][data-editing],
+:where(.mussel-diagram) [data-template] [data-slot][data-editing],
 .mussel-diagram-label[data-editing] {
     visibility: hidden;
 }

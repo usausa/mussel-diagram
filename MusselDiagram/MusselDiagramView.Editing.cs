@@ -141,10 +141,10 @@ public sealed partial class MusselDiagramView
             _ => ElementDoubleClicked.InvokeAsync(new DiagramElementPointerEventArgs(id, position, shift, ctrl, alt, meta))
         }).ConfigureAwait(true);
 
-    internal IReadOnlyList<string> SearchTypes(string query, IEnumerable<string> names)
+    internal IReadOnlyList<string> SearchTypes(string query)
     {
         var index = Diagram.Index;
-        var types = names.Select(index.FindBoxType).OfType<DiagramBoxType>().ToList();
+        var types = TypeSearch.InPaletteOrder([.. index.Schema.NodeTypes, .. index.Schema.GroupTypes], index).ToList();
         return [.. TypeSearch.Search(types, query, index, SearchNormalizer).Select(static x => x.Name)];
     }
 

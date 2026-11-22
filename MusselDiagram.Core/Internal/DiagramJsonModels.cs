@@ -9,13 +9,13 @@ internal sealed record DiagramJsonDocument
 
     public int Version { get; init; }
 
-    public IReadOnlyList<DiagramJsonBox>? Groups { get; init; }
+    public IReadOnlyList<DiagramJsonBox?>? Groups { get; init; }
 
-    public IReadOnlyList<DiagramJsonBox>? Nodes { get; init; }
+    public IReadOnlyList<DiagramJsonBox?>? Nodes { get; init; }
 
-    public IReadOnlyList<DiagramJsonLink>? Links { get; init; }
+    public IReadOnlyList<DiagramJsonLink?>? Links { get; init; }
 
-    public IReadOnlyList<DiagramJsonSharedItem>? SharedItems { get; init; }
+    public IReadOnlyList<DiagramJsonSharedItem?>? SharedItems { get; init; }
 }
 
 internal sealed record DiagramJsonBox

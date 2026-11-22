@@ -6,6 +6,8 @@ using static MusselDiagram.TestDiagrams;
 
 public sealed class RoutingTests
 {
+    private static readonly EventHandler<DiagramChangedEventArgs> Fail = static (_, _) => throw new InvalidOperationException();
+
     [Fact]
     public void RoutesGoAroundNodesTheSameWayEachTime()
     {
@@ -516,6 +518,131 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void RoutesThatArriveInAnUpdateWaitUntilItEnds()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Connect(Link("ab", "a", "b"));
+            diagram.ClearHistory();
+            diagram.MarkSaved();
+            var scope = diagram.BeginUpdate();
+
+            router.Complete(0, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+            var inside = LinkOf(diagram).RouteState;
+            scope.Dispose();
+            context.RunOne();
+
+            Assert.Equal(DiagramRouteState.Provisional, inside);
+            Assert.Equal((DiagramRouteState.Routed, 3, false, false), (LinkOf(diagram).RouteState, LinkOf(diagram).Route.Length, diagram.IsModified, diagram.CanUndo));
+        });
+    }
+
+    [Fact]
+    public void RoutesAskedForInAWriteArriveWhenAChangedHandlerThrows()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Changed += Fail;
+
+            Assert.Throws<InvalidOperationException>(() => diagram.Connect(Link("ab", "a", "b")));
+            diagram.Changed -= Fail;
+            router.Complete(0, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+        });
+    }
+
+    [Fact]
+    public void RoutesOverTheBudgetFollowWhenAChangedHandlerThrows()
+    {
+        RunWith(static context =>
+        {
+            var diagram = new Diagram(Schema) { RouteLimit = TimeSpan.Zero };
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Add(Node("x", 200, -50) with { Bounds = new DiagramRect(200, -50, 50, 150) });
+            diagram.Changed += Fail;
+
+            Assert.Throws<InvalidOperationException>(() => diagram.Connect(Link("ab", "a", "b")));
+            diagram.Changed -= Fail;
+            context.RunOne();
+
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+        });
+    }
+
+    [Fact]
+    public void ProvisionalRoutesAreAskedForAgainAtRedoWhenAChangedHandlerThrows()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Connect(Link("ab", "a", "b"));
+            diagram.Undo();
+            diagram.Changed += Fail;
+
+            Assert.Throws<InvalidOperationException>(diagram.Redo);
+            diagram.Changed -= Fail;
+            Assert.Equal(2, router.Count);
+            router.Complete(1, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+
+            Assert.Equal(DiagramRouteState.Routed, LinkOf(diagram).RouteState);
+        });
+    }
+
+    [Fact]
+    public void LoadedRoutesFollowWhenAChangedHandlerThrows()
+    {
+        RunWith(static context =>
+        {
+            var json = CreateBlocked().ToJson().Replace("\"route\":", "\"ignored\":", StringComparison.Ordinal);
+            var router = new ManualRouter();
+            var asked = new Diagram(Schema with { Router = router });
+            var budgeted = new Diagram(Schema) { RouteLimit = TimeSpan.Zero };
+            asked.Changed += Fail;
+            budgeted.Changed += Fail;
+
+            Assert.Throws<InvalidOperationException>(() => asked.LoadJson(json));
+            Assert.Throws<InvalidOperationException>(() => budgeted.LoadJson(json));
+            asked.Changed -= Fail;
+            budgeted.Changed -= Fail;
+            router.Complete(0, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+            context.RunOne();
+
+            Assert.Equal((DiagramRouteState.Routed, DiagramRouteState.Routed), (LinkOf(asked).RouteState, LinkOf(budgeted).RouteState));
+        });
+    }
+
+    [Fact]
+    public void ManyNodesAcrossTheWayKeepTheSimpleRoute()
+    {
+        var nodes = Enumerable.Range(0, 23_200).Select(static i => Node($"n{i}", 0, 0) with { Bounds = new DiagramRect(30 * i, 30 * i, 20, 20) }).ToArray();
+        var first = nodes[0].Bounds;
+        var last = nodes[^1].Bounds;
+        var start = new LinkAnchor(new DiagramPoint(first.Right, first.Y + 10), DiagramSide.Right);
+        var end = new LinkAnchor(new DiagramPoint(last.X, last.Y + 10), DiagramSide.Left);
+
+        var route = OrthogonalRouter.Route(start, end, 20, 10, new ObstacleIndex(nodes), nodes[0].Id, nodes[^1].Id, first, last, 10);
+
+        Assert.Equal(LinkRouting.Orthogonal(start, end, 20, 10), route);
+    }
+
+    [Fact]
     public void RoutesOverTheBudgetFollowInSteps()
     {
         RunWith(static context =>
@@ -592,6 +719,36 @@ public sealed class RoutingTests
             context.RunOne();
 
             Assert.All(diagram.Snapshot.Links, static x => Assert.True((x.RouteState == DiagramRouteState.Routed) && (x.Route.Length > 2)));
+        });
+    }
+
+    [Fact]
+    public void RoutesThatFollowLaterReachLinksReplacedWhileTheyWait()
+    {
+        RunWith(static context =>
+        {
+            var diagram = new Diagram(Schema) { RouteLimit = TimeSpan.Zero, BackgroundRouteLimit = TimeSpan.Zero, PublishInterval = TimeSpan.FromHours(1) };
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Add(Node("x", 200, -50) with { Bounds = new DiagramRect(200, -50, 50, 150) });
+            diagram.Add(Node("c", 0, 300));
+            diagram.Add(Node("d", 400, 300));
+            diagram.Add(Node("y", 200, 250) with { Bounds = new DiagramRect(200, 250, 50, 150) });
+            using (diagram.BeginUpdate())
+            {
+                diagram.Connect(Link("ab", "a", "b"));
+                diagram.Connect(Link("cd", "c", "d"));
+            }
+
+            context.RunOne();
+            foreach (var link in diagram.Snapshot.Links.ToArray())
+            {
+                diagram.Replace(link with { Locked = true });
+            }
+
+            context.RunOne();
+
+            Assert.All(diagram.Snapshot.Links, static x => Assert.True(x.Locked && (x.RouteState == DiagramRouteState.Routed) && (x.Route.Length > 2)));
         });
     }
 

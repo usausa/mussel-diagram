@@ -23,8 +23,6 @@ public sealed partial class MusselDiagramView
 
     private IReadOnlyList<string>? scriptSelection;
 
-    private int selectionMessages;
-
     [Parameter]
     public bool ReadOnly { get; set; }
 
@@ -56,6 +54,8 @@ public sealed partial class MusselDiagramView
 
     internal long ScriptVersion { get; private set; }
 
+    internal int SelectionNumber { get; set; }
+
     private SemaphoreSlim Gate => Gates.GetValue(Diagram, static _ => new SemaphoreSlim(1, 1));
 
     public async ValueTask SelectAsync(IEnumerable<string> ids)
@@ -69,7 +69,7 @@ public sealed partial class MusselDiagramView
 
         try
         {
-            await controller.InvokeVoidAsync("select", SelectedIds, selectionMessages).ConfigureAwait(true);
+            await controller.InvokeVoidAsync("select", SelectedIds, SelectionNumber).ConfigureAwait(true);
         }
         catch (JSDisconnectedException)
         {
@@ -82,7 +82,6 @@ public sealed partial class MusselDiagramView
     {
         string[] list = [.. ids];
         scriptSelection = list;
-        selectionMessages++;
         return SetSelectionAsync([.. list.Where(IsSelectable)]);
     }
 
@@ -240,7 +239,9 @@ public sealed partial class MusselDiagramView
             if (resend)
             {
                 pendingChanges.Clear();
-                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(++ScriptVersion, Snapshot, Diagram.Index, templates))).ConfigureAwait(true);
+                var replaced = replacedDiagram;
+                replacedDiagram = false;
+                await current.InvokeVoidAsync("setTable", ScriptJson.ToElement(ScriptTables.Build(++ScriptVersion, Snapshot, Diagram.Index, templates)), replaced).ConfigureAwait(true);
                 return;
             }
 

@@ -57,9 +57,13 @@ public static class DiagramIconImport
 
             var icons = ImmutableArray.CreateBuilder<DiagramIcon>();
             var issues = ImmutableArray.CreateBuilder<DiagramIssue>();
+            var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var icon in iconValues.EnumerateObject())
             {
-                Add(icon.Name, new AliasChain(icon.Value));
+                if (ids.Add(icon.Name))
+                {
+                    Add(icon.Name, new AliasChain(icon.Value));
+                }
             }
 
             if (root.TryGetProperty("aliases", out var aliases) && (aliases.ValueKind == JsonValueKind.Object))
@@ -81,6 +85,11 @@ public static class DiagramIconImport
                 var walking = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var alias in aliases.EnumerateObject())
                 {
+                    if (!ids.Add(alias.Name))
+                    {
+                        continue;
+                    }
+
                     if (Resolve(alias.Name, alias.Value) is { } chain)
                     {
                         Add(alias.Name, chain);
@@ -156,10 +165,21 @@ public static class DiagramIconImport
                 var verticalFlip = Flag(value, "vFlip") ^ chain.VerticalFlip;
 
                 var rotate = (int)(turns % 4);
+                if (rotate < 0)
+                {
+                    rotate += 4;
+                }
+
                 var transforms = new List<string>();
                 if (rotate != 0)
                 {
-                    transforms.Add($"rotate({rotate * 90} {SvgSanitizer.Number(iconWidth / 2)} {SvgSanitizer.Number(iconHeight / 2)})");
+                    var (x, y) = rotate switch
+                    {
+                        1 => (iconHeight / 2, iconHeight / 2),
+                        2 => (iconWidth / 2, iconHeight / 2),
+                        _ => (iconWidth / 2, iconWidth / 2)
+                    };
+                    transforms.Add($"rotate({SvgSanitizer.Number(rotate * 90)} {SvgSanitizer.Number(x)} {SvgSanitizer.Number(y)})");
                 }
 
                 if (horizontalFlip)
@@ -180,6 +200,11 @@ public static class DiagramIconImport
                 if (transforms.Count > 0)
                 {
                     body = $"<g transform=\"{String.Join(' ', transforms)}\">{body}</g>";
+                }
+
+                if ((rotate % 2) == 1)
+                {
+                    (iconWidth, iconHeight) = (iconHeight, iconWidth);
                 }
 
                 if (SvgSanitizer.FromBody(body, SvgSanitizer.IdPrefix(prefix, id), iconWidth, iconHeight) is not { } svg)
@@ -229,8 +254,9 @@ public static class DiagramIconImport
 
     public static DiagramIconImportResult FromFolder(string path, string prefix, Func<string, DiagramIconInfo?>? map = null) =>
         ReadFiles(
-            Directory.EnumerateFiles(path, "*.svg", SearchOption.AllDirectories)
-                .Select(file => (Path.GetRelativePath(path, file).Replace('\\', '/'), (Func<string?>)(() => new FileInfo(file).Length > SvgSanitizer.MaxFileLength ? null : File.ReadAllText(file, Encoding.UTF8)))),
+            Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+                .Where(static x => x.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                .Select(file => (Path.GetRelativePath(path, file).Replace('\\', '/'), (Func<string?>)(() => ReadFile(file)))),
             prefix,
             map);
 
@@ -322,25 +348,43 @@ public static class DiagramIconImport
         try
         {
             using var reader = new StreamReader(entry.Open(), Encoding.UTF8, true, 4096, false);
-            var text = new StringBuilder();
-            var buffer = new char[4096];
-            int length;
-            while ((length = reader.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                if (text.Length + length > SvgSanitizer.MaxFileLength)
-                {
-                    return null;
-                }
-
-                text.Append(buffer, 0, length);
-            }
-
-            return text.ToString();
+            return Read(reader);
         }
         catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
         {
             return null;
         }
+    }
+
+    private static string? ReadFile(string file)
+    {
+        try
+        {
+            using var reader = new StreamReader(file, Encoding.UTF8, true);
+            return Read(reader);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Read(StreamReader reader)
+    {
+        var text = new StringBuilder();
+        var buffer = new char[4096];
+        int length;
+        while ((length = reader.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (text.Length + length > SvgSanitizer.MaxFileLength)
+            {
+                return null;
+            }
+
+            text.Append(buffer, 0, length);
+        }
+
+        return text.ToString();
     }
 
     private static void Report(string id, SanitizedSvg svg, ImmutableArray<DiagramIssue>.Builder issues)

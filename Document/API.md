@@ -120,7 +120,7 @@ Wraps HTML of the app so that a drag into the view starts from it. Other attribu
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
 Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command.  
-The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a letter of any script keeps `Shift` (`Ctrl+Shift+Ä`), a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. `+` and `-` are read as `Plus` and `Minus`, and `=` and `_` with `Ctrl` as `Plus` and `Minus`. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a letter of any script keeps `Shift` (`Ctrl+Shift+Ä`), a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
 
@@ -158,7 +158,7 @@ A write that breaks the structure (duplicate IDs, missing ends, parents or membe
 | `Origin` | `DiagramChangeOrigin`: `User`, `Api`, `Undo`, `Redo` or `Load` |
 | `Tag` | The tag of the write, or `null` |
 | `Added`, `Deleted`, `Updated` | The element IDs; empty with `IsReset` |
-| `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order`, `Route` and `Look` |
+| `GetChanges(id)` | `DiagramChangeParts` flags of an updated element: `Position`, `Size`, `Ends`, `Parent`, `Members`, `Label`, `Data`, `Order`, `Route` and `Look`; `None` when only its icon, lock or permissions changed, or only the type of a node, a group or a shared item |
 | `IsReset` | Everything changed (loading) |
 
 `DiagramJson.Write(stream, snapshot, schema)`, `DiagramJson.Read(stream, schema)` (a `DiagramLoadResult` with `Snapshot` and `Issues`) and their `…Async` forms do the same without a `Diagram`. Where a `Diagram` computes routes later (in the browser, or where there is a synchronization context), `Read` does not ask the router of the app and computes the built-in routes for up to 20 ms, as loading a `Diagram` does, and the links left come back provisional until a `Diagram` made from the snapshot routes them; elsewhere it waits for every route.  
@@ -415,7 +415,7 @@ These are for the diagram only. Set them on `.mussel-diagram` or on a `class` gi
 |---|---|
 | Render mode | Needs an interactive render mode (Server, WebAssembly or Auto). Prerendering and static SSR show nothing in the first version |
 | Size | The target is a diagram of 500 nodes, 50 groups and 600 links with a frame time under 16 ms (95th percentile) while dragging, panning and zooming |
-| Messages | In Interactive Server, one message from the browser is at most 32 KB by default (`HubOptions.MaximumReceiveMessageSize`). A selection change sends every selected ID, so selecting more than about 1,500 elements with the default IDs, or fewer with longer IDs, needs a larger limit |
+| Messages | In Interactive Server, one message from the browser is at most 32 KB by default (`HubOptions.MaximumReceiveMessageSize`). A selection change sends every selected ID, so selecting more than about 1,500 elements with the default IDs, or fewer with longer IDs, needs a larger limit. Committing a text written in the view sends the whole text, so a text of more than about 30,000 characters (about 10,000 in Japanese) needs one too |
 | Export | Only in a browser, through the view. The image size is limited by the canvas of the browser |
 | Icons | None are bundled. AWS icons are read from the package the user downloads |
 | Text | Labels are plain text; HTML in labels is shown as text |
