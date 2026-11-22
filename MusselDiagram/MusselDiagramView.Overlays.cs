@@ -92,7 +92,7 @@ public sealed partial class MusselDiagramView
         }
 
         builder.OpenComponent<DiagramBadgesView>(0);
-        builder.SetKey(element.Id);
+        builder.SetKey((generation, element.Id));
         builder.AddComponentParameter(1, nameof(DiagramBadgesView.Element), element);
         builder.AddComponentParameter(2, nameof(DiagramBadgesView.Badges), badges);
         builder.AddComponentParameter(3, nameof(DiagramBadgesView.Context), RenderContext);

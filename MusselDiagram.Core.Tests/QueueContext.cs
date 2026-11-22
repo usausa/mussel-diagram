@@ -8,6 +8,17 @@ internal sealed class QueueContext : SynchronizationContext
 
     private readonly object gate = new();
 
+    public int Count
+    {
+        get
+        {
+            lock (gate)
+            {
+                return queue.Count;
+            }
+        }
+    }
+
     public override void Post(SendOrPostCallback d, object? state)
     {
         lock (gate)

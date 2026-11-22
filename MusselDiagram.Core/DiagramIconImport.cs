@@ -254,7 +254,7 @@ public static class DiagramIconImport
 
     public static DiagramIconImportResult FromFolder(string path, string prefix, Func<string, DiagramIconInfo?>? map = null) =>
         ReadFiles(
-            Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+            Directory.EnumerateFiles(path, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 })
                 .Where(static x => x.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
                 .Select(file => (Path.GetRelativePath(path, file).Replace('\\', '/'), (Func<string?>)(() => ReadFile(file)))),
             prefix,

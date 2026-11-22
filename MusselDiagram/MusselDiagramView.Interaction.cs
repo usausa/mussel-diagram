@@ -19,6 +19,8 @@ public sealed partial class MusselDiagramView
 
     private int rejections;
 
+    private long changedVersion;
+
     private bool writing;
 
     private IReadOnlyList<string>? scriptSelection;
@@ -204,6 +206,7 @@ public sealed partial class MusselDiagramView
 
     private void OnDiagramChanged(object? sender, DiagramChangedEventArgs e)
     {
+        changedVersion = ScriptVersion + 1;
         if (!writing || (e.Origin != DiagramChangeOrigin.User))
         {
             stamps.Record(e, ScriptVersion + 1);

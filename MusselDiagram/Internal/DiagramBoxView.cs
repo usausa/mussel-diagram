@@ -328,8 +328,8 @@ internal sealed class DiagramBoxView : ComponentBase
             return;
         }
 
-        Append(builder, "--mussel-diagram-override-fill", style.Fill);
-        Append(builder, "--mussel-diagram-override-stroke", style.Stroke);
+        Append(builder, "--mussel-diagram-override-fill", ColorOf(style.Fill));
+        Append(builder, "--mussel-diagram-override-stroke", ColorOf(style.Stroke));
         Append(builder, "--mussel-diagram-override-stroke-width", style.StrokeWidth is { } strokeWidth ? Svg.Number(strokeWidth) : null);
         Append(builder, "--mussel-diagram-override-dash", style.Dash is { } dash ? Svg.Dash(dash) ?? "none" : null);
         Append(builder, "--mussel-diagram-override-opacity", style.Opacity is { } opacity ? Svg.Number(opacity) : null);
@@ -349,6 +349,8 @@ internal sealed class DiagramBoxView : ComponentBase
         Append(builder, "fill", ownColor ? null : format.Color);
         return builder.Length == 0 ? null : builder.ToString();
     }
+
+    private static string? ColorOf(string? value) => (value is not null) && LookValues.IsColor(value) ? value : null;
 
     private static void Append(StringBuilder builder, string name, string? value)
     {

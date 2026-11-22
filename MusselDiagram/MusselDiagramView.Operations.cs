@@ -72,6 +72,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.Move,
             rejectionsSeen,
+            startVersion,
             selection,
             () =>
             {
@@ -126,6 +127,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.Resize,
             rejectionsSeen,
+            startVersion,
             selection,
             () =>
             {
@@ -150,6 +152,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.Connect,
             rejectionsSeen,
+            null,
             selection,
             () => CheckConnect(source, target, linkType),
             async () =>
@@ -168,6 +171,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.Reconnect,
             rejectionsSeen,
+            startVersion,
             selection,
             () => CheckReconnect(linkId, side, end, startVersion, out link),
             async () =>
@@ -188,6 +192,7 @@ public sealed partial class MusselDiagramView
         return await CommitAsync(
             DiagramOperation.Connect,
             rejectionsSeen,
+            null,
             selection,
             () => CheckPlace(element, from, linkType, out target),
             async () =>
@@ -219,6 +224,7 @@ public sealed partial class MusselDiagramView
     private async Task<ScriptCommitResult> CommitAsync(
         DiagramOperation operation,
         int rejectionsSeen,
+        long? startVersion,
         IReadOnlyList<string>? selection,
         Func<DiagramReason?> check,
         Func<Task<DiagramReason?>> before,
@@ -250,14 +256,14 @@ public sealed partial class MusselDiagramView
                 return new ScriptCommitResult(false, Snapshot.Version, null, rejections);
             }
 
-            var reason = check();
+            var reason = Check();
             if (reason is null)
             {
                 var snapshot = Snapshot;
                 reason = await HandleAsync(turn, before).ConfigureAwait(true);
                 if ((reason is null) && !ReferenceEquals(snapshot, Snapshot))
                 {
-                    reason = check();
+                    reason = Check();
                 }
             }
 
@@ -288,6 +294,8 @@ public sealed partial class MusselDiagramView
         {
             turn?.End();
         }
+
+        DiagramReason? Check() => (rejectionsSeen == Int32.MaxValue) && (startVersion < changedVersion) ? Reason(DiagramReasonKind.Changed) : check();
     }
 
     private DiagramLink NewLink(string id, DiagramLinkEnd source, DiagramLinkEnd target, string linkType) =>

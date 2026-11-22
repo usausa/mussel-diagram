@@ -67,6 +67,7 @@ public sealed partial class MusselDiagramView
         return await CommitAsync(
             DiagramOperation.Drop,
             rejectionsSeen,
+            startVersion,
             selection,
             () =>
             {
@@ -102,6 +103,7 @@ public sealed partial class MusselDiagramView
         return CommitAsync(
             DiagramOperation.TextEdit,
             rejectionsSeen,
+            startVersion,
             selection,
             () =>
             {

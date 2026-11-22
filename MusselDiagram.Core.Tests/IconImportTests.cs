@@ -2,6 +2,8 @@ namespace MusselDiagram;
 
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -222,6 +224,66 @@ public sealed class IconImportTests
 
         Assert.Equal(kept, Regex.Count(Assert.Single(result.IconSet.Icons).Body, "<use "));
         Assert.Equal(kept == 0, result.Issues.Any(static x => x.Kind == DiagramIssueKind.RemovedSvgContent));
+    }
+
+    [Fact]
+    public void AnIdThatTheSanitizerRemovesFirstDoesNotHideTheElementThatIsDrawn()
+    {
+        var levels = String.Concat(Enumerable.Range(1, 9).Select(static i => $"<desc id=\"a{i}\"/><g id=\"a{i}\">{String.Concat(Enumerable.Repeat($"<use href=\"#a{i - 1}\"/>", 10))}</g>"));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><g id=\"a0\"><path d=\"M0 0h1v1z\"/></g>{levels}<use href=\"#a9\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("hidden.svg", svg)), "demo");
+
+        Assert.Equal(Enumerable.Repeat("demo-hidden-a0", 10), Regex.Matches(Assert.Single(result.IconSet.Icons).Body, "href=\"#([^\"]+)\"").Select(static x => x.Groups[1].Value));
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal((DiagramIssueKind.RemovedSvgContent, "use"), (issue.Kind, issue.Arguments[1]));
+    }
+
+    [Fact]
+    public void AUseWithBothReferencesIsWrittenWithTheOneItIsCountedBy()
+    {
+        var levels = String.Concat(Enumerable.Range(1, 9).Select(static i => $"<g id=\"a{i}\">{String.Concat(Enumerable.Repeat($"<use xlink:href=\"#a{i - 1}\" href=\"#a0\"/>", 10))}</g>"));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" viewBox=\"0 0 24 24\"><g id=\"a0\"><path d=\"M0 0h1v1z\"/></g>{levels}<use xlink:href=\"#a9\"/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("both.svg", svg)), "demo");
+
+        var body = Assert.Single(result.IconSet.Icons).Body;
+        Assert.Equal(91, Regex.Count(body, "<use "));
+        Assert.Equal(90, Regex.Count(body, "<use href=\"#demo-both-a0\"/>"));
+        Assert.Contains("<use href=\"#demo-both-a9\"/>", body, StringComparison.Ordinal);
+        Assert.Empty(result.Issues);
+    }
+
+    [Theory]
+    [InlineData("mask", "mask", false)]
+    [InlineData("clipPath", "clip-path", false)]
+    [InlineData("mask", "mask", true)]
+    public void NestedReferencesAreRemovedLikeUsesWhenTheyAddMoreThanTenThousandElements(string element, string attribute, bool inStyle)
+    {
+        string Reference(int level) => inStyle ? $"style=\"{attribute}:url(#r{level})\"" : $"{attribute}=\"url(#r{level})\"";
+        var levels = String.Concat(Enumerable.Range(1, 9).Select(i => $"<{element} id=\"r{i}\">{String.Concat(Enumerable.Repeat($"<rect width=\"1\" height=\"1\" {Reference(i - 1)}/>", 10))}</{element}>"));
+        var svg = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><defs><{element} id=\"r0\"><rect width=\"1\" height=\"1\"/></{element}>{levels}</defs><rect width=\"24\" height=\"24\" {Reference(9)}/></svg>";
+
+        var result = DiagramIconImport.FromZip(Zip(("nest.svg", svg)), "demo");
+
+        Assert.Equal(Enumerable.Repeat("demo-nest-r0", 10), Regex.Matches(Assert.Single(result.IconSet.Icons).Body, "url\\(#([^)]+)\\)").Select(static x => x.Groups[1].Value));
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal((DiagramIssueKind.RemovedSvgContent, attribute), (issue.Kind, issue.Arguments[1]));
+    }
+
+    [Fact]
+    public void IconsThatUseAMaskAClipPathAndAPatternOnceStayAsTheyAre()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><mask id="m"><rect width="24" height="24" fill="white"/></mask><clipPath id="c"><circle cx="12" cy="12" r="10"/></clipPath><pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2"/></pattern></defs><rect width="24" height="24" fill="url(#p)" mask="url(#m)" clip-path="url(#c)"/></svg>""";
+
+        var result = DiagramIconImport.FromZip(Zip(("plain.svg", svg)), "demo");
+
+        Assert.Equal(
+            "<defs><mask id=\"demo-plain-m\"><rect width=\"24\" height=\"24\" fill=\"white\"/></mask><clipPath id=\"demo-plain-c\"><circle cx=\"12\" cy=\"12\" r=\"10\"/></clipPath>" +
+            "<pattern id=\"demo-plain-p\" width=\"4\" height=\"4\" patternUnits=\"userSpaceOnUse\"><rect width=\"2\" height=\"2\"/></pattern></defs>" +
+            "<rect width=\"24\" height=\"24\" fill=\"url(#demo-plain-p)\" mask=\"url(#demo-plain-m)\" clip-path=\"url(#demo-plain-c)\"/>",
+            Assert.Single(result.IconSet.Icons).Body);
+        Assert.Empty(result.Issues);
     }
 
     [Fact]
@@ -562,6 +624,35 @@ public sealed class IconImportTests
     }
 
     [Fact]
+    public void FoldersThatCannotBeOpenedAreSkipped()
+    {
+        var folder = Directory.CreateTempSubdirectory("mussel-diagram-icons-").FullName;
+        try
+        {
+            var locked = Directory.CreateDirectory(Path.Combine(folder, "locked"));
+            File.WriteAllText(Path.Combine(folder, "open.svg"), Square);
+            File.WriteAllText(Path.Combine(locked.FullName, "inside.svg"), Square);
+            DiagramIconImportResult result;
+            Lock(locked, true);
+            try
+            {
+                result = DiagramIconImport.FromFolder(folder, "demo");
+            }
+            finally
+            {
+                Lock(locked, false);
+            }
+
+            Assert.Equal(["open"], result.IconSet.Icons.Select(static x => x.Id));
+            Assert.Empty(result.Issues);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
     public void ListedFilesAreNotReadUntilLoaded()
     {
         var reads = new List<string>();
@@ -640,6 +731,29 @@ public sealed class IconImportTests
     {
         var at = bytes.AsSpan().IndexOf(signature) + offset;
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(at), (ushort)(BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(at)) | flags));
+    }
+
+    private static void Lock(DirectoryInfo folder, bool locked)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var security = folder.GetAccessControl();
+            var rule = new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+            if (locked)
+            {
+                security.AddAccessRule(rule);
+            }
+            else
+            {
+                security.RemoveAccessRule(rule);
+            }
+
+            folder.SetAccessControl(security);
+        }
+        else
+        {
+            File.SetUnixFileMode(folder.FullName, locked ? UnixFileMode.None : UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private static MemoryStream Zip(params (string Path, string Text)[] files)

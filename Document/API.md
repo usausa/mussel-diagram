@@ -293,7 +293,7 @@ An immutable record.
 | Type | Members |
 |---|---|
 | `DiagramOverlay` | `States` (names), `Style` (`DiagramRenderOverride`), `Badges` (`DiagramBadge` list) |
-| `DiagramRenderOverride` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `Opacity`; `null` keeps the look of the element |
+| `DiagramRenderOverride` | `Fill`, `Stroke`, `StrokeWidth`, `Dash`, `Opacity`; `null` keeps the look of the element. `Fill` and `Stroke` are CSS colors, as in a look (`#` hex, color names, color functions or `var(--…)`); other values are not used |
 | `DiagramBadge` | `Kind`, `Text`, `Icon`, `Tone` (`DiagramBadgeTone`: `Default`, `Info`, `Success`, `Warning` or `Error`), `Tooltip` |
 | `DiagramBadgeKind` | `Name`, `Corner` (`DiagramCorner`: `TopLeft`, `TopRight`, `BottomLeft` or `BottomRight`), `Order`, `Clickable` |
 

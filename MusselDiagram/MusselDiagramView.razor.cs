@@ -40,6 +40,8 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
 
     private bool replacedDiagram;
 
+    private int generation;
+
     private bool schemaChanged;
 
     private ShownSet? shown;
@@ -495,6 +497,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         subscribed = diagram;
         pendingChanges.Clear();
         stamps.Reset(ScriptVersion + 1);
+        changedVersion = ScriptVersion + 1;
         if (diagram is null)
         {
             return;
@@ -510,6 +513,7 @@ public sealed partial class MusselDiagramView : IAsyncDisposable
         }
 
         replacedDiagram = true;
+        generation++;
         if (SelectedIds.Count > 0)
         {
             SelectedIds = [];

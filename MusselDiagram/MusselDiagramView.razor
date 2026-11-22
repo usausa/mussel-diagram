@@ -5,10 +5,10 @@
             @Defs
             <g class="mussel-diagram-viewport">
                 <g class="mussel-diagram-grid"></g>
-                <g class="mussel-diagram-groups">@Groups</g>
-                <g class="mussel-diagram-overlay-groups">@OverlayGroups</g>
-                <g class="mussel-diagram-links">@Links</g>
-                <g class="mussel-diagram-nodes">@Nodes</g>
+                <g class="mussel-diagram-groups" @key="(generation, 0)">@Groups</g>
+                <g class="mussel-diagram-overlay-groups" @key="(generation, 1)">@OverlayGroups</g>
+                <g class="mussel-diagram-links" @key="(generation, 2)">@Links</g>
+                <g class="mussel-diagram-nodes" @key="(generation, 3)">@Nodes</g>
                 <g class="mussel-diagram-badges">@Badges</g>
             </g>
         </svg>

@@ -1347,8 +1347,7 @@ function inlineIcons(clone) {
     for (const use of [...clone.querySelectorAll('use')]) {
         const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
         const symbol = href.startsWith('#') ? symbols.get(href.slice(1)) : null;
-        if (!symbol) {
-            use.remove();
+        if (!symbol || use.closest('symbol')) {
             continue;
         }
         const inner = document.createElementNS(SVG_NS, 'svg');
@@ -1373,6 +1372,13 @@ function inlineIcons(clone) {
     }
     for (const symbol of symbols.values()) {
         symbol.remove();
+    }
+    const ids = new Set([...clone.querySelectorAll('[id]')].map((element) => element.getAttribute('id')));
+    for (const use of [...clone.querySelectorAll('use')]) {
+        const href = use.getAttribute('href') ?? use.getAttribute('xlink:href') ?? '';
+        if (!href.startsWith('#') || !ids.has(href.slice(1))) {
+            use.remove();
+        }
     }
 }
 
@@ -1617,7 +1623,7 @@ class DiagramController {
         this.cover = document.createElement('div');
         this.cover.className = 'mussel-diagram-cursor';
         root.append(this.cover);
-        this.view = { x: 0, y: 0, zoom: 1 };
+        this.view = { x: 0, y: 0, zoom: Math.min(options.maxZoom, Math.max(options.minZoom, 1)) };
         this.gesture = null;
         this.pan = null;
         this.press = null;
@@ -1774,6 +1780,15 @@ class DiagramController {
     }
 
     setTable(table, replaced) {
+        if (replaced) {
+            this.cancelDrag(true);
+            this.cancelExternal();
+            this.closePicker();
+            if (this.editor) {
+                this.closeEditor();
+                this.root.focus({ preventScroll: true });
+            }
+        }
         if (replaced && (this.pending.length > 0)) {
             this.revertFrom(this.pending[0]);
         }
@@ -2357,7 +2372,7 @@ class DiagramController {
         }
         if (hit.kind === 'badge') {
             if (this.dotnet) {
-                this.track(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index).catch(() => { }));
+                this.track(this.answered(this.dotnet.invokeMethodAsync('OnBadgeClickedAsync', hit.id, hit.index)).catch(() => { }));
             }
             return;
         }
@@ -2440,7 +2455,9 @@ class DiagramController {
 
     sendSelection(ids) {
         this.selectionNumber++;
-        this.track(this.answered(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', ids, this.selectionNumber)).catch(() => { }), this.selectionsInFlight);
+        this.track(this.answered(this.dotnet.invokeMethodAsync('OnSelectionChangedAsync', ids, this.selectionNumber)).catch(() => {
+            this.sentSelection = null;
+        }), this.selectionsInFlight);
     }
 
     pruneSelection() {
@@ -3725,15 +3742,26 @@ class DiagramController {
         if (this.options.hostSearch && this.dotnet) {
             const token = (picker.token ?? 0) + 1;
             picker.token = token;
-            this.dotnet.invokeMethodAsync('SearchTypesAsync', picker.search.value).then((names) => {
+            picker.searching = true;
+            this.answered(this.dotnet.invokeMethodAsync('SearchTypesAsync', picker.search.value)).then((names) => {
                 if ((this.picker !== picker) || (picker.token !== token)) {
                     return;
                 }
                 const items = new Map(picker.items.map((x) => [x.type.name, x]));
+                picker.searching = false;
                 picker.shown = names.map((name) => items.get(name)).filter((x) => x);
                 picker.active = 0;
                 this.renderPicker();
-            }).catch(() => { });
+                if (picker.choosing) {
+                    picker.choosing = false;
+                    this.choosePicker(picker.active);
+                }
+            }).catch(() => {
+                if ((this.picker === picker) && (picker.token === token)) {
+                    picker.searching = false;
+                    picker.choosing = false;
+                }
+            });
             return;
         }
         const types = searchTypes(picker.items.map((x) => x.type), picker.search.value);
@@ -3815,7 +3843,11 @@ class DiagramController {
             }
         } else if (event.key === 'Enter') {
             event.preventDefault();
-            this.choosePicker(picker.active);
+            if (picker.searching) {
+                picker.choosing = true;
+            } else {
+                this.choosePicker(picker.active);
+            }
         } else if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
@@ -3920,6 +3952,7 @@ class DiagramController {
         } catch {
             result = null;
             this.rejections = ALL_REJECTIONS;
+            this.sentSelection = null;
         }
         for (const element of entry.elements) {
             element.removeAttribute('data-pending');
@@ -4215,7 +4248,9 @@ class DiagramController {
                     this.sendSelection(current);
                 }
             }
-        }).catch(() => { });
+        }).catch(() => {
+            this.sentSelection = null;
+        });
         this.commandChain = run;
         this.track(run, this.commandsInFlight);
     }
@@ -4331,7 +4366,7 @@ class DiagramController {
     }
 
     quickAdd(x, y) {
-        if (!this.options.dropEnabled || this.waiting || this.drag) {
+        if (!this.options.dropEnabled || this.waiting || this.drag || this.external) {
             return;
         }
         this.foldGesture();
@@ -4423,7 +4458,7 @@ class DiagramController {
     }
 
     editText(id, slot) {
-        if (this.waiting || this.drag) {
+        if (this.waiting || this.drag || this.external) {
             return;
         }
         const definition = this.editableSlots(id).find((x) => x.name === slot);

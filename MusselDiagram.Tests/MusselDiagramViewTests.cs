@@ -636,6 +636,57 @@ public sealed class MusselDiagramViewTests : BunitContext
         Assert.Equal(["select", "fit", "centerOn", "ready"], runtime.Module.Calls.Where(static x => x is "select" or "fit" or "centerOn" or "ready"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SourcesAttachAgainToAViewMadeAgain(bool palette)
+    {
+        var instance = new LateModule();
+        var runtime = new LateRuntime { Module = { Hold = "attach", Returned = instance } };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var first = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var second = Render<MusselDiagramView>(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+        var render = palette ? RenderPalette() : RenderSource();
+        await first.InvokeAsync(() => runtime.Import.SetResult(runtime.Module));
+        await first.WaitForAssertionAsync(() => Assert.Single(runtime.Module.Calls, static x => x == "attachSource"));
+
+        render(second.Instance);
+
+        await first.WaitForAssertionAsync(() => Assert.Equal(2, runtime.Module.Calls.Count(static x => x == "attachSource")));
+        Assert.Contains("dispose", instance.Calls);
+        Assert.Equal(second.Instance.Root.Id, ((ElementReference)runtime.Module.Arguments[^1]![1]!).Id);
+
+        Action<MusselDiagramView> RenderPalette()
+        {
+            var cut = Render<MusselDiagramPalette>(parameters => parameters.Add(p => p.View, first.Instance));
+            return view => cut.Render(parameters => parameters.Add(p => p.View, view));
+        }
+
+        Action<MusselDiagramView> RenderSource()
+        {
+            var cut = Render<MusselDiagramDragSource>(parameters => parameters.Add(p => p.View, first.Instance).Add(static p => p.Type, "service"));
+            return view => cut.Render(parameters => parameters.Add(p => p.View, view).Add(static p => p.Type, "service"));
+        }
+    }
+
+    [Fact]
+    public void AnotherDiagramDrawsTheElementsAgainFromTheStart()
+    {
+        var diagram = CreateDiagram();
+        var cut = Render<MusselDiagramView>(parameters => parameters.Add(p => p.Diagram, diagram));
+        var boxes = cut.FindComponents<DiagramBoxView>().Select(static x => x.Instance).ToList();
+        var links = cut.FindComponents<DiagramLinkView>().Select(static x => x.Instance).ToList();
+
+        cut.Render(parameters => parameters.Add(p => p.Diagram, diagram));
+        var kept = cut.FindComponents<DiagramBoxView>().All(x => boxes.Contains(x.Instance));
+        cut.Render(parameters => parameters.Add(static p => p.Diagram, CreateDiagram()));
+
+        Assert.True(kept);
+        Assert.NotEmpty(cut.FindComponents<DiagramBoxView>());
+        Assert.DoesNotContain(cut.FindComponents<DiagramBoxView>(), x => boxes.Contains(x.Instance));
+        Assert.DoesNotContain(cut.FindComponents<DiagramLinkView>(), x => links.Contains(x.Instance));
+    }
+
     [Fact]
     public async Task SourcesReleaseTheScriptThatArrivesAfterTheyAreGone()
     {

@@ -15,6 +15,8 @@ public sealed class Diagram
 
     private readonly Dictionary<string, (DiagramLink Original, DiagramLink Routed, DiagramSnapshot Routing)> routedLinks = new(StringComparer.Ordinal);
 
+    private readonly List<(PendingRoute Route, Task<DiagramRouteResult> Answer)> heldRoutes = [];
+
     private long unpublishedSince;
 
     private static readonly DiagramWriteOptions SkipHistory = new() { History = DiagramHistoryMode.Skip };
@@ -279,6 +281,18 @@ public sealed class Diagram
             return;
         }
 
+        try
+        {
+            CommitUpdate();
+        }
+        finally
+        {
+            ReleaseHeld();
+        }
+    }
+
+    private void CommitUpdate()
+    {
         var before = updateBefore!;
         var changes = updateChanges!;
         var options = updateOptions;
@@ -299,6 +313,27 @@ public sealed class Diagram
         }
 
         Commit(before, Snapshot, net, updateOrigin, options);
+    }
+
+    private void ReleaseHeld()
+    {
+        if (heldRoutes.Count > 0)
+        {
+            (PendingRoute Route, Task<DiagramRouteResult> Answer)[] held = [.. heldRoutes];
+            heldRoutes.Clear();
+            Post(() =>
+            {
+                foreach (var (route, answer) in held)
+                {
+                    ApplyRoute(route, answer);
+                }
+            });
+        }
+
+        if ((deferredLinks.Count > 0) || (routedLinks.Count > 0))
+        {
+            Schedule();
+        }
     }
 
     private void Track(IReadOnlyList<PendingRoute> pending)
@@ -339,17 +374,8 @@ public sealed class Diagram
     {
         if (updateDepth > 0)
         {
-            if (SynchronizationContext.Current is { } context)
-            {
-                context.Post(_ => ApplyRoute(route, task), null);
-                return;
-            }
-
-            if (OperatingSystem.IsBrowser())
-            {
-                _ = Task.Delay(1).ContinueWith(_ => ApplyRoute(route, task), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
-                return;
-            }
+            heldRoutes.Add((route, task));
+            return;
         }
 
         route.Cancellation.Dispose();
@@ -454,6 +480,22 @@ public sealed class Diagram
         Schedule();
     }
 
+    private static void Post(Action action)
+    {
+        if (SynchronizationContext.Current is { } context)
+        {
+            context.Post(_ => action(), null);
+        }
+        else if (OperatingSystem.IsBrowser())
+        {
+            _ = Task.Delay(1).ContinueWith(_ => action(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+        else
+        {
+            action();
+        }
+    }
+
     private void Schedule()
     {
         if (deferredScheduled)
@@ -461,20 +503,8 @@ public sealed class Diagram
             return;
         }
 
-        if (SynchronizationContext.Current is { } context)
-        {
-            deferredScheduled = true;
-            context.Post(_ => RouteDeferred(), null);
-        }
-        else if (OperatingSystem.IsBrowser())
-        {
-            deferredScheduled = true;
-            _ = Task.Delay(1).ContinueWith(_ => RouteDeferred(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
-        }
-        else
-        {
-            RouteDeferred();
-        }
+        deferredScheduled = true;
+        Post(RouteDeferred);
     }
 
     private void RouteDeferred()
@@ -487,7 +517,6 @@ public sealed class Diagram
 
         if (updateDepth > 0)
         {
-            Schedule();
             return;
         }
 

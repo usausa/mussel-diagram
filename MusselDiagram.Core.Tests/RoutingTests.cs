@@ -543,6 +543,49 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void RoutesThatArriveInAnUpdateAreHeldInsteadOfPostedAgain()
+    {
+        RunWith(static context =>
+        {
+            var router = new ManualRouter();
+            var diagram = new Diagram(Schema with { Router = router });
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Connect(Link("ab", "a", "b"));
+            var scope = diagram.BeginUpdate();
+
+            router.Complete(0, [new DiagramPoint(100, 25), new DiagramPoint(250, 100), new DiagramPoint(400, 25)]);
+            context.RunOne();
+            var waiting = context.Count;
+            scope.Dispose();
+            context.RunOne();
+
+            Assert.Equal((0, DiagramRouteState.Routed), (waiting, LinkOf(diagram).RouteState));
+        });
+    }
+
+    [Fact]
+    public void RoutesOverTheBudgetInAnUpdateFollowAfterItWithoutBeingPostedAgain()
+    {
+        RunWith(static context =>
+        {
+            var diagram = new Diagram(Schema) { RouteLimit = TimeSpan.Zero };
+            diagram.Add(Node("a", 0, 0));
+            diagram.Add(Node("b", 400, 0));
+            diagram.Add(Node("x", 200, -50) with { Bounds = new DiagramRect(200, -50, 50, 150) });
+            var scope = diagram.BeginUpdate();
+            diagram.Connect(Link("ab", "a", "b"));
+
+            context.RunOne();
+            var waiting = context.Count;
+            scope.Dispose();
+            context.RunOne();
+
+            Assert.Equal((0, DiagramRouteState.Routed), (waiting, LinkOf(diagram).RouteState));
+        });
+    }
+
+    [Fact]
     public void RoutesAskedForInAWriteArriveWhenAChangedHandlerThrows()
     {
         RunWith(static context =>

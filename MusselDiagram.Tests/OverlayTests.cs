@@ -51,6 +51,24 @@ public sealed class OverlayTests : BunitContext
     }
 
     [Fact]
+    public void OverrideColorsThatAreNotCssColorsAreNotUsed()
+    {
+        var overlays = new Dictionary<string, DiagramOverlay>
+        {
+            ["a"] = new() { Style = new DiagramRenderOverride { Fill = "red;cursor:url(https://example.com/t.png),auto", Stroke = "#123456" } },
+            ["ab"] = new() { Style = new DiagramRenderOverride { Stroke = "blue;display:none" } }
+        };
+
+        var cut = RenderView(CreateDiagram(), overlays, null);
+
+        var a = cut.Find("g.mussel-diagram-node[data-id='a']").GetAttribute("style") ?? string.Empty;
+        Assert.DoesNotContain("--mussel-diagram-override-fill", a, StringComparison.Ordinal);
+        Assert.DoesNotContain("cursor", a, StringComparison.Ordinal);
+        Assert.Contains("--mussel-diagram-override-stroke: #123456;", a, StringComparison.Ordinal);
+        Assert.DoesNotContain("display", cut.Find("g.mussel-diagram-link[data-id='ab']").GetAttribute("style") ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BadgesAreOrderedByCornerAndKind()
     {
         var overlays = new Dictionary<string, DiagramOverlay>

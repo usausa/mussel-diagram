@@ -146,6 +146,28 @@ public sealed class OverlayE2ETests(AppFixture app) : IClassFixture<AppFixture>,
     }
 
     [Fact]
+    public async Task ExportedIconsKeepTheUsesThatPointInsideThem()
+    {
+        opened = await app.OpenAsync("workflow", "server");
+        await opened.Page.EvaluateAsync(
+            """
+            () => {
+                const use = document.querySelector("g.mussel-diagram-node[data-id='start'] use");
+                const symbol = document.getElementById(use.getAttribute('href').slice(1));
+                symbol.insertAdjacentHTML('beforeend', '<g id="probe"><path d="M0 0h4v4H0z"/></g><use href="#probe" x="8"/><use href="#missing"/>');
+            }
+            """);
+
+        var svg = XDocument.Parse(Encoding.UTF8.GetString(await DownloadAsync("SVG")));
+
+        XNamespace ns = "http://www.w3.org/2000/svg";
+        var start = svg.Root!.Descendants(ns + "g").Single(static x => x.Attribute("data-id")?.Value == "start");
+        var target = Assert.Single(start.Descendants(ns + "use")).Attribute("href")!.Value[1..];
+        Assert.StartsWith("probe-e", target, StringComparison.Ordinal);
+        Assert.Contains(start.Descendants(ns + "g"), x => x.Attribute("id")?.Value == target);
+    }
+
+    [Fact]
     public async Task ExportedMarkersHaveTheColorOfTheirTypeInsteadOfTheContextStroke()
     {
         opened = await app.OpenAsync("workflow", "server");

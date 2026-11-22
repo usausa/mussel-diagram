@@ -19,6 +19,10 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
 
     private IJSObjectReference? source;
 
+    private ElementReference? attachedRoot;
+
+    private bool attaching;
+
     private Diagram? subscribed;
 
     private MusselDiagramView? followed;
@@ -44,6 +48,8 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
 
     private string RootClass => AdditionalAttributes?.GetValueOrDefault("class") is { } extra ? $"mussel-diagram-palette {extra}" : "mussel-diagram-palette";
 
+    private bool Attached => (attachedRoot is { } attached) && String.Equals(attached.Id, View.Root.Id, StringComparison.Ordinal);
+
     public async ValueTask DisposeAsync()
     {
         disposed = true;
@@ -61,21 +67,25 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || disposed)
+        if (disposed || attaching || ((module is null) && !firstRender) || Attached)
         {
             return;
         }
 
+        attaching = true;
         try
         {
-            module = await Runtime.InvokeAsync<IJSObjectReference>("import", MusselDiagramView.ModulePath).ConfigureAwait(true);
-            if (disposed)
+            module ??= await Runtime.InvokeAsync<IJSObjectReference>("import", MusselDiagramView.ModulePath).ConfigureAwait(true);
+            while (!disposed && !Attached)
             {
-                await ReleaseAsync().ConfigureAwait(true);
-                return;
+                var viewRoot = View.Root;
+                var previous = source;
+                source = null;
+                attachedRoot = viewRoot;
+                await ScriptCalls.ReleaseAsync(previous, null).ConfigureAwait(true);
+                source = await module.InvokeAsync<IJSObjectReference>("attachSource", root, viewRoot).ConfigureAwait(true);
             }
 
-            source = await module.InvokeAsync<IJSObjectReference>("attachSource", root, View.Root).ConfigureAwait(true);
             if (disposed)
             {
                 await ReleaseAsync().ConfigureAwait(true);
@@ -83,6 +93,10 @@ public sealed partial class MusselDiagramPalette : IAsyncDisposable
         }
         catch (JSDisconnectedException)
         {
+        }
+        finally
+        {
+            attaching = false;
         }
     }
 
