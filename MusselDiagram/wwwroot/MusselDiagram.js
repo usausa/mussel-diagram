@@ -323,7 +323,8 @@ const MAX_CURVE_REACH = 1e12;
 const ROUTE_RANGE = 2e12;
 const GUIDE_EPSILON = 0.01;
 const ELEMENT_SELECTOR = '.mussel-diagram-node, .mussel-diagram-group, .mussel-diagram-link';
-const NO_DRAG_SELECTOR = 'input, textarea, select, button, [contenteditable], .mussel-diagram-nodrag';
+const INPUT_SELECTOR = 'input, textarea, select, button, [contenteditable]:not([contenteditable="false" i])';
+const NO_DRAG_SELECTOR = `${INPUT_SELECTOR}, .mussel-diagram-nodrag`;
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const DEFAULT_LINK_TYPE = { allowSelf: false, allowDuplicate: false, allowCrossParent: true, allowCycles: true, form: 'orthogonal', stub: 20, sourceCut: 0, targetCut: 10 };
@@ -1569,6 +1570,18 @@ async function embedFonts(families, cache) {
     return faces.join('');
 }
 
+export function canDrawAt(context, x, y) {
+    try {
+        context.fillStyle = '#010203';
+        context.fillRect(x, y, 1, 1);
+        const probe = context.getImageData(x, y, 1, 1).data;
+        context.clearRect(x, y, 1, 1);
+        return (probe[0] === 1) && (probe[1] === 2) && (probe[2] === 3);
+    } catch {
+        return false;
+    }
+}
+
 async function rasterize(text, width, height, options) {
     const scale = options.scale > 0 ? options.scale : 1;
     const canvas = document.createElement('canvas');
@@ -1578,13 +1591,7 @@ async function rasterize(text, width, height, options) {
     if (!context || (canvas.width !== Math.max(1, Math.round(width * scale))) || (canvas.height !== Math.max(1, Math.round(height * scale)))) {
         return { tooLarge: true };
     }
-    const x = canvas.width - 1;
-    const y = canvas.height - 1;
-    context.fillStyle = '#010203';
-    context.fillRect(x, y, 1, 1);
-    const probe = context.getImageData(x, y, 1, 1).data;
-    context.clearRect(x, y, 1, 1);
-    if ((probe[0] !== 1) || (probe[1] !== 2) || (probe[2] !== 3)) {
+    if (!canDrawAt(context, canvas.width - 1, canvas.height - 1)) {
         return { tooLarge: true };
     }
     const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
@@ -2092,7 +2099,8 @@ class DiagramController {
                 return;
             }
         }
-        if (event.target.closest?.(NO_DRAG_SELECTOR)) {
+        const pressed = event.target === this.cover ? this.underCover(event) : event.target;
+        if (pressed?.closest?.(NO_DRAG_SELECTOR)) {
             return;
         }
         const panButton = (event.button === 1) || ((event.button === 0) && this.spaceDown);
@@ -2268,6 +2276,10 @@ class DiagramController {
         if (this.root.hasPointerCapture(pointerId)) {
             this.cover.setPointerCapture(pointerId);
         }
+    }
+
+    underCover(event) {
+        return document.elementsFromPoint(event.clientX, event.clientY).find((e) => e !== this.cover) ?? null;
     }
 
     endPan() {
@@ -4197,7 +4209,7 @@ class DiagramController {
 
     isTyping(event, key) {
         const target = event.target;
-        if ((target === this.root) || !target?.closest?.('input, textarea, select, button, [contenteditable]')) {
+        if ((target === this.root) || !target?.closest?.(INPUT_SELECTOR)) {
             return false;
         }
         if (/^F\d{1,2}$/.test(event.key ?? '')) {

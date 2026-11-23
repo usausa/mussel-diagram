@@ -229,6 +229,95 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
 
     [Theory]
     [MemberData(nameof(Modes))]
+    public async Task HoldingSpaceDoesNotPanFromInputsInTemplates(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var page = opened.Page;
+        var viewport = opened.View.Locator("svg.mussel-diagram-canvas > g.mussel-diagram-viewport");
+        var card = opened.View.Locator("g.mussel-diagram-node[data-id='card']");
+        await card.EvaluateAsync(
+            """
+            node => {
+                const box = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                box.setAttribute('width', '80');
+                box.setAttribute('height', '20');
+                box.innerHTML = '<div style="display:flex"><input style="width:40px;height:20px;margin:0;padding:0;border:0"><div class="mussel-diagram-nodrag" style="width:40px;height:20px"></div></div>';
+                node.append(box);
+            }
+            """);
+        await ClickAsync(700, 470);
+        await page.Keyboard.DownAsync("Space");
+
+        await DragFromAsync(card.Locator("input"), 60, 40);
+        await DragFromAsync(card.Locator(".mussel-diagram-nodrag"), 60, 40);
+
+        await Expect(viewport).ToHaveAttributeAsync("transform", "translate(0,0) scale(1)");
+
+        var shape = await card.Locator(":scope > .mussel-diagram-shape").BoundingBoxAsync() ?? throw new InvalidOperationException("The card is not shown.");
+        var x = shape.X + shape.Width - 10;
+        var y = shape.Y + shape.Height - 10;
+        await page.Mouse.MoveAsync(x, y);
+        await page.Mouse.DownAsync();
+        await page.Mouse.MoveAsync(x + 60, y + 40, new() { Steps = 10 });
+        await page.Mouse.UpAsync();
+        await page.Keyboard.UpAsync("Space");
+
+        await Expect(viewport).ToHaveAttributeAsync("transform", "translate(60,40) scale(1)");
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task AnElementThatIsNotEditableInATemplateStillMovesTheNode(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var card = opened.View.Locator("g.mussel-diagram-node[data-id='card']");
+        await card.EvaluateAsync(
+            """
+            node => {
+                const box = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                box.setAttribute('width', '80');
+                box.setAttribute('height', '20');
+                box.innerHTML = '<div style="display:flex"><div class="probe-editable" contenteditable="true" style="width:40px;height:20px">a</div><div class="probe-locked" contenteditable="false" style="width:40px;height:20px">b</div></div>';
+                node.append(box);
+            }
+            """);
+        var before = await card.GetAttributeAsync("transform");
+
+        await DragFromAsync(card.Locator(".probe-editable"), 60, 40);
+
+        await Expect(card).ToHaveAttributeAsync("transform", before!);
+        await Expect(card).Not.ToHaveAttributeAsync("data-selected", string.Empty);
+
+        await DragFromAsync(card.Locator(".probe-locked"), 60, 40);
+
+        await Expect(card).Not.ToHaveAttributeAsync("transform", before!);
+        await Expect(card).ToHaveAttributeAsync("data-selected", string.Empty);
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
+    public async Task ElementsThatDoNotMoveInATemplateKeepTheirOwnCursor(string mode)
+    {
+        opened = await app.OpenAsync(string.Empty, mode);
+        var card = opened.View.Locator("g.mussel-diagram-node[data-id='card']");
+        await card.EvaluateAsync(
+            """
+            node => {
+                const box = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                box.setAttribute('width', '120');
+                box.setAttribute('height', '20');
+                box.innerHTML = '<div style="display:flex"><div class="probe-editable" contenteditable="true">a</div><div class="mussel-diagram-nodrag">b</div><div class="probe-plain">c</div></div>';
+                node.append(box);
+            }
+            """);
+
+        await Expect(card.Locator(".probe-editable")).ToHaveCSSAsync("cursor", "auto");
+        await Expect(card.Locator(".mussel-diagram-nodrag")).ToHaveCSSAsync("cursor", "auto");
+        await Expect(card.Locator(".probe-plain")).ToHaveCSSAsync("cursor", "move");
+    }
+
+    [Theory]
+    [MemberData(nameof(Modes))]
     public async Task ThePanToolPansFromNodesAndPorts(string mode)
     {
         opened = await app.OpenAsync("?pan=true", mode);
@@ -360,6 +449,18 @@ public sealed class OperationE2ETests(AppFixture app) : IClassFixture<AppFixture
     {
         var (left, top) = await OriginAsync().ConfigureAwait(true);
         await opened!.Page.Mouse.DblClickAsync((float)left + x, (float)top + y).ConfigureAwait(true);
+    }
+
+    private async Task DragFromAsync(ILocator target, float dx, float dy)
+    {
+        var page = opened!.Page;
+        var box = await target.BoundingBoxAsync().ConfigureAwait(true) ?? throw new InvalidOperationException("The element is not shown.");
+        var x = box.X + (box.Width / 2);
+        var y = box.Y + (box.Height / 2);
+        await page.Mouse.MoveAsync(x, y).ConfigureAwait(true);
+        await page.Mouse.DownAsync().ConfigureAwait(true);
+        await page.Mouse.MoveAsync(x + dx, y + dy, new() { Steps = 10 }).ConfigureAwait(true);
+        await page.Mouse.UpAsync().ConfigureAwait(true);
     }
 
     private async Task DragAsync(float x, float y, float dx, float dy, bool alt, Func<Task>? beforeRelease)

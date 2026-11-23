@@ -8,6 +8,8 @@ internal static class OrthogonalRouter
 
     private const int MaxNodes = 250_000;
 
+    private const double EnclosureMargin = 160;
+
     private static readonly double[] RegionMargins = [40, 160, 640];
 
     [ThreadStatic]
@@ -25,7 +27,7 @@ internal static class OrthogonalRouter
         var endMargin = Math.Min(margin, stub / 2);
         var startOut = LinkRouting.Step(start.Position, start.Side, stub);
         var endOut = LinkRouting.Step(end.Position, end.Side, stub);
-        if ((startOut != endOut) && (Trapped(startOut) || Trapped(endOut)))
+        if ((startOut != endOut) && (Trapped(startOut) || Trapped(endOut) || Enclosed(startOut, endOut) || Enclosed(endOut, startOut)))
         {
             return simple;
         }
@@ -52,6 +54,12 @@ internal static class OrthogonalRouter
         blockers.Add(Inflate(target, endMargin));
         all = Union(Union(all, blockers[^1]), blockers[^2]);
         return Search(start, end, startOut, endOut, blockers, Inflate(all, 40), grid) ?? simple;
+
+        bool Enclosed(DiagramPoint point, DiagramPoint other)
+        {
+            var region = Region(point, point, EnclosureMargin);
+            return Separated(point, other, Blockers(obstacles, Inflate(region, margin), sourceId, targetId, margin, endMargin, source, target), region, grid);
+        }
 
         bool Trapped(DiagramPoint point)
         {
@@ -94,6 +102,78 @@ internal static class OrthogonalRouter
         }
 
         return false;
+    }
+
+    public static bool Separated(DiagramPoint point, DiagramPoint other, List<DiagramRect> blockers, DiagramRect region, double grid)
+    {
+        var work = scratch ??= new Scratch();
+        var otherInside = (other.X >= region.X) && (other.X <= region.Right) && (other.Y >= region.Y) && (other.Y <= region.Bottom);
+        var generation = Lay(work, blockers, region, point, otherInside ? other : point, grid, out var xs, out var ys);
+        if (generation == 0)
+        {
+            return false;
+        }
+
+        var width = xs.Length;
+        var height = ys.Length;
+        var blockedNode = work.BlockedNode;
+        var blockedRight = work.BlockedRight;
+        var blockedDown = work.BlockedDown;
+        var seen = work.Closed;
+        var pending = work.Pending;
+        pending.Clear();
+        var startNode = (Array.BinarySearch(ys, point.Y) * width) + Array.BinarySearch(xs, point.X);
+        var otherNode = otherInside ? (Array.BinarySearch(ys, other.Y) * width) + Array.BinarySearch(xs, other.X) : -1;
+        blockedNode[startNode] = 0;
+        if (otherNode >= 0)
+        {
+            blockedNode[otherNode] = 0;
+        }
+
+        seen[startNode] = generation;
+        pending.Add(startNode);
+        while (pending.Count > 0)
+        {
+            var node = pending[^1];
+            pending.RemoveAt(pending.Count - 1);
+            var column = node % width;
+            var row = node / width;
+            if ((node == otherNode) || (column == 0) || (row == 0) || (column == width - 1) || (row == height - 1))
+            {
+                return false;
+            }
+
+            if (blockedRight[node] != generation)
+            {
+                Visit(node + 1);
+            }
+
+            if (blockedDown[node] != generation)
+            {
+                Visit(node + width);
+            }
+
+            if (blockedRight[node - 1] != generation)
+            {
+                Visit(node - 1);
+            }
+
+            if (blockedDown[node - width] != generation)
+            {
+                Visit(node - width);
+            }
+        }
+
+        return true;
+
+        void Visit(int target)
+        {
+            if ((seen[target] != generation) && (blockedNode[target] != generation))
+            {
+                seen[target] = generation;
+                pending.Add(target);
+            }
+        }
     }
 
     private static bool IsClear(ImmutableArray<DiagramPoint> route, ObstacleIndex obstacles, string sourceId, string targetId, double margin, DiagramRect source, DiagramRect target, List<DiagramRect> found)
@@ -244,9 +324,8 @@ internal static class OrthogonalRouter
         return index >= 0 ? index - 1 : ~index - 1;
     }
 
-    private static ImmutableArray<DiagramPoint>? Search(LinkAnchor start, LinkAnchor end, DiagramPoint startOut, DiagramPoint endOut, List<DiagramRect> blockers, DiagramRect region, double grid)
+    private static int Lay(Scratch work, List<DiagramRect> blockers, DiagramRect region, DiagramPoint first, DiagramPoint second, double grid, out double[] xs, out double[] ys)
     {
-        var work = scratch ??= new Scratch();
         var inside = work.InRegion;
         inside.Clear();
         foreach (var blocker in blockers)
@@ -257,13 +336,13 @@ internal static class OrthogonalRouter
             }
         }
 
-        var xs = Coordinates(work.Values, inside, true, startOut.X, endOut.X, region.X, region.Right, grid);
-        var ys = Coordinates(work.Values, inside, false, startOut.Y, endOut.Y, region.Y, region.Bottom, grid);
+        xs = Coordinates(work.Values, inside, true, first.X, second.X, region.X, region.Right, grid);
+        ys = Coordinates(work.Values, inside, false, first.Y, second.Y, region.Y, region.Bottom, grid);
         var width = xs.Length;
         var height = ys.Length;
         if (((long)width * height) > MaxNodes)
         {
-            return null;
+            return 0;
         }
 
         var generation = work.Prepare(width * height);
@@ -302,6 +381,23 @@ internal static class OrthogonalRouter
             }
         }
 
+        return generation;
+    }
+
+    private static ImmutableArray<DiagramPoint>? Search(LinkAnchor start, LinkAnchor end, DiagramPoint startOut, DiagramPoint endOut, List<DiagramRect> blockers, DiagramRect region, double grid)
+    {
+        var work = scratch ??= new Scratch();
+        var generation = Lay(work, blockers, region, startOut, endOut, grid, out var xs, out var ys);
+        if (generation == 0)
+        {
+            return null;
+        }
+
+        var width = xs.Length;
+        var height = ys.Length;
+        var blockedNode = work.BlockedNode;
+        var blockedRight = work.BlockedRight;
+        var blockedDown = work.BlockedDown;
         var startNode = (Array.BinarySearch(ys, startOut.Y) * width) + Array.BinarySearch(xs, startOut.X);
         var endNode = (Array.BinarySearch(ys, endOut.Y) * width) + Array.BinarySearch(xs, endOut.X);
         blockedNode[startNode] = 0;
@@ -476,6 +572,8 @@ internal static class OrthogonalRouter
         public List<DiagramRect> InRegion { get; } = [];
 
         public List<double> Values { get; } = [];
+
+        public List<int> Pending { get; } = [];
 
         public PriorityQueue<int, (double Total, double Remaining, long Order)> Queue { get; } = new();
 

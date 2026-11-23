@@ -686,6 +686,39 @@ public sealed class RoutingTests
     }
 
     [Fact]
+    public void AnEndBoxedInByNodesIsSeparatedFromTheOtherEnd()
+    {
+        List<DiagramRect> closed = [new(0, 0, 100, 30), new(0, 70, 100, 30), new(0, 0, 30, 100), new(70, 0, 30, 100)];
+        List<DiagramRect> open = [new(0, 0, 100, 30), new(0, 70, 100, 30), new(0, 0, 30, 100)];
+        var region = new DiagramRect(-110, -110, 320, 320);
+        var inside = new DiagramPoint(50, 50);
+
+        Assert.True(OrthogonalRouter.Separated(inside, new DiagramPoint(400, 50), closed, region, 10));
+        Assert.False(OrthogonalRouter.Separated(inside, new DiagramPoint(60, 50), closed, region, 10));
+        Assert.False(OrthogonalRouter.Separated(inside, new DiagramPoint(400, 50), open, region, 10));
+    }
+
+    [Fact]
+    public void ALinkToAnEndBoxedInByNodesKeepsTheSimpleRoute()
+    {
+        DiagramNode[] nodes =
+        [
+            Node("s", 0, 200) with { Bounds = new DiagramRect(0, 200, 40, 40) },
+            Node("t", 300, 200) with { Bounds = new DiagramRect(300, 200, 40, 40) },
+            Node("top", 240, 150) with { Bounds = new DiagramRect(240, 150, 160, 20) },
+            Node("bottom", 240, 270) with { Bounds = new DiagramRect(240, 270, 160, 20) },
+            Node("left", 240, 150) with { Bounds = new DiagramRect(240, 150, 20, 140) },
+            Node("right", 380, 150) with { Bounds = new DiagramRect(380, 150, 20, 140) }
+        ];
+        var start = new LinkAnchor(new DiagramPoint(40, 220), DiagramSide.Right);
+        var end = new LinkAnchor(new DiagramPoint(300, 220), DiagramSide.Left);
+
+        var route = OrthogonalRouter.Route(start, end, 20, 10, new ObstacleIndex(nodes), "s", "t", nodes[0].Bounds, nodes[1].Bounds, 10);
+
+        Assert.Equal(LinkRouting.Orthogonal(start, end, 20, 10), route);
+    }
+
+    [Fact]
     public void RoutesOverTheBudgetFollowInSteps()
     {
         RunWith(static context =>

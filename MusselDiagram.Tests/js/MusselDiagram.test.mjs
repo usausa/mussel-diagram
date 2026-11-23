@@ -4,6 +4,7 @@ import {
     wrapLabel, firstLineOffset, zoomAround, limitFactor, fitView, roundZoom, wheelDelta, wheelAction, routeLink, toPath, DiagramTable, elementBounds,
     collectLines, snapAxis, matchingLines, gridSnap, gridAnchor, gridMiddle, gridTile, resizeEdges, limitResize, checkConnection, canNest, searchTypes, placeBeside,
     keyName, nextZoom, stackOffsets, restore, restoreTexts, applyEntry, writeAttribute, changedSelection, scrollToShow, keepWritten, settleWritten, revertSaved, firstById, commandKey,
+    canDrawAt,
 } from '../../MusselDiagram/wwwroot/MusselDiagram.js';
 
 const measure = (text) => [...text].length * 10;
@@ -620,4 +621,22 @@ test('an id finds its first element, the same as a query of the element', () => 
     const first = element('a');
     const other = element('b');
     assert.deepEqual([...firstById([first, other, element('a')], 'id')], [['a', first], ['b', other]]);
+});
+
+test('a canvas that draws the probe pixel can hold the image', () => {
+    const pixels = new Map();
+    const context = {
+        fillStyle: '',
+        fillRect(x, y) { pixels.set(`${x},${y}`, this.fillStyle); },
+        clearRect(x, y) { pixels.delete(`${x},${y}`); },
+        getImageData(x, y) { return { data: pixels.get(`${x},${y}`) === '#010203' ? [1, 2, 3, 255] : [0, 0, 0, 0] }; },
+    };
+    assert.equal(canDrawAt(context, 99, 49), true);
+    assert.equal(pixels.size, 0);
+});
+
+test('a canvas beyond the limits of the browser is too large, whether the probe pixel stays empty or reading it throws', () => {
+    const context = (getImageData) => ({ fillStyle: '', fillRect() { }, clearRect() { }, getImageData });
+    assert.equal(canDrawAt(context(() => ({ data: [0, 0, 0, 0] })), 70000, 0), false);
+    assert.equal(canDrawAt(context(() => { throw new Error('NS_ERROR_FAILURE'); }), 70000, 0), false);
 });

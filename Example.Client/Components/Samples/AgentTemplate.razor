@@ -1,0 +1,5 @@
+<DiagramTemplate Type="agent" Context="item">
+    <rect class="mussel-diagram-shape" width="@item.Width" height="@item.Height" />
+    <svg width="@item.Height" height="@item.Height" viewBox="0 0 36 36"><g transform="translate(6 6)">@((MarkupString)WorkflowDiagrams.AgentIcon)</g></svg>
+    <text class="agent-name" data-slot="name" x="@item.Height" y="@(item.Height / 2)" dominant-baseline="central">@item.Label</text>
+</DiagramTemplate>

@@ -448,6 +448,7 @@ C# and JS compute the port positions with the same formula from the type and the
 | The background with `BackgroundDragMode` `Pan` | `grab`, and `grabbing` while moving |
 | Everywhere with `Tool` `Pan` | `grab`, and `grabbing` while moving |
 | A movable element | `move` |
+| An input or a `mussel-diagram-nodrag` element in a template | Its own cursor, not `move` |
 | A resize handle | The `…-resize` for its direction |
 | A port that can start a link | `crosshair` |
 | A place where the dragged item cannot be placed or connected | `not-allowed` |
@@ -545,7 +546,7 @@ Context menus on right-click and long press are planned for the next version.
 ### Turning behaviour off and adding it
 
 - Each built-in operation can be turned off with its `…Enabled`: pan, zoom, selection, box selection, move, resize, connect, drop, text editing, tooltip. `ReadOnly` turns off all editing operations (Components and packages)
-- The app adds its own behaviour through the click and double-click events and through commands. Tools other than `Select` and `Pan` of `Tool`, such as drawing links or shapes, are planned for the next version
+- The app adds its own behaviour through the click and double-click events and through commands. Tools other than `Select` and `Pan` of `Tool`, such as drawing links, are planned for the next version
 
 ## 🧲 Snapping and guides
 

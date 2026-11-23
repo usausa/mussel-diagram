@@ -143,6 +143,10 @@ body {
     fill: var(--mussel-muted-text, #6e7781);
 }
 
+.agent-name {
+    fill: var(--mussel-diagram-text-color);
+}
+
 .diagram-actions {
     display: flex;
     flex-wrap: wrap;

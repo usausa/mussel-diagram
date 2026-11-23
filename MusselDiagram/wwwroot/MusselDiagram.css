@@ -255,6 +255,10 @@
     cursor: move;
 }
 
+:where(.mussel-diagram-node) :where([contenteditable]:not([contenteditable="false" i]), .mussel-diagram-nodrag) {
+    cursor: auto;
+}
+
 :where(.mussel-diagram-fixed, .mussel-diagram-fixed > .mussel-diagram-shape, .mussel-diagram-fixed > .mussel-diagram-label, .mussel-diagram-fixed > .mussel-diagram-icon) {
     cursor: default;
 }

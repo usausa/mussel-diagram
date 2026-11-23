@@ -14,7 +14,9 @@
     </aside>
     <div class="diagram-area">
         <ViewToolbar View="view" @bind-Tool="tool" @bind-Mode="dragMode" Zoom="zoom" />
-        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" Tool="@tool" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="WorkflowDiagrams.BadgeKinds" BadgeClicked="OnBadgeClicked" SelectionChanged="OnSelectionChanged" class="example-workflow" />
+        <MusselDiagramView @ref="view" Diagram="diagram" GridVisible="@Grid.IsVisible()" GridStyle="DiagramGridStyle.Lines" BackgroundDragMode="@dragMode" Tool="@tool" ViewportChanged="OnViewportChanged" Issues="issues" Overlays="overlays" BadgeKinds="WorkflowDiagrams.BadgeKinds" BadgeClicked="OnBadgeClicked" SelectionChanged="OnSelectionChanged" class="example-workflow">
+            <AgentTemplate />
+        </MusselDiagramView>
     </div>
     <aside class="diagram-panel" data-panel="settings">
         @if (Selected is { } node)
