@@ -115,12 +115,12 @@ Wraps HTML of the app so that a drag into the view starts from it. Other attribu
 | `SetCanExecute(name, canExecute)` | Adds a check to a built-in command; both must allow it |
 | `SetExecute(name, execute)` | Replaces what a built-in command does |
 | `ExecuteAsync(name, argument)` | Runs a command with the current selection |
-| `Changed` | The enabled or checked state of a command changed |
+| `Changed` | The enabled or checked state of a command changed; also after `Add`, `Remove`, `SetKeys` and `SetExecute`, and when the view gets another `Diagram` whose options differ |
 
 `DiagramCommand` has `Name`, `DisplayName`, `Keys`, `IsEnabled`, `IsChecked`, `CanExecute`, `GetIsChecked` and `Execute`. The functions receive `DiagramCommandContext`: `View`, `Diagram`, `SelectedIds` and `Argument`.  
 `DiagramCommands` holds the names of the built-in commands: `Undo`, `Redo`, `Delete`, `Cut`, `Copy`, `Paste`, `SelectAll`, `ClearSelection`, `EditText`, `QuickAdd`, `Group`, `Ungroup`, `CreateOverlayGroup`, `AddMembers`, `RemoveMembers`, `BringToFront`, `SendToBack`, `BringForward`, `SendBackward`, `AlignLeft`, `AlignCenter`, `AlignRight`, `AlignTop`, `AlignMiddle`, `AlignBottom`, `DistributeHorizontally`, `DistributeVertically`, `ToggleLock`, `ZoomIn`, `ZoomOut`, `ResetZoom`, `ZoomToFit`, `ZoomToSelection`, `NextIssue` and `PreviousIssue`. The arguments are a type name for `Group` and `CreateOverlayGroup`, and a `DiagramPoint` for `QuickAdd`.  
-Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command.  
-The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. `+` and `-` are read as `Plus` and `Minus`, and `=` and `_` with `Ctrl` as `Plus` and `Minus`. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a letter of any script keeps `Shift` (`Ctrl+Shift+Ä`), a digit or a symbol is written as the character it types (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
+Keys are strings such as `Ctrl+Shift+Z`, with the modifiers `Ctrl`, `Alt` and `Shift`. `Control`, `Meta` and `Cmd` are read as `Ctrl`, and a key with another modifier never matches. On Mac, `Ctrl` matches ⌘; a key pressed with the Control key of a Mac or with the Windows key matches no command. `DiagramCommand.Keys` returns the keys in the form the registry keeps: `Ctrl` for `Control`, `Meta` and `Cmd`, the modifiers in the order `Ctrl`, `Alt`, `Shift`, and the key in capitals or in the case of its name (`Enter` for `enter`, `F2` for `f2`).  
+The key is a letter, a digit, a symbol, `Plus`, `Minus`, `Space` or a name of `KeyboardEvent.key` such as `Enter`, `ArrowUp`, `F2` or `Pause`, in any case. `+` and `-` are read as `Plus` and `Minus`, and `=` and `_` with `Ctrl` as `Plus` and `Minus`. A key is compared in capitals one character at a time; a character whose capital is longer, such as ß, stays as it is, and the ı key is written as I. With Shift, a letter with capital and small forms keeps `Shift` (`Ctrl+Shift+Ä`); any other character, such as a digit, a symbol, kana, Hangul or an Arabic letter, is written as the character it types, without `Shift` (`Ctrl+!` on a US keyboard), and `Plus` and `Minus` are written without `Shift`. With Alt, a letter or a digit is the key pressed, and Shift is written (`Alt+1`, `Alt+Shift+1`).  
 
 ## 🧱 Diagram
 
@@ -148,7 +148,7 @@ The model. It works without a view. Writing is not thread-safe.
 | `GetLinkGeometry(id)` | `DiagramLinkGeometry`: `Points`, `SourcePoint`, `TargetPoint`, `SourceAngle` and `TargetAngle` (the direction each end marker points, in degrees: 0 right, 90 down), and `Path` (shortened at ends with markers) |
 
 Every writing method takes an optional `DiagramWriteOptions`: `Tag` (any object, given back in `Changed`) and `History` (`DiagramHistoryMode`: `Record`, `Skip` or `Merge`). `BeginUpdate` takes it too, and the outermost scope decides.  
-A write that breaks the structure (duplicate IDs, missing ends, parents or members, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, boxes outside ±1e12, sizes that are not positive) throws `DiagramException` and leaves the snapshot as it was.  
+A write that breaks the structure (duplicate IDs, missing ends, parents or members, a member listed twice, a cycle of parents, a group whose kind differs from its type or changes, an overlay group without members, data that is not the registered data type or `JsonElement`, boxes outside ±1e12, sizes that are not positive) throws `DiagramException` and leaves the snapshot as it was.  
 
 `DiagramChangedEventArgs`:  
 
@@ -263,7 +263,7 @@ An immutable record.
 |---|---|
 | `DiagramIconSet` | `Prefix` and `Icons` |
 | `DiagramIcon` | `Id`, `Body` (the SVG content), `Load` (a function that reads the SVG file, used in place of `Body` the first time the icon is shown), `Width`, `Height`, `Name`, `Category`, `SearchWords` |
-| `DiagramIconImport.FromIconify(stream)` | Reads Iconify JSON |
+| `DiagramIconImport.FromIconify(stream)` | Reads Iconify JSON, following aliases of aliases |
 | `DiagramIconImport.FromZip(stream, prefix, map)`, `FromFolder(path, prefix, map)` | Reads SVG files. `map` makes `DiagramIconInfo` (`Id`, `Name`, `Category`) from a relative path, or `null` to skip the file |
 | `DiagramIconImport.FromFiles(paths, read, prefix, map)` | Lists SVG files without reading them and returns a `DiagramIconSet`. `read(path, cancellationToken)` returns the text of a file the first time its icon is shown |
 | `DiagramIconImport.CreateNodeTypes(set, baseType, filter)`, `CreateGroupTypes(set, baseType, filter)` | A type per icon, named `prefix:ID` |
@@ -324,7 +324,7 @@ Fields without a value and default values are not written, except `kind`, `x`, `
 ## 🖼️ Export
 
 `ExportSvgAsync` and `ExportImageAsync` return a `DiagramExportResult`: `Content` (a `Stream` at its start that the app disposes, or `null` when nothing was exported), `Error` (a `DiagramReason` of the kind `TooLarge`) and `Issues` (`ImageNotEmbedded` for images that could not be embedded).  
-Until JS is attached to the view, and after the view is disposed, both throw `InvalidOperationException`. Once the view has `data-attached`, they work.  
+Until JS is attached to the view, and after the view is disposed, both throw `InvalidOperationException`. Once the view has `data-attached`, they work. An export still running when the view is disposed returns a result without `Content` and `Error`.  
 Both wait up to 5 seconds for links whose routes are still being computed; links still waiting after that are drawn with their simple routes.  
 Tooltips, classes and styles are not exported; `data-id` and `data-type` are kept.  
 
@@ -367,7 +367,7 @@ These are shared with the other Mussel libraries. Their light defaults follow th
 | `--mussel-primary-text`, `--mussel-secondary-text`, `--mussel-muted-text` | Labels and the headers of the palette; the items of the palette; the placeholder of the text editor and the text of empty lists |
 | `--mussel-grid-line` | The grid |
 | `--mussel-tooltip-background`, `--mussel-tooltip-border`, `--mussel-tooltip-text` | The type picker, rejection reasons, the text editor and the border of the search box of the palette |
-| `--mussel-critical` | Errors |
+| `--mussel-critical` | Errors, as the default of `--mussel-diagram-error-color`, `--mussel-diagram-not-allowed-color` and `--mussel-diagram-badge-error` |
 | `--mussel-font-family` | Font family |
 
 These are for the diagram only. Set them on `.mussel-diagram` or on a `class` given to the view; the view declares them on its own element, so a value on a container does not reach it. Set the palette ones on `.mussel-diagram-palette` or on a `class` given to the palette.  

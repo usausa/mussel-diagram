@@ -152,12 +152,12 @@ Changing parents:
 ### Snapshots and changes
 
 - `Diagram.Snapshot` is the current snapshot (`DiagramSnapshot`). It is immutable and can be read from any thread. Each change makes a new snapshot that shares the unchanged elements with the previous one. Its number (`Version`) grows by 1 with each change
-- Only the methods of `Diagram` change a diagram: add, delete, move, resize, connect, reconnect, change parents and members, change the order, and replace. `Replace` takes an element made with `with`. Changing a position does not move the descendants
+- Only the methods of `Diagram` change a diagram: add, delete, move, resize, connect, reconnect, change parents and members, change the order, and replace. `Replace` takes an element made with `with`, and one with the same content changes nothing: no undo step, no `Changed` and no new version. Changing a position does not move the descendants
 - Writing to a `Diagram` is not thread-safe. A diagram passed to a view is written from the synchronization context of the view (`InvokeAsync`)
 - One call is one change. Dependent changes (moving the descendants, group sizes, deleting the attached links, removing empty overlay groups, routes) are in the same change. The changes inside `BeginUpdate` become one change when the outermost scope ends, and reads inside see them
 - Writing checks the following, and throws without changing the snapshot when one fails
   - IDs are unique
-  - The elements of ends, parents and members exist, and so do the ports (registered types only). A parent is a tree group, an end is a node or a group, and a member is a node or a tree group
+  - The elements of ends, parents and members exist, and so do the ports (registered types only). A parent is a tree group, an end is a node or a group, and a member is a node or a tree group, listed once
   - The kind of a group matches the kind of its type (registered types only)
   - The parent tree has no cycle
   - No field contradicts the kind of the group (members of a tree group, a parent of an overlay group, an overlay group without members), and the kind of a group does not change
@@ -165,7 +165,7 @@ Changing parents:
   - Boxes lie inside ±1e12 (their left, top, right and bottom edges), and sizes are greater than 0
   - Colors of a look are CSS colors (`#` hex, color names, color functions such as `rgb()`, or `var(--…)`), and widths are finite and 0 or more
 - A frame that a group takes from its contents (a growing group, a group sized to its contents, an overlay group, a new group from grouping) stops at the limits of ±1e12
-- In the view, an operation that would put a box outside ±1e12 (a move, a resize, a drop, adding a connected element, a paste, distributing) is rejected with `Nesting`, as other rejections of a position are, and nothing is written
+- In the view, an operation that would put a box outside ±1e12 (a move, a resize, a drop, adding a connected element, a paste, aligning, distributing) is rejected with `Nesting`, as other rejections of a position are, and nothing is written
 - Route points lie inside ±2e12. A route with a point outside is not taken: a route read from JSON or given to `Replace` is routed again, and a router result with such a point fails
 - The type rules (connection, nesting, counts) are not checked. Rules limit the user, not the app. The whole-diagram check reports whether a diagram follows them (Commit and validation)
 
@@ -361,7 +361,7 @@ From back to front:
 | Zoom | Ctrl+wheel, Alt+wheel, pinch (keeping the point under the pointer still), and the zoom commands |
 | Fit | Sets the zoom and position so that the whole diagram, or the selected elements, fit with a margin. The whole diagram includes the labels and badges drawn outside the elements. An element can also be brought to the center |
 
-- `WheelMode` makes the plain wheel zoom instead
+- `WheelMode` makes the plain wheel zoom instead. A wheel the view does not use goes to the page and the browser: with `PanEnabled` false the page scrolls, and with `ZoomEnabled` false Ctrl+wheel zooms the browser
 - The zoom goes from `MinZoom` (default 0.05, greater than 0) to `MaxZoom` (default 8). Command zoom moves in steps that pass 100% and sit on a 5% grid. Wheel and pinch use a 1% grid. A zoom below 5%, which a smaller `MinZoom` allows, is not rounded to a grid. The view starts at 100% brought inside the limits. When the limits change, a zoom outside them comes inside around the center of the view
 - While zooming with the wheel or a pinch, the drawn diagram is scaled as it is, and it is drawn again at the new zoom when the zoom stops
 - The API of the view reads the zoom and the center (`Zoom`, `Center`) and sets them (`SetViewportAsync`), fits the whole diagram or the selected elements, and centers an element. When panning and zooming stop, `ViewportChanged` reports it
@@ -692,7 +692,7 @@ The link type declares the form, and the `Look` of a link can change it for that
 
 ### Line styles and hit testing
 
-- The link type declares the color, the width and the dash (solid, dashed, dotted) as values or CSS variables, and the `Look` of a link can change them for that link (Rendering). Markers use the color of the line
+- The link type declares the color, the width and the dash (solid, dashed, dotted) as values or CSS variables, and the `Look` of a link can change them for that link (Rendering). Markers use the color of the line; in browsers without `context-stroke`, they keep the color of the look or the type when the selection or a state changes the color of the line
 - Selection and hover use a transparent line over the visible one, `LinkHitWidth` wide on screen (default 10 px)
 - A selected link is highlighted (Selection and moving)
 
@@ -801,8 +801,8 @@ A small list that opens over the view to find and choose a type. It has a search
 ### Importing icon sets
 
 - An icon set is a prefix and its icons (ID, SVG content or a function that reads the SVG file, width and height, name, category, search words). It is added to the schema, and the icon of a type and the `Icon` of an element refer to an icon as `prefix:ID`
-- The core reads Iconify JSON (the prefix, the content and size of the icons, the categories) and sets of SVG files (a zip or a folder). A function can make the ID, the name and the category from the relative path of a file (by default, the file name is the ID and the name, and the folder name is the category). In a folder, the folders inside that cannot be opened are skipped
-- A set of SVG files can also be taken as a list without reading them (`FromFiles`): the app passes the relative paths and a function that reads a file. An icon is read and sanitized the first time something shows it. An icon that cannot be read (or is longer than 4 MiB) is not drawn and not reported
+- The core reads Iconify JSON (the prefix, the content and size of the icons, the categories, and aliases, also of aliases, whose rotations and flips add up and whose width, height, left and top come from the nearest alias that has them) and sets of SVG files (a zip or a folder, where a file longer than 4 Mi characters is reported as `UnreadableIcon`). A function can make the ID, the name and the category from the relative path of a file (by default, the file name is the ID and the name, and the folder name is the category). In a folder, the folders inside that cannot be opened are skipped
+- A set of SVG files can also be taken as a list without reading them (`FromFiles`): the app passes the relative paths and a function that reads a file. An icon is read and sanitized the first time something shows it. An icon that cannot be read (or is longer than 4 Mi characters) is not drawn and not reported
 - It reads only the streams and files the app passes, never the network. No icon sets are bundled
 - Imported SVG is sanitized (Saving and export). The IDs inside an icon get a prefix per icon
 - When the app passes a base type (shape, default size, label slots, ports, rules), a type is made for each chosen icon. The type name is `prefix:ID` of the icon by default, and the display name, the category and the search words come from the icon. The app adds the types to the schema and replaces it
@@ -847,7 +847,7 @@ On release (for a command, when it runs), JS sends the operation and the selecti
 - The before events carry what will be written, and the after events what was written and the snapshot. Elements deleted along with it are included
 - Align, distribute, order, lock, group and ungroup, and changing members raise no before or after events, but still pass the rules. To stop them, disable the command (Commands and keys)
 - Undo and redo pass neither the rules nor the before and after events (Undo)
-- An exception from a handler of an event raised from the script reaches `ErrorBoundary`, as with an ordinary Blazor event, and the script gets a failure
+- An exception from a handler of an event raised from the script, or from app code the script runs (`Execute` and `CanExecute` of a command, `SearchNormalizer`, `CreateContent` of a type), reaches `ErrorBoundary`, as with an ordinary Blazor event, and the script gets a failure. Without an `ErrorBoundary`, it can end the circuit of Interactive Server
 
 ### Waiting
 
@@ -963,7 +963,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - `Commands` of the view gives the registry. It starts with the built-in commands (the table below)
 - A command has a name, a display name, keys, whether it is enabled, a checked state, and what it does. The commands of the app are added in the same form
 - For built-in commands, keys can be changed and removed, an enabled check can be added, and what they do can be replaced
-- The enabled and checked states are checked again whenever the selection, the diagram or the state of the view changes, and `Changed` reports it (to enable and disable toolbars and menus)
+- The enabled and checked states are checked again whenever the selection, the diagram or the state of the view changes, and `Changed` reports it (to enable and disable toolbars and menus). `Changed` also comes after `Add`, `Remove`, `SetKeys` and `SetExecute`, and when the view gets another `Diagram` whose options differ
 - `ExecuteAsync` (a name and an argument) runs a command. Only `Group` and `CreateOverlayGroup` (a type) and `QuickAdd` (a position) take an argument
 - Display names follow the texts of the language (Languages)
 - There are no toolbar, menu, context menu or command palette components. The app builds them from the registry
@@ -977,7 +977,7 @@ A command is a named operation in the command registry of a view (`DiagramComman
 - While a command, a commit or a click on a badge is still on its way to C#, the keys of registered commands are held. They run in order once C# has answered, or after 60 seconds without an answer, if the command is enabled then. A selection change on its way (for up to 60 seconds, as for commits) does not hold them: the keys go to C# at once, and C# runs the command if it is enabled for that selection. During a drag, the keys of all commands are stopped and do not run, and so are the keys of the commands other than the view and selection commands while a `Wait` commit awaits its answer
 - Commands that only change the view or the selection (zoom, fit, select all, clear selection) run in JS at once when a key starts them, unless the app changed what they do or when they are enabled. For the others, JS sends the name and the selection of that moment to C#
 - During text editing, and when an input in a template has the focus, the keys used for typing (no modifier, Shift only, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+V) go to the input, and the text editor keeps Enter with any modifier. F1 to F12, with or without modifiers, are not treated as typing keys (when they are command keys, they run the command). During IME composition, no key is a command
-- Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving)
+- Esc cancels the operation and clears the selection, and cannot be changed (Selection and moving). An Esc that something else already handled (`defaultPrevented`) keeps the selection
 - Moving elements with the arrow keys, and moving between elements with Tab, are planned for the next version
 
 ### Built-in commands
@@ -1089,7 +1089,7 @@ When the text is not JSON, the `format` differs, or the version is missing, less
 | Duplicate IDs | The first one stays, and the later ones are dropped |
 | An end referring to an element that does not exist | The link is dropped |
 | A parent that does not exist or is not a tree group, and parent cycles | The element goes to the top level |
-| Members referring to elements that do not exist, or that are not nodes or tree groups | Those members are removed. An overlay group with no members left is dropped |
+| Members referring to elements that do not exist, or that are not nodes or tree groups | Those members are removed. An overlay group with no members left is dropped. A member listed twice keeps its first place, without an issue |
 | A group whose kind does not match its type | Treated like an unregistered type |
 | A box outside ±1e12, or a size of 0 or less | A size of 0 or less or larger than 2e12 becomes the default size of the type, and the box moves inside the limits |
 | Data the data type cannot read | Kept as `JsonElement` (a warning) |
