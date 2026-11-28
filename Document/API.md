@@ -358,7 +358,7 @@ builder.Services.AddMusselDiagram(options => options.Cultures["ja"] = JapaneseTe
 
 ## 🎨 Theme
 
-Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container, or on the view or the palette itself, switches to the dark values, the same class as the other Mussel libraries. A value an app sets on the element with `mussel-dark`, or on an element inside it, is used in both themes, so include `.mussel-dark` in the selector to change a dark value. A shared color set above that element, such as on `:root`, gives way to the dark values.  
+Link `_content/MusselDiagram/MusselDiagram.css` in the page head. Colors come from CSS variables, which an app changes from any selector and in any file order. `mussel-dark` on a container, or on the view or the palette itself, switches to the dark values and to dark scrollbars (`color-scheme: dark`), the same class as the other Mussel libraries. A value an app sets on the element with `mussel-dark`, or on an element inside it, is used in both themes, so include `.mussel-dark` in the selector to change a dark value. A shared color set above that element, such as on `:root`, gives way to the dark values.  
 
 These are shared with the other Mussel libraries. Their light defaults follow the look of each library, so set them on a container to give several libraries the same colors.  
 

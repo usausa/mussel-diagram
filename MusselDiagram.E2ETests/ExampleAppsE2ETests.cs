@@ -45,6 +45,15 @@ public sealed class ExampleAppsE2ETests(AppFixture app) : IClassFixture<AppFixtu
         await Expect(pattern.Locator("path").First).ToBeAttachedAsync();
     }
 
+    [Fact]
+    public async Task TheDarkThemeMakesTheScrollbarsDark()
+    {
+        opened = await app.OpenAsync(string.Empty, "server");
+        await opened.Page.Locator("button[aria-label='暗い配色']").ClickAsync();
+        await Expect(opened.View).ToHaveCSSAsync("color-scheme", "dark");
+        await Expect(opened.Page.Locator(".mussel-diagram-palette").First).ToHaveCSSAsync("color-scheme", "dark");
+    }
+
     [Theory]
     [MemberData(nameof(Modes))]
     public async Task TheWorkflowChecksPortsAndReachAndEditsSettings(string mode)

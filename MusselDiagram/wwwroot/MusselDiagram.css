@@ -59,6 +59,7 @@
     --mussel-diagram-badge-info: #4493f8;
     --mussel-diagram-badge-success: #2ea043;
     --mussel-diagram-badge-warning: #bb8009;
+    color-scheme: dark;
 }
 
 .mussel-diagram {
@@ -623,6 +624,7 @@
     --mussel-diagram-palette-hover: rgba(110, 168, 254, 0.16);
     --mussel-diagram-palette-shape-fill: #1f1f1d;
     --mussel-diagram-palette-shape-stroke: #a8a69f;
+    color-scheme: dark;
 }
 
 .mussel-diagram-palette-search {
